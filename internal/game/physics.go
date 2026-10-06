@@ -6,6 +6,24 @@ import (
 	"math/rand/v2"
 )
 
+const (
+	jumpSpeed   = 6.6
+	jumpGravity = 18.0
+)
+
+func grounded(p *player) bool   { return p.jumpOffset == 0 && p.jumpVelocity == 0 }
+func playerY(p *player) float64 { return groundY(p) + p.jumpOffset }
+
+// Teleports, respawns and sitting discard pending movement from the old position.
+func resetMovement(p *player) {
+	p.input = Input{}
+	p.jumpOffset, p.jumpVelocity = 0, 0
+	p.jumpQueued, p.sprinting = false, false
+	// Preserve physical key holds: arriving at a destination is not a new Space
+	// press or a Shift release, and teleporting must not bypass exhaustion.
+	delete(p.cooldowns, "jump")
+}
+
 // Tick accepts elapsed seconds; catch-up is bounded to one second and split
 // into small steps so a delayed network loop cannot tunnel through targets.
 func (w *World) Tick(dt float64) {
@@ -27,7 +45,16 @@ func (w *World) step(dt float64) {
 			p.input.X = 0
 			p.input.Z = 0
 			p.input.Sprint = false
+			p.input.Jump = false
+			p.jumpQueued = false
 		}
+		previousGround := groundY(p)
+		previousY := playerY(p)
+		if p.jumpQueued && grounded(p) && !inWater(p) && !p.ridingCamel && p.cooldowns["jump"] <= w.time {
+			p.jumpVelocity = jumpSpeed
+			p.posture = ""
+		}
+		p.jumpQueued = false
 		moving := math.Hypot(p.input.X, p.input.Z) > .01
 		if moving {
 			p.posture = ""
@@ -45,11 +72,24 @@ func (w *World) step(dt float64) {
 				speed *= 1.6
 			}
 		}
-		if moving && !inWater(p) && p.input.Sprint && p.stamina > 0 {
-			speed *= 1.65
+		maxStamina := 100 + float64(p.profile.Levels["stamina"])*10
+		if p.stamina <= 0 {
+			p.sprintExhausted = true
+		}
+		if p.sprintExhausted && !p.sprintHeld && p.stamina >= maxStamina*.2 {
+			p.sprintExhausted = false
+		}
+		p.sprinting = moving && !inWater(p) && p.input.Sprint && !p.sprintExhausted
+		if p.sprinting {
 			p.stamina = max(0, p.stamina-dt*18)
+			if p.stamina == 0 {
+				p.sprinting = false
+				p.sprintExhausted = true
+			} else {
+				speed *= 1.65
+			}
 		} else {
-			p.stamina = min(100+float64(p.profile.Levels["stamina"])*10, p.stamina+dt*14)
+			p.stamina = min(maxStamina, p.stamina+dt*14)
 		}
 		if w.active(p, "speed") {
 			speed *= 1.4
@@ -72,6 +112,7 @@ func (w *World) step(dt float64) {
 		if p.island != "" {
 			p.y = w.islandGround(p)
 		}
+		w.moveJump(p, dt, previousGround, previousY)
 		for key, until := range p.buffs {
 			if until <= w.time {
 				delete(p.buffs, key)
@@ -98,6 +139,67 @@ func (w *World) step(dt float64) {
 	w.nodes = nodes
 	w.moveAnimals(dt)
 	w.moveProjectiles(dt)
+}
+
+func (w *World) moveJump(p *player, dt, previousGround, previousY float64) {
+	if inWater(p) || p.ridingCamel {
+		p.jumpOffset, p.jumpVelocity = 0, 0
+		return
+	}
+	if grounded(p) {
+		return
+	}
+	// Subtract changes in the supporting surface so the jump follows a world-
+	// space arc while walking up or down the cave ramp and island stairs.
+	p.jumpOffset += p.jumpVelocity*dt - jumpGravity*dt*dt/2 - (groundY(p) - previousGround)
+	p.jumpVelocity -= jumpGravity * dt
+	if p.jumpOffset > 0 && playerY(p) > previousY {
+		if ceiling, hit := w.jumpCeiling(p, previousY, playerY(p)); hit {
+			p.jumpOffset = max(0, ceiling-1.7-groundY(p))
+			p.jumpVelocity = min(0, p.jumpVelocity)
+		}
+	}
+	if p.jumpOffset <= 0 {
+		p.jumpOffset, p.jumpVelocity = 0, 0
+		p.cooldowns["jump"] = w.time + .12
+	}
+}
+
+// Walking collision still blocks thin walls during a jump. This additional
+// vertical sweep keeps the player's head beneath roofs and upper floors.
+func (w *World) jumpCeiling(p *player, fromY, toY float64) (float64, bool) {
+	ceiling, hit := math.Inf(1), false
+	consider := func(y float64, overlaps bool) {
+		if overlaps && fromY+1.7 <= y+.001 && toY+1.7 >= y && y < ceiling {
+			ceiling, hit = y, true
+		}
+	}
+	if p.island != "" {
+		if island, ok := w.currentIsland(p); ok {
+			for _, o := range island.Objects {
+				if o.Kind == "door" && o.Open {
+					continue
+				}
+				r, _ := buildRecipeFor(o.Kind)
+				lx, lz := objectLocal(o, p.x, p.z)
+				consider(o.Y, circleRect(lx, lz, .42, 0, 0, r.Width, r.Depth))
+			}
+		}
+		return ceiling, hit
+	}
+	for _, colliders := range [][]Collider{w.colliders, w.propertyColliders} {
+		for _, c := range colliders {
+			if c.resource != nil && !c.resource.Available {
+				continue
+			}
+			overlaps := circleRect(p.x, p.z, .42, c.X, c.Z, c.Width, c.Depth)
+			if c.Radius > 0 {
+				overlaps = distance(p.x, p.z, c.X, c.Z) <= c.Radius+.42
+			}
+			consider(c.Y, overlaps)
+		}
+	}
+	return ceiling, hit
 }
 
 func (w *World) treeRegrowthBlocked(n *Node) bool {
@@ -140,7 +242,7 @@ func playerHit(s *Projectile, nx, ny, nz float64, p *player) (float64, int, bool
 	for _, v := range parts {
 		cx := p.x + v.x*math.Cos(p.yaw) + v.z*math.Sin(p.yaw)
 		cz := p.z - v.x*math.Sin(p.yaw) + v.z*math.Cos(p.yaw)
-		t, ok := segmentHit(s.X, s.Y, s.Z, nx, ny, nz, cx, groundY(p)+v.y, cz, v.r)
+		t, ok := segmentHit(s.X, s.Y, s.Z, nx, ny, nz, cx, playerY(p)+v.y, cz, v.r)
 		if ok && t < nearest {
 			nearest, reward, hit = t, v.coins, true
 		}

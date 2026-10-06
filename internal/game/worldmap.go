@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	MinX = -240.0
-	MaxX = 240.0
-	MinZ = -260.0
-	MaxZ = 200.0
+	MinX       = -240.0
+	MaxX       = 240.0
+	MinZ       = -260.0
+	MaxZ       = 200.0
+	CaveFloorY = -10.0
 )
 
 type Point struct {
@@ -111,10 +112,10 @@ var buildingZones = []BuildZone{}
 
 func caveGroundY(x, z float64) float64 {
 	if x >= 117 && x <= 123 && z <= -98 && z >= -115 {
-		return -4 * (-98 - z) / 17
+		return CaveFloorY * (-98 - z) / 17
 	}
 	if x >= 107 && x <= 133 && z <= -113 && z >= -129 {
-		return -4
+		return CaveFloorY
 	}
 	return 0
 }
@@ -167,7 +168,7 @@ func (w *World) StaticLayout() Layout {
 	return l
 }
 func (w *World) seedMap() {
-	w.layout = Layout{Version: 3, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
+	w.layout = Layout{Version: 4, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
 	for x := MinX; x <= 0; x += 3 {
 		w.layout.Coast = append(w.layout.Coast, Point{x, coastZ(x)})
 	}

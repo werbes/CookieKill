@@ -39,6 +39,12 @@ type BuildRecipe struct {
 	Height   float64        `json:"height"`
 }
 
+const (
+	islandPortalX      = 0.0
+	islandPortalZ      = 28.0
+	islandPortalRadius = 3.0
+)
+
 var buildRecipes = []BuildRecipe{
 	{"wall", "Wall", "building", map[string]int{"wood": 4, "stone": 2}, 4, .3, 3},
 	{"floor", "Floor", "building", map[string]int{"wood": 4}, 4, 4, .2},
@@ -139,6 +145,69 @@ func normalizeIslandProfile(p *Profile) {
 			}
 		}
 		h.Objects = kept
+		clearIslandPortal(h)
+	}
+}
+
+func overlapsIslandPortal(o BuildObject) bool {
+	r, ok := buildRecipeFor(o.Kind)
+	if !ok {
+		return false
+	}
+	x, z := objectLocal(o, islandPortalX, islandPortalZ)
+	return circleRect(x, z, islandPortalRadius, 0, 0, r.Width, r.Depth)
+}
+
+// Existing islands gain the return platform too. Move nearby saved furnishings
+// to the nearest open spot without consuming materials or changing their IDs.
+func clearIslandPortal(h *Island) {
+	for i, o := range h.Objects {
+		if !overlapsIslandPortal(o) {
+			continue
+		}
+		r, _ := buildRecipeFor(o.Kind)
+		best, nearest := o, math.Inf(1)
+		fallback, fallbackDistance := o, math.Inf(1)
+		for x := -32.0; x <= 32; x++ {
+			for z := -32.0; z <= 32; z++ {
+				d := distance(o.X, o.Z, x, z)
+				if d >= nearest || math.Hypot(x, z)+math.Hypot(r.Width, r.Depth)/2 > 34 || !validBuildPosition(x, o.Y, z, o.Rotation) {
+					continue
+				}
+				candidate := o
+				candidate.X, candidate.Z = x, z
+				if overlapsIslandPortal(candidate) {
+					continue
+				}
+				clear, allowed := true, true
+				for j, other := range h.Objects {
+					if i == j {
+						continue
+					}
+					or, _ := buildRecipeFor(other.Kind)
+					if rectanglesOverlap(x, z, r.Width, r.Depth, o.Rotation, other.X, other.Z, or.Width, or.Depth, other.Rotation) {
+						clear = false
+						if r.Category == "appliances" && or.Category == "appliances" {
+							allowed = false
+							break
+						}
+					}
+				}
+				if clear {
+					best, nearest = candidate, d
+				}
+				if allowed && d < fallbackDistance {
+					fallback, fallbackDistance = candidate, d
+				}
+			}
+		}
+		// A paved or decorated island may have no empty footprint. Normal
+		// placement allows building/decor overlap, so use the closest such spot
+		// while still keeping appliances separate and every saved object intact.
+		if math.IsInf(nearest, 1) {
+			best = fallback
+		}
+		h.Objects[i] = best
 	}
 }
 
@@ -178,13 +247,13 @@ func (w *World) setIsland(p *player, id string) {
 	p.posture = ""
 	p.ridingCamel = false
 	p.y = 0
-	p.input = Input{}
 	if id == "" {
 		// Arrive outside the rock arch, with room to see and enter the cave.
 		p.x, p.z = 120, -93
 	} else {
 		p.x, p.z = 0, 20
 	}
+	resetMovement(p)
 	// A teleport cannot leave an old projectile behind that hits a new instance.
 	shots := w.projectiles[:0]
 	for _, shot := range w.projectiles {
@@ -246,6 +315,17 @@ func (w *World) islandAction(p *player, a Action) error {
 			return errors.New("You are already on the main island.")
 		}
 		w.setIsland(p, "")
+		return nil
+	case "teleport_cave":
+		if p.island == "" {
+			return errors.New("Use a return platform on a home island.")
+		}
+		if distance(p.x, p.z, islandPortalX, islandPortalZ) > islandPortalRadius || playerY(p) > 2 {
+			return errors.New("Step onto the island's return platform to teleport to the clay cave.")
+		}
+		w.setIsland(p, "")
+		p.x, p.z = 120, -117
+		w.eventActor("The return platform brought you to the Sunbaked clay cave.", "notification", p.x, p.z, p.profile.ID)
 		return nil
 	case "visit_island":
 		if !p.friendsTeleport {
@@ -372,6 +452,9 @@ func (w *World) validatePlacement(p *player, h *Island, kind, skip string, a Act
 		return errors.New("Build within 12 metres of where you are standing.")
 	}
 	r, _ := buildRecipeFor(kind)
+	if overlapsIslandPortal(BuildObject{Kind: kind, X: a.X, Z: a.Z, Rotation: normalizeRotation(a.Rotation)}) {
+		return errors.New("Keep the return platform and its three-metre landing area clear.")
+	}
 	if math.Hypot(a.X, a.Z)+math.Hypot(r.Width, r.Depth)/2 > 34 {
 		return errors.New("Keep the whole object on your island.")
 	}
@@ -388,7 +471,7 @@ func (w *World) validatePlacement(p *player, h *Island, kind, skip string, a Act
 			continue
 		}
 		o := BuildObject{X: a.X, Y: a.Y, Z: a.Z, Kind: kind, Rotation: normalizeRotation(a.Rotation)}
-		if objectBlocks(o, r, other.x, other.y, other.z, .42) {
+		if objectBlocks(o, r, other.x, playerY(other), other.z, .42) {
 			return errors.New("A player is standing in that space.")
 		}
 	}
@@ -449,7 +532,7 @@ func (w *World) islandBlocked(p *player, x, z float64) bool {
 	}
 	for _, o := range h.Objects {
 		r, _ := buildRecipeFor(o.Kind)
-		if objectBlocks(o, r, x, p.y, z, .42) {
+		if objectBlocks(o, r, x, playerY(p), z, .42) {
 			return true
 		}
 	}
@@ -462,6 +545,10 @@ func (w *World) islandGround(p *player) float64 {
 		return 0
 	}
 	height := 0.0
+	stepHeight := .4
+	if p.jumpOffset > 0 || p.jumpVelocity > 0 {
+		stepHeight = 0
+	}
 	for _, o := range h.Objects {
 		r, _ := buildRecipeFor(o.Kind)
 		lx, lz := objectLocal(o, p.x, p.z)
@@ -471,10 +558,10 @@ func (w *World) islandGround(p *player) float64 {
 		top := o.Y + r.Height
 		if o.Kind == "stairs" {
 			top = o.Y + (lz/r.Depth+.5)*r.Height
-			if top <= p.y+.4 {
+			if top <= playerY(p)+stepHeight {
 				height = max(height, top)
 			}
-		} else if top <= p.y+.4 {
+		} else if top <= playerY(p)+stepHeight {
 			height = max(height, top)
 		}
 	}
@@ -558,7 +645,7 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 				r, _ := buildRecipeFor(o.Kind)
 				p.x, p.y, p.z = o.X, o.Y+r.Height, o.Z
 				p.yaw = o.Rotation * math.Pi / 180
-				p.input = Input{}
+				resetMovement(p)
 				p.health = min(100, p.health+5)
 			}
 		case "door":
@@ -567,7 +654,7 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 				closed.Open = false
 				r, _ := buildRecipeFor(o.Kind)
 				for _, occupant := range w.players {
-					if occupant.island == p.island && objectBlocks(closed, r, occupant.x, occupant.y, occupant.z, .42) {
+					if occupant.island == p.island && objectBlocks(closed, r, occupant.x, playerY(occupant), occupant.z, .42) {
 						return errors.New("Someone is standing in the doorway. Wait until they pass before closing it.")
 					}
 				}
@@ -708,6 +795,7 @@ func (w *World) decorateIslandSnapshot(id string, out *Snapshot) {
 	}
 	out.Nodes = nodes
 	if p.island != "" {
+		out.Nodes = append(out.Nodes, Node{ID: "island_portal", Kind: "island_portal", Label: "Return platform · Sunbaked clay cave", X: islandPortalX, Z: islandPortalZ, Available: true, Island: p.island})
 		out.Me.Area = "home"
 		out.Me.Zone = "home island"
 		out.Animals = []Animal{}

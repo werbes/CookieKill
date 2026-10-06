@@ -1,6 +1,8 @@
 import * as THREE from './vendor/three.module.js';
 import {createSnapshotDecoder} from './state-sync.js';
 import {createIslandScene} from './island-scene.js';
+import {buildCave,caveHeight} from './cave-scenery.js';
+import {createTraderScenery} from './trader-scenery.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
@@ -38,6 +40,7 @@ const mesh = (geometry,color,x=0,y=0,z=0,parent=worldGroup,opts={}) => {
 const box = (w,h,d,color,x,y,z,parent=worldGroup) => mesh(new THREE.BoxGeometry(w,h,d),color,x,y,z,parent);
 const sphere = (r,color,x,y,z,parent=worldGroup,detail=0) => mesh(new THREE.IcosahedronGeometry(r,detail),color,x,y,z,parent);
 const cylinder = (rt,rb,h,color,x,y,z,parent=worldGroup,sides=7) => mesh(new THREE.CylinderGeometry(rt,rb,h,sides),color,x,y,z,parent);
+let traderScenery;
 const ground = (w,d,color,x,z,y=0) => {const m=mesh(new THREE.PlaneGeometry(w,d),color,x,y,z);m.rotation.x=-Math.PI/2;m.castShadow=false;return m;};
 const textSprite = (text, color='#fff8e9', background=null, width=512, height=100) => {
   const c=document.createElement('canvas');c.width=width;c.height=height;
@@ -145,7 +148,6 @@ function coastAt(x) {
   return 32+11*Math.sin((x+240)*.021)+5*Math.sin(x*.057);
 }
 const worldBounds = () => state.layout||{minX:-240,maxX:240,minZ:-260,maxZ:200};
-const caveHeight = (x,z) => x>=117&&x<=123&&z<=-98&&z>=-115 ? -4*(-98-z)/17 : x>=107&&x<=133&&z<=-113&&z>=-129 ? -4 : 0;
 const scenery = new Map();
 function createEnvironment(layout=null) {
   if(layout)state.layout=layout;
@@ -163,7 +165,7 @@ function createEnvironment(layout=null) {
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();
   // Leave a genuine opening above the descending cave entrance.
   const terrainIndex=geometry.index.array,kept=[];
-  for(let i=0;i<terrainIndex.length;i+=3){const ids=[terrainIndex[i],terrainIndex[i+1],terrainIndex[i+2]],x=ids.reduce((n,id)=>n+positions.getX(id),0)/3,z=ids.reduce((n,id)=>n+positions.getZ(id),0)/3;if(x>116&&x<124&&z<-97&&z>-116)continue;kept.push(...ids);}
+  for(let i=0;i<terrainIndex.length;i+=3){const ids=[terrainIndex[i],terrainIndex[i+1],terrainIndex[i+2]],x=ids.reduce((n,id)=>n+positions.getX(id),0)/3,z=ids.reduce((n,id)=>n+positions.getZ(id),0)/3;if(x>116&&x<124&&z<-97&&z>-108)continue;kept.push(...ids);}
   geometry.setIndex(kept);
   const land=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,flatShading:true}));land.receiveShadow=true;worldGroup.add(land);
   const verts=[],indices=[],waterColors=[];
@@ -204,26 +206,7 @@ function buildCactus(g,scale=1,color=null,variant=0){
   if(variant%2){const arm2=cylinder(.14,.17,.8,'#719166',-.48,.9,0,g);arm2.rotation.z=Math.PI/2;cylinder(.16,.18,1.3,'#779768',-.85,1.4,0,g);sphere(.17,'#86a472',-.85,2.05,0,g);}
   if(color)g.traverse(o=>{if(o.isMesh)o.material=mat(color);});g.rotation.y=variant*.9;g.scale.y*=1+(variant%3)*.13;
 }
-function createCave(){
-  const clay='#ad825f',rock='#aa9980',firstChild=worldGroup.children.length;
-  // Ramp drops four metres before the two chambers branch to either side.
-  // The coarse terrain mesh cuts on four-metre cells; bridge its lip to the ramp.
-  ground(8,4,'#d4ae77',120,-96,.01);
-  const floor=box(6,.2,Math.hypot(17,4),clay,120,-2.1,-106.5);floor.rotation.x=-Math.atan2(4,17);
-  ground(26,16,clay,120,-121,-4);
-  box(.8,7,16.8,rock,106.6,-.5,-121);box(.8,7,16.8,rock,133.4,-.5,-121);
-  box(.8,7,17,rock,116.6,-.5,-106.5);box(.8,7,17,rock,123.4,-.5,-106.5);
-  box(27.6,7,.8,rock,120,-.5,-129.4);box(10.5,7,.8,rock,111.75,-.5,-113);box(10.5,7,.8,rock,128.25,-.5,-113);
-  box(3,4,8,rock,120,-2,-124);box(28,.6,16,rock,120,-.5,-122);
-  for(const x of [116.2,123.8])for(let i=0;i<7;i++){const r=sphere(1.5,rock,x,.25-i*.15,-98-i*2.4);r.scale.set(1,1.15,1.1);}
-  for(const [x,y,z,s] of [[117,1,-98,2.1],[123,1,-98,2.1],[120,3,-100,2.3],[115,.5,-105,1.7],[125,.6,-103,1.9]]){const r=sphere(s,rock,x,y,z);r.scale.set(1,.75,1.1);}
-  for(const [x,z] of [[114,-99],[126,-100],[116,-95],[125,-106]])addGrass(x,z,'#859367',1.6);
-  for(let i=0;i<7;i++)for(const side of [-1,1]){const r=sphere(.7+(i%3)*.15,rock,120+side*13.15,-3.25+(i%2)*1.15,-115.5-i*1.8);r.scale.set(.65,1.2,1.5);}
-  for(let i=0;i<3;i++){const r=sphere(1.3,rock,120,-3+i*1.15,-120.6);r.scale.set(1.05,.85,.65);}
-  // A little warm ambient fill keeps the shaded rock faces visible underground.
-  for(const object of worldGroup.children.slice(firstChild))object.traverse(child=>{if(child.isMesh)child.material=mat(child.material.color.getHex(),{emissive:'#9c6547',emissiveIntensity:.16});});
-  for(const [x,y,z,color] of [[120,1,-99,'#ffe1ad'],[120,-1.8,-108,'#ffe1ad'],[111,-1.8,-124,'#ffc0d7'],[129,-1.8,-124,'#9edff7']]){const lamp=new THREE.PointLight(color,14,17,2);lamp.position.set(x,y,z);worldGroup.add(lamp);}
-}
+function createCave(){return buildCave({THREE,parent:worldGroup,layout:state.layout,box,sphere,cylinder,mesh,mat,flatLabel});}
 function makeCookie(kind='sugar',scale=1) {
   const g=new THREE.Group();
   const colors={sugar:'#e6b776',berry_cookie:'#dbaa78',nut_cookie:'#be8b4d',cactus_cookie:'#c1b878',sun_cookie:'#efbd5b',salt_cookie:'#c8c7a4',protein_cookie:'#cfa685',cake:'#d5a36d'};
@@ -320,6 +303,7 @@ function nodeObject(n) {
     }
     case 'abu_fanous': {g.add(makePerson('ABU FANOUS','#d9bf87'));const camel=islandScene?.camel();if(camel){camel.position.set(3,0,-1);camel.rotation.y=-.7;g.add(camel);}box(4,.12,3,'#bc8b65',0,3,-2,g);for(const x of [-1.8,1.8])cylinder(.08,.1,3,'#8b6e4d',x,1.5,-2,g);break;}
     case 'island_chest': {box(1.6,.8,1,'#a07a51',0,.4,0,g);box(1.65,.17,1.06,'#bd935f',0,.85,0,g);box(.2,.25,.06,'#e6c77b',0,.65,.55,g);break;}
+    case 'island_portal': break; // The permanent platform is part of the island scenery.
     case 'sea_salt':for(let i=0;i<6;i++){const m=box(.15,.17,.17,'#f5ecce',(i%3-1)*.2,.12,Math.floor(i/3)*.2,g);m.rotation.y=i*.3;}break;
     case 'shell':{const m=mesh(new THREE.ConeGeometry(.38,.23,8),'#e5bb9c',0,.12,0,g);m.rotation.z=.3;break;}
     case 'trash':{const b=cylinder(.11,.11,.52,'#8cb7b0',-.16,.13,0,g,8);b.rotation.z=1.2;box(.27,.19,.3,'#cd9b81',.22,.13,.12,g);const ring=mesh(new THREE.TorusGeometry(.18,.025,4,12),'#b7c9b3',.08,.11,-.18,g);ring.rotation.x=Math.PI/2;break;}
@@ -339,6 +323,8 @@ function nodeObject(n) {
     case 'dummy':cylinder(.09,.14,1.5,'#937546',0,.75,0,g,6);{const target=cylinder(.5,.5,.2,'#d5a65e',0,1.6,0,g,12);target.rotation.x=Math.PI/2;const ring=mesh(new THREE.TorusGeometry(.31,.025,4,16),'#a16343',0,1.6,.12,g);sphere(.075,'#a16343',0,1.6,.12,g);}break;
     default:sphere(.35,'#ccb477',0,.3,0,g);
   }
+  if(n.kind==='abu_fanous')traderScenery?.decorateAbu(g);
+  if(n.kind==='peace')traderScenery?.decoratePeace(g);
   g.position.set(n.x,n.y??caveHeight(n.x,n.z),n.z);g.userData.node=n;
   return g;
 }
@@ -373,6 +359,7 @@ function initializeRenderer(){
     const sun=new THREE.DirectionalLight('#ffe4ac',3.25);sun.position.set(-50,70,-30);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-65;sun.shadow.camera.right=65;sun.shadow.camera.top=65;sun.shadow.camera.bottom=-65;sun.shadow.camera.far=160;sun.shadow.bias=-.0004;sun.shadow.normalBias=.055;scene.add(sun);sun.target.position.set(-22,0,-20);scene.add(sun.target);
     worldGroup=new THREE.Group();scene.add(worldGroup);scene.add(dynamicGroup);createEnvironment();
     islandScene=createIslandScene({THREE,scene,box,sphere,cylinder,mesh,mat,textSprite,disposeObject,makeAnimal});
+    traderScenery=createTraderScenery({THREE,box,sphere,cylinder,mesh,mat,flatLabel,textSprite});
     hand=new THREE.Group();hand.position.set(.48,-.43,-.82);camera.add(hand);
     const palm=box(.17,.18,.29,'#d8ad7d',.1,-.09,.12,hand);palm.name='hand-skin';palm.rotation.z=-.1;const sleeve=cylinder(.115,.15,.53,'#688660',.15,-.21,.34,hand,6);sleeve.name='hand-sleeve';sleeve.rotation.x=1.03;const cookie=makeCookie('sugar',1);cookie.name='held-cookie';hand.add(cookie);
     hand.rotation.set(.55,-.25,-.24);hand.visible=false;
@@ -443,13 +430,14 @@ function action(actionName,extra={}){
   send({type:'action',action:actionName,...extra});
 }
 function movement(){
-  if(!state.locked||state.modal||!state.connected)return{x:0,z:0,sprint:false};
+  if(!state.locked||state.modal||!state.connected)return{x:0,z:0,sprint:false,jump:false};
   const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')?1:0);
   const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')?1:0);
   const size=Math.hypot(forward,side)||1;
-  return {x:(-Math.sin(state.yaw)*forward+Math.cos(state.yaw)*side)/size,z:(-Math.cos(state.yaw)*forward-Math.sin(state.yaw)*side)/size,sprint:state.keys.has('ShiftLeft')||state.keys.has('ShiftRight')};
+  return {x:(-Math.sin(state.yaw)*forward+Math.cos(state.yaw)*side)/size,z:(-Math.cos(state.yaw)*forward-Math.sin(state.yaw)*side)/size,sprint:state.keys.has('ShiftLeft')||state.keys.has('ShiftRight'),jump:state.keys.has('Space')};
 }
-setInterval(()=>{if(state.connected){const move=movement();send({type:'input',...move,yaw:state.yaw,pitch:state.pitch});}},50);
+function sendMovement(){if(state.connected)send({type:'input',...movement(),yaw:state.yaw,pitch:state.pitch});}
+setInterval(sendMovement,50);
 function receiveSnapshot(snapshot){
   if(!snapshot.me)return;
   const first=!state.snapshot,old=state.snapshot?.me;
@@ -460,6 +448,7 @@ function receiveSnapshot(snapshot){
   if(old&&old.island!==snapshot.me.island){cancelBuild();state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+1.7,snapshot.me.z);state.zone=null;}
   if(first){state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+1.7,snapshot.me.z);state.yaw=snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.selected=snapshot.me.selected||'sugar';updateHeldCookie();}
   if(old&&snapshot.me.health<old.health-1){$('damage-overlay').style.opacity='.5';setTimeout(()=>$('damage-overlay').style.opacity='0',240);}
+  if(old&&!old.sprintExhausted&&snapshot.me.sprintExhausted)toast('Out of stamina — walking to recover. Release Shift, then sprint again once stamina reaches 20%.');
   if(old&&snapshot.me.deaths>old.deaths){toast('You were crumbled. Your safe slots and hotbar are still yours. Back to the Wildwood!','error');state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+1.7,snapshot.me.z);}
   state.selectedSlot=snapshot.me.selectedSlot||0;
   if(snapshot.me.selected!==state.selected){state.selected=snapshot.me.selected||'';updateHeldCookie();}
@@ -510,6 +499,7 @@ function updateHUD(){
   $('coin-count').textContent=me.coins||0;$('player-name').textContent=me.callName||me.name;
   $('health-value').textContent=Math.ceil(me.health);$('health-bar').style.width=clamp(me.health/me.maxHealth*100,0,100)+'%';
   $('stamina-value').textContent=Math.ceil(me.stamina);$('stamina-bar').style.width=clamp(me.stamina/me.maxStamina*100,0,100)+'%';
+  $('stamina-bar').title=me.sprintExhausted?'Walking to recover. Release Shift and recover 20% stamina before sprinting again.':'Hold Shift to sprint';
   $('area-name').textContent=me.island?'HOME ISLAND':areaNames[areaFor(me.x,me.z)];$('position-label').textContent=Math.round(me.x)+' · '+Math.round(me.z);
   const angle=((state.yaw*180/Math.PI)%360+360)%360;$('compass-direction').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(angle/45)%8];
   const slots=Array.from({length:5},(_,i)=>me.hotbar?.[i]||{item:'',count:0});state.hotkeys=slots.map(s=>s.item);
@@ -549,7 +539,7 @@ function throwCookie(){
 function eatCookie(){if(!state.snapshot||!state.selected)return;action(['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
 function nearby(){
   const me=state.snapshot?.me;if(!me)return null;let found=null,best=5;
-  for(const node of state.snapshot.nodes||[]){if(!node.available)continue;if(node.kind.endsWith('_lollipop')&&(me.y||0)>-2)continue;const d=Math.hypot(node.x-me.x,node.z-me.z);if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
+  for(const node of state.snapshot.nodes||[]){if(!node.available)continue;if(node.kind.endsWith('_lollipop')&&(me.y||0)>-2)continue;const d=Math.hypot(node.x-me.x,node.z-me.z);if(node.kind==='island_portal'&&d>3)continue;if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
   for(const animal of state.snapshot.animals||[]){if(animal.health<=0&&!animal.egg)continue;const d=Math.hypot(animal.x-me.x,animal.z-me.z);if(d<best){best=d;found={...animal,distance:d,isAnimal:true};}}
   for(const object of state.snapshot.island?.objects||[]){const d=Math.hypot(object.x-me.x,object.z-me.z);if(d<best&&Math.abs((object.y||0)-(me.y||0))<3){best=d;found={...object,distance:d,isBuild:true};}}
   return found;
@@ -558,6 +548,7 @@ function updateInteraction(){
   state.nearest=nearby();const n=state.nearest;$('interaction-prompt').hidden=!n||!state.locked;
   if(!n)return;
   if(state.building){$('interaction-prompt').hidden=true;return;}
+  if(n.kind==='island_portal'){$('interaction-label').textContent='Teleport to the clay cave';$('interaction-detail').textContent='Return to the pink and blue lollipop chambers';return;}
   if(n.isBuild){$('interaction-label').textContent='Use / edit '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent='Move, rotate, use or recover half the materials';return;}
   if(n.egg){$('interaction-label').textContent='A '+pretty(n.species).toLowerCase()+' egg';$('interaction-detail').textContent='Keep your distance · '+Math.ceil(n.hatchIn||120)+' seconds undisturbed to hatch';return;}
   if(n.kind==='wood'){$('interaction-label').textContent='Chop tree · '+(n.chopRemaining||n.chopTotal||3)+' chops left';$('interaction-detail').textContent='Fell this tree to collect '+(n.amount||3)+' wood';return;}
@@ -569,6 +560,7 @@ function interact(){
   const n=state.nearest||nearby();if(!n){toast('Move closer to something you can gather or use.');return;}
   if(n.isBuild){openModal(n.kind==='chest'?'chest':'build_object',n);return;}
   if(n.kind==='island_chest'){openModal('chest',n);return;}
+  if(n.kind==='island_portal'){cancelBuild();action('teleport_cave');return;}
   if(n.egg){toast('Stay at least two metres away so this egg can hatch undisturbed.');return;}
   if(n.isAnimal&&n.need==='wounded'&&['fish','turtle'].includes(n.species)){openModal('animal',n);return;}
   if(n.isAnimal){action('interact',{target:n.id});return;}
@@ -624,7 +616,7 @@ $('customize-button').addEventListener('click',()=>openModal('customize'));
 $('world').addEventListener('click',()=>{if(state.player&&!state.locked&&!state.modal&&!state.menuOpen)setPlaying();});
 document.addEventListener('pointerlockchange',()=>{
   state.locked=document.pointerLockElement===$('world');state.playing=state.locked;
-  state.keys.clear();
+  state.keys.clear();sendMovement();
   if(state.locked){state.hasPlayed=true;state.menuOpen=false;$('play-overlay').hidden=true;$('start-overlay').hidden=true;$('capture-prompt').hidden=true;}
   else capturePrompt();
 });
@@ -638,6 +630,7 @@ document.addEventListener('keydown',(event)=>{
   if(!state.player)return;
   if(state.locked&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight'].includes(event.code)){event.preventDefault();state.keys.add(event.code);}
   if(event.repeat)return;
+  if(event.code==='Space'&&state.locked){sendMovement();return;}
   if(state.building&&state.locked){if(event.code==='KeyR'){state.building.rotation=(state.building.rotation+45)%360;return;}if(event.code==='PageUp'||event.code==='PageDown'){event.preventDefault();state.building.y=clamp(state.building.y+(event.code==='PageUp'?.5:-.5),0,12);return;}}
   if(event.code==='Enter'&&!state.locked&&!state.modal)setPlaying();
   if(state.menuOpen)return;
@@ -649,9 +642,9 @@ document.addEventListener('keydown',(event)=>{
   if(event.code==='KeyV'&&state.locked)action('camel_ride');
   if(/^Digit[1-6]$/.test(event.code)&&!state.modal)chooseCookie(Number(event.code.slice(5))-1);
 });
-document.addEventListener('keyup',(event)=>{state.keys.delete(event.code);if(event.code==='Escape'){if(!escapeHandled)toggleMenu();escapeHandled=false;}});
-window.addEventListener('blur',()=>{state.keys.clear();escapeHandled=false;});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)state.keys.clear();});
+document.addEventListener('keyup',(event)=>{state.keys.delete(event.code);if(event.code==='Space'||event.code==='ShiftLeft'||event.code==='ShiftRight')sendMovement();if(event.code==='Escape'){if(!escapeHandled)toggleMenu();escapeHandled=false;}});
+window.addEventListener('blur',()=>{state.keys.clear();escapeHandled=false;sendMovement();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){state.keys.clear();sendMovement();}});
 $('help-button').addEventListener('click',()=>openModal('help'));
 $('objective-help').addEventListener('click',()=>openModal('help'));
 $('menu-button').addEventListener('click',()=>openModal('inventory'));
@@ -672,9 +665,10 @@ function animate(now){
     if(state.localPosition.distanceTo(target)>15)state.localPosition.copy(target);
     state.localPosition.lerp(target,Math.min(1,dt*15));
     const moving=movement();const walking=Math.hypot(moving.x,moving.z)>.05;
-    const bob=walking&&state.locked?Math.sin(now*.012*(moving.sprint?1.45:1))*.027:0;
+    const bob=walking&&state.locked&&me.grounded!==false?Math.sin(now*.012*(me.sprinting?1.45:1))*.027:0;
     camera.position.copy(state.localPosition);camera.position.y+=bob;camera.rotation.set(state.pitch,state.yaw,0);
-    camera.fov=THREE.MathUtils.lerp(camera.fov,moving.sprint&&walking?73:68,dt*5);camera.updateProjectionMatrix();
+    camera.fov=THREE.MathUtils.lerp(camera.fov,me.sprinting&&walking?73:68,dt*5);camera.updateProjectionMatrix();
+    if(me.island)islandScene?.animate(now);
     updateBuildGhost();
     hand.visible=true;hand.position.set(.48,-.43+bob*.55,-.82);
     if(state.handSwing>0){hand.position.z-=Math.sin((1-state.handSwing)*Math.PI)*.36;hand.rotation.x=.55-state.handSwing*.35;state.handSwing=Math.max(0,state.handSwing-dt*4);}

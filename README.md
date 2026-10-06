@@ -29,6 +29,7 @@ On Windows, if Go is installed but absent from PATH:
 | Mouse | Look around |
 | W A S D | Move / swim |
 | Shift | Sprint on land using stamina |
+| Space | Jump while on foot on dry land |
 | Left click | Throw the selected cookie |
 | Q / right click | Eat the selected cookie |
 | E | Chop a tree, gather, dig, open a chest, or interact with a nearby character or furnishing |
@@ -43,6 +44,8 @@ On Windows, if Go is installed but absent from PATH:
 | Escape | Open or close the game menu |
 
 Click an occupied inventory slot, then another slot to move its stack. Different items swap; matching items merge. Put cookies in the hotbar to throw or eat them. Homeowners receive a sixth hotbar button for the **Build** menu; the original five item slots remain protected storage. The Escape menu includes **Friends** for friend requests, island visits, and permissions, and **Customize** for avatar and call name settings. Closing a crafting, shopping, or inventory panel returns to play without opening the Escape menu.
+
+Running out of stamina returns you to walking speed while stamina recovers. Release **Shift** and recover at least **20%** stamina before sprinting again. Press **Space** for each jump; holding it does not repeat jumps. You can jump on the mainland, in the cave, and on home islands, but not while swimming or riding a camel.
 
 ## The world
 
@@ -67,9 +70,9 @@ The coin reward compares the two players' balances immediately before the defeat
 
 ### The cave and your home island
 
-Look for a pile of rocks and small plants near the middle of Sunbaked Sands, around **(120, -98)**. The entrance slopes down from sand onto clay, reaching a fork four metres underground. The **pink lollipop in the left branch** offers your first home island for **200 coins**. Confirm the purchase, then choose whether to teleport home. The **blue lollipop in the other branch** opens friend-island travel.
+Look for a pile of rocks and small plants near the middle of Sunbaked Sands, around **(120, -98)**. The entrance slopes down from sand onto clay, reaching a fork **ten metres underground**, beneath a vaulted ceiling. Lanterns and crystals decorate the two chambers, with grasses and flowers around the entrance. The **pink lollipop in the left branch** offers your first home island for **200 coins**. Confirm the purchase, then choose whether to teleport home. The **blue lollipop in the other branch** opens friend-island travel.
 
-Your home island starts with a shared materials chest. Hotbar slot **6** opens three building categories:
+Your home island starts with a shared materials chest and a permanent **return platform at (0, 28)**. Step onto the platform and interact to teleport directly back to the cave fork. Visitors can use it too. Existing islands also receive the platform; nearby saved furnishings move to clear space without losing their materials. Keep the platform's three-metre landing area free when building. Hotbar slot **6** opens three building categories:
 
 * **Building:** walls, floors, roofs, stairs, window walls, and doors.
 * **Decor:** tables, chairs, beds, potted plants, lanterns, and materials chests.
@@ -99,7 +102,7 @@ Visit **Abu Fanous**, near **(226, -126)** on the far eastern side of Sunbaked S
 
 ### Ocean life and identity
 
-The ocean starts with **38 animals**: six turtles, six dolphins, twelve fish, six sea lions, four sharks, and four whales. Smaller populations leave more open water between groups. Whales travel in ones or twos, sharks alone, turtles in groups of one to three, dolphins and sea lions in twos or threes, and fish in schools of three to six. A small fraction need help; some turtles are trapped in plastic.
+The ocean starts with **57 animals**, 1.5 times its previous population: nine turtles, nine dolphins, eighteen fish, nine sea lions, six sharks, and six whales. Small groups leave open water to explore. Whales travel in ones or twos, sharks alone, turtles in groups of one to three, dolphins and sea lions in twos or threes, and fish in schools of three to six. A small fraction need help; some turtles are trapped in plastic.
 
 Each animal has its own swimming pace and heading. A member of a group stays within **one metre of another member**, without marching in a straight line. Dolphins jump individually and slow down during their jump. Larger animals have more health. Gym swimming training improves your ability to keep up.
 

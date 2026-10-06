@@ -7,8 +7,8 @@ import (
 
 func TestSparsePodsStayCloseWhileDolphinsJumpIndividually(t *testing.T) {
 	w := New(nil)
-	if len(w.animals) > 40 {
-		t.Fatal("ocean population is crowded")
+	if len(w.animals) != 57 {
+		t.Fatalf("expected 1.5 times the previous 38 animals, got %d", len(w.animals))
 	}
 	differentHeadings := false
 	for i := 0; i < 600; i++ {

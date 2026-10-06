@@ -32,7 +32,7 @@ func (w *World) Act(id string, a Action) (err error) {
 	switch a.Action {
 	case "friend_public", "friend_request", "friend_accept", "friend_decline", "friend_remove":
 		return w.socialAction(p, a)
-	case "eat_lollipop", "buy_home", "teleport_home", "teleport_main", "visit_island", "island_visitors", "island_builder", "chest_deposit", "chest_withdraw", "build", "move_build", "destroy_build", "use_build":
+	case "eat_lollipop", "buy_home", "teleport_home", "teleport_main", "teleport_cave", "visit_island", "island_visitors", "island_builder", "chest_deposit", "chest_withdraw", "build", "move_build", "destroy_build", "use_build":
 		return w.islandAction(p, a)
 	case "adopt_animal":
 		return w.adoptAnimal(p, a.Target)
@@ -183,13 +183,13 @@ func (w *World) throw(p *player, item string) error {
 	dy := math.Sin(p.pitch)
 	// Validate the short muzzle offset too; otherwise a player pressed against
 	// a thin wall could spawn a projectile on its far side.
-	if _, hit := w.solidShotHit(p.x, groundY(p)+1.45, p.z, p.x+dx*.8, groundY(p)+1.45+dy*.8, p.z+dz*.8); hit {
+	if _, hit := w.solidShotHit(p.x, playerY(p)+1.45, p.z, p.x+dx*.8, playerY(p)+1.45+dy*.8, p.z+dz*.8); hit {
 		return errors.New("Move back from the obstacle before throwing.")
 	}
 	takeHotbar(p, item)
 	delete(p.buffs, "spawn_shield")
 	w.sequence++
-	w.projectiles = append(w.projectiles, &Projectile{ID: strconv.FormatUint(w.sequence, 10), Owner: p.profile.ID, Item: item, X: p.x + dx*.8, Y: groundY(p) + 1.45 + dy*.8, Z: p.z + dz*.8, VX: dx * speed, VY: dy * speed, VZ: dz * speed, damage: damage, born: w.time, super: w.active(p, "superstrength")})
+	w.projectiles = append(w.projectiles, &Projectile{ID: strconv.FormatUint(w.sequence, 10), Owner: p.profile.ID, Item: item, X: p.x + dx*.8, Y: playerY(p) + 1.45 + dy*.8, Z: p.z + dz*.8, VX: dx * speed, VY: dy * speed, VZ: dz * speed, damage: damage, born: w.time, super: w.active(p, "superstrength")})
 	p.cooldowns["throw"] = w.time + .6/(1+arms*.08)
 	return nil
 }
@@ -226,6 +226,9 @@ func (w *World) eat(p *player, item string) error {
 }
 
 func (w *World) interact(p *player, target string) error {
+	if target == "island_portal" {
+		return w.islandAction(p, Action{Action: "teleport_cave"})
+	}
 	if target == "pink_lollipop" {
 		return w.islandAction(p, Action{Action: "eat_lollipop", Item: "pink"})
 	}

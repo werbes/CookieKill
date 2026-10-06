@@ -13,14 +13,14 @@ type animalSpec struct {
 	injury, speedMin, speedMax, health float64
 }
 
-// Small populations leave room to explore between schools and pods.
+// More wildlife, with the same small, independently moving schools and pods.
 var animalSpecs = []animalSpec{
-	{"turtle", 6, 1, 3, .15, 1.5, 2.1, 72},
-	{"dolphin", 6, 2, 3, .05, 6, 8, 108},
-	{"fish", 12, 3, 6, .15, 2.2, 5.4, 22},
-	{"sea_lion", 6, 2, 3, .10, 3.8, 4.2, 135},
-	{"shark", 4, 1, 1, .05, 6, 6, 175},
-	{"whale", 4, 1, 2, .10, 2.2, 2.8, 450},
+	{"turtle", 9, 1, 3, .15, 1.5, 2.1, 72},
+	{"dolphin", 9, 2, 3, .05, 6, 8, 108},
+	{"fish", 18, 3, 6, .15, 2.2, 5.4, 22},
+	{"sea_lion", 9, 2, 3, .10, 3.8, 4.2, 135},
+	{"shark", 6, 1, 1, .05, 6, 6, 175},
+	{"whale", 6, 1, 2, .10, 2.2, 2.8, 450},
 }
 
 const eggHatchSeconds = 120.0
@@ -53,7 +53,7 @@ func (w *World) seedAnimals() {
 				offset := float64(j) * 2 * math.Pi / float64(count)
 				x, z := cx+math.Sin(phase)*radius+.4*math.Sin(offset), cz+math.Cos(phase)*radius+.4*math.Cos(offset)
 				hp := math.Round(spec.health * scale * scale)
-				w.animals = append(w.animals, &Animal{ID: id, Species: spec.species, X: x, Z: z, Y: .02, Scale: scale, Health: hp, MaxHealth: hp, Disposition: "calm", Group: groupID, GroupID: groupID, Speed: speed, Heading: phase + math.Pi/2, Yaw: phase + math.Pi/2, groupX: cx, groupZ: cz, orbitRadius: radius, baseSpeed: speed, injuryRate: spec.injury, homeX: x, homeZ: z, phase: phase, wanderPhase: rng.Float64() * math.Pi * 2, jumpPhase: float64(index) * 3, Age: rng.Float64() * 600, lifespan: 1200 + rng.Float64()*1200, needAt: 45 + rng.Float64()*140, rewardAt: map[string]float64{}})
+				w.animals = append(w.animals, &Animal{ID: id, Species: spec.species, X: x, Z: z, Y: .02, Scale: scale, Health: hp, MaxHealth: hp, Disposition: "calm", Group: groupID, GroupID: groupID, Speed: speed, Heading: phase + math.Pi/2, Yaw: phase + math.Pi/2, groupX: cx, groupZ: cz, orbitRadius: radius, baseSpeed: speed, injuryRate: spec.injury, homeX: x, homeZ: z, phase: phase, wanderPhase: rng.Float64() * math.Pi * 2, jumpPhase: float64(index) * 18 / float64(spec.count), Age: rng.Float64() * 600, lifespan: 1200 + rng.Float64()*1200, needAt: 45 + rng.Float64()*140, rewardAt: map[string]float64{}})
 				index++
 			}
 		}

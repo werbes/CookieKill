@@ -62,7 +62,7 @@ func TestCaveRampForkAndLollipopsAreReachable(t *testing.T) {
 		w.Input("explorer", Input{Z: -1})
 		w.Tick(.05)
 	}
-	if p.z > -116 || groundY(p) != -4 {
+	if p.z > -116 || groundY(p) != -10 {
 		t.Fatalf("cave ramp is blocked or does not descend: %.2f %.2f", p.z, groundY(p))
 	}
 	for _, x := range []float64{111, 129} {
@@ -73,7 +73,7 @@ func TestCaveRampForkAndLollipopsAreReachable(t *testing.T) {
 			}
 		}
 		for z := -117.; z >= -124; z -= .2 {
-			if w.staticBlocked(x, z, .42) || caveGroundY(x, z) != -4 {
+			if w.staticBlocked(x, z, .42) || caveGroundY(x, z) != -10 {
 				t.Fatal("lollipop branch is inaccessible")
 			}
 		}

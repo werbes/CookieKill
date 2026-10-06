@@ -15,7 +15,19 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
     sphere(.5,'#b1b294',x+1,.25,z-.8,terrain).scale.y=.6;
   }
   box(4,.18,9,'#b49b6b',0,.13,37,terrain);
-  const sign=textSprite('HOME ISLAND','#fff3d6','#3d6655',512,100);sign.position.set(0,3,28);sign.scale.set(6,1.2,1);terrain.add(sign);
+  const sign=textSprite('HOME ISLAND','#fff3d6','#3d6655',512,100);sign.position.set(0,2.3,36);sign.scale.set(4.8,.94,1);terrain.add(sign);
+  const portal=new THREE.Group();portal.position.set(0,0,28);terrain.add(portal);
+  cylinder(2.4,2.5,.1,'#a7aaa0',0,.035,0,portal,12);
+  cylinder(2.08,2.15,.035,'#678e91',0,.102,0,portal,24);
+  const portalMaterial=new THREE.MeshStandardMaterial({color:'#a1e4df',emissive:'#67c4c4',emissiveIntensity:.55,roughness:.35});
+  for(const radius of [1.65,2.15]){const ring=mesh(new THREE.TorusGeometry(radius,.035,6,64),portalMaterial,0,.145,0,portal);ring.rotation.x=-Math.PI/2;}
+  for(let i=0;i<8;i++) {
+    const angle=i*Math.PI/4,x=Math.sin(angle)*1.9,z=Math.cos(angle)*1.9;
+    const rune=box(.13,.02,.22,'#e9dcaa',x,.146,z,portal);rune.rotation.y=angle+Math.PI/4;
+    if(i%2===0){const pillar=cylinder(.12,.18,.75,'#c4c5ae',Math.sin(angle)*2.45,.38,Math.cos(angle)*2.45,portal,5);sphere(.13,'#b5e8dc',pillar.position.x,.88,pillar.position.z,portal);}
+  }
+  const arrow=mesh(new THREE.ConeGeometry(.23,.5,3),portalMaterial,0,.8,0,portal);arrow.rotation.z=Math.PI;arrow.name='return-beacon';
+  const portalLabel=textSprite('RETURN TO THE CLAY CAVE','#dbf6e8','#375d5bcc',768,100);portalLabel.position.set(0,3.2,0);portalLabel.scale.set(3.6,.47,1);portal.add(portalLabel);
   const objects = new Map();
   function objectView(object, catalog=[]) {
     const g=new THREE.Group(), recipe=catalog.find(r=>r.id===object.kind)||{};
@@ -80,5 +92,6 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
     const neck=cylinder(.18,.28,1.5,'#cba573',0,2,-.95,g);neck.rotation.x=-.4;sphere(.33,'#d3ad7b',0,2.7,-1.35,g).scale.set(.7,.75,1.4);
     box(.9,.12,.75,'#997374',0,2.27,.35,g);return g;
   }
-  return {sync,objectView,camel};
+  function animate(now){arrow.position.y=.8+Math.sin(now*.002)*.12;arrow.rotation.y=now*.0004;portalMaterial.emissiveIntensity=.5+Math.sin(now*.0015)*.12;}
+  return {sync,objectView,camel,animate};
 }

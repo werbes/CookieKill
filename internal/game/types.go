@@ -11,6 +11,7 @@ type Input struct {
 	Yaw    float64 `json:"yaw"`
 	Pitch  float64 `json:"pitch"`
 	Sprint bool    `json:"sprint"`
+	Jump   bool    `json:"jump"`
 }
 
 type Action struct {
@@ -130,6 +131,9 @@ type Self struct {
 	MaxHealth       float64            `json:"maxHealth"`
 	Stamina         float64            `json:"stamina"`
 	MaxStamina      float64            `json:"maxStamina"`
+	Grounded        bool               `json:"grounded"`
+	Sprinting       bool               `json:"sprinting"`
+	SprintExhausted bool               `json:"sprintExhausted"`
 	Area            string             `json:"area"`
 	Buffs           map[string]float64 `json:"buffs"`
 	Zone            string             `json:"zone"`
@@ -255,6 +259,9 @@ type player struct {
 	profile                                 Profile
 	island, posture                         string
 	y                                       float64
+	jumpOffset, jumpVelocity                float64
+	jumpQueued, sprinting, sprintExhausted  bool
+	jumpHeld, sprintHeld                    bool
 	homeOffer, friendsTeleport, ridingCamel bool
 	x, z, yaw, pitch                        float64
 	health, stamina                         float64

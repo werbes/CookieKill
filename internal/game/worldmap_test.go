@@ -2,8 +2,52 @@ package game
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
+
+func TestDeepCaveHasContinuousRampAndAccessibleBranches(t *testing.T) {
+	w, p := testWorld()
+	for _, point := range []struct{ x, z, y float64 }{{120, -98, 0}, {120, -106.5, -5}, {120, -115, -10}, {120, -117, -10}, {111, -124, -10}, {129, -124, -10}} {
+		if got := caveGroundY(point.x, point.z); got != point.y {
+			t.Fatalf("cave ground at (%v,%v) = %v, want %v", point.x, point.z, got, point.y)
+		}
+	}
+	chamberWalls, rampWalls := 0, 0
+	for _, prop := range w.layout.Props {
+		if strings.HasPrefix(prop.ID, "cave_wall_") {
+			chamberWalls++
+			if prop.Y != -10 || prop.Height != 5 {
+				t.Fatalf("chamber wall %s extends above its underground ceiling", prop.ID)
+			}
+		}
+		if strings.HasPrefix(prop.ID, "cave_ramp_wall_") {
+			rampWalls++
+			floor := caveGroundY(120, prop.Z)
+			if prop.Y > floor || prop.Y+prop.Height < floor+4.4 {
+				t.Fatalf("ramp wall %s does not follow its descending floor", prop.ID)
+			}
+		}
+	}
+	if chamberWalls != 6 || rampWalls != 16 {
+		t.Fatalf("incomplete cave walls: %d chambers, %d ramp", chamberWalls, rampWalls)
+	}
+	// Walk the entire descent and each branch instead of only sampling endpoints.
+	for _, x := range []float64{111, 129} {
+		p.x, p.z = 120, -97
+		for _, target := range []Point{{120, -117}, {x, -117}, {x, -124}, {x, -117}, {120, -117}, {120, -97}} {
+			for step := 0; step < 150 && distance(p.x, p.z, target.X, target.Z) > .3; step++ {
+				dx, dz := target.X-p.x, target.Z-p.z
+				d := math.Hypot(dx, dz)
+				w.Input("one", Input{X: dx / d, Z: dz / d})
+				w.Tick(.05)
+			}
+			if distance(p.x, p.z, target.X, target.Z) > .3 {
+				t.Fatalf("cave route blocked at (%v,%v) on way to %+v", p.x, p.z, target)
+			}
+		}
+	}
+}
 
 func TestMapHasCityBusinessesNoMainlandHousingAndCurvedCoast(t *testing.T) {
 	w := New(nil)

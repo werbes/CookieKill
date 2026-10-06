@@ -233,7 +233,7 @@ func TestPublicWorldLayoutContainsSceneryWithoutPlayerProfiles(t *testing.T) {
 	if err := json.Unmarshal(payload["layout"], &layout); err != nil {
 		t.Fatal(err)
 	}
-	if layout.Version != 3 || len(layout.Plots) != 12 || len(layout.Zones) != 0 || len(layout.Props) < 200 {
+	if layout.Version != 4 || len(layout.Plots) != 12 || len(layout.Zones) != 0 || len(layout.Props) < 200 {
 		t.Fatal("public preview lacks new world")
 	}
 }

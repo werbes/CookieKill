@@ -146,6 +146,7 @@ func (w *World) Join(id, name string) {
 	if p, ok := w.offline[id]; ok {
 		// Account login cannot bypass call-name cooldown.
 		p.input = Input{}
+		p.jumpQueued, p.sprinting = false, false
 		p.cooldowns["last_input"] = w.time
 		w.players[id] = p
 		delete(w.offline, id)
@@ -172,6 +173,7 @@ func (w *World) Leave(id string) {
 	if p, ok := w.players[id]; ok {
 		w.profiles[id] = cloneProfile(p.profile)
 		p.input = Input{}
+		p.jumpQueued, p.sprinting = false, false
 		w.offline[id] = p
 		delete(w.players, id)
 	}
@@ -197,7 +199,8 @@ func (w *World) spawn(p *player) {
 	}
 	p.health = 100
 	p.stamina = 100 + float64(p.profile.Levels["stamina"])*10
-	p.input = Input{}
+	p.sprintExhausted = false
+	resetMovement(p)
 	p.buffs = map[string]float64{"spawn_shield": w.time + 3}
 }
 
@@ -218,6 +221,10 @@ func (w *World) Input(id string, in Input) {
 	}
 	in.Yaw = math.Remainder(in.Yaw, math.Pi*2)
 	in.Pitch = max(-1.35, min(1.35, in.Pitch))
+	if in.Jump && !p.jumpHeld {
+		p.jumpQueued = true
+	}
+	p.jumpHeld, p.sprintHeld = in.Jump, in.Sprint
 	p.input = in
 	p.yaw = in.Yaw
 	p.pitch = in.Pitch
@@ -272,13 +279,13 @@ func (w *World) Snapshot(id string) Snapshot {
 	for pid, p := range w.players {
 		buffs := w.remainingBuffs(p)
 		if pid == id {
-			out.Me = Self{Profile: cloneProfile(p.profile), X: p.x, Y: groundY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Stamina: p.stamina, MaxStamina: 100 + float64(p.profile.Levels["stamina"])*10, Area: area(p.x, p.z), Buffs: buffs}
+			out.Me = Self{Profile: cloneProfile(p.profile), X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Stamina: p.stamina, MaxStamina: 100 + float64(p.profile.Levels["stamina"])*10, Grounded: grounded(p), Sprinting: p.sprinting, SprintExhausted: p.sprintExhausted, Area: area(p.x, p.z), Buffs: buffs}
 			out.Me.Zone = zoneAt(p.x, p.z)
 			out.Me.CanBuildHome = buildZone(p.x, p.z+3.5) != "" && p.profile.Home == nil
 			out.Me.HomeSafeReason = w.homeSafeReason(p)
 			continue
 		}
-		out.Players = append(out.Players, PlayerView{ID: pid, Name: p.profile.Name, X: p.x, Y: groundY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Area: area(p.x, p.z), Buffs: buffs, Username: p.profile.Username, CallName: p.profile.CallName, Avatar: p.profile.Avatar})
+		out.Players = append(out.Players, PlayerView{ID: pid, Name: p.profile.Name, X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Area: area(p.x, p.z), Buffs: buffs, Username: p.profile.Username, CallName: p.profile.CallName, Avatar: p.profile.Avatar})
 	}
 	sort.Slice(out.Players, func(i, j int) bool { return out.Players[i].ID < out.Players[j].ID })
 	for _, n := range w.nodes {

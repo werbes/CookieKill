@@ -48,9 +48,21 @@ func (w *World) seedCave() {
 	for i, p := range []Point{{116, -96}, {124, -96}, {115, -100}, {125, -100}} {
 		w.layout.Props = append(w.layout.Props, WorldProp{ID: fmt.Sprintf("cave_plant_%d", i), Kind: "cave_plant", X: p.X, Z: p.Z, Scale: .7 + float64(i%2)*.25, Height: 1.2, Color: cactusColors[i]})
 	}
-	for i, wall := range [][4]float64{{116.6, -106.5, .8, 17}, {123.4, -106.5, .8, 17}, {106.6, -121, .8, 16.8}, {133.4, -121, .8, 16.8}, {120, -129.4, 27.6, .8}, {111.75, -113, 10.5, .8}, {128.25, -113, 10.5, .8}, {120, -124, 3, 8}} {
-		id := fmt.Sprintf("cave_wall_%d", i)
-		w.layout.Props = append(w.layout.Props, WorldProp{ID: id, Kind: "cave_wall", X: wall[0], Z: wall[1], Width: wall[2], Depth: wall[3], Y: -4, Height: 7, Scale: 1, Color: "#a86e52"})
-		w.colliders = append(w.colliders, Collider{ID: id, X: wall[0], Z: wall[1], Width: wall[2], Depth: wall[3], Y: -4, Height: 7})
+	wall := func(id string, x, z, width, depth, y, height float64) {
+		w.layout.Props = append(w.layout.Props, WorldProp{ID: id, Kind: "cave_wall", X: x, Z: z, Width: width, Depth: depth, Y: y, Height: height, Scale: 1, Color: "#a86e52"})
+		w.colliders = append(w.colliders, Collider{ID: id, X: x, Z: z, Width: width, Depth: depth, Y: y, Height: height})
+	}
+	// Follow the descending clay ramp, keeping the chambers beneath the desert
+	// instead of raising their walls into a second building on the surface.
+	const segments = 8
+	for i := 0; i < segments; i++ {
+		z := -98 - (float64(i)+.5)*17/segments
+		y := CaveFloorY * float64(i+1) / segments
+		for side, x := range []float64{116.6, 123.4} {
+			wall(fmt.Sprintf("cave_ramp_wall_%d_%d", side, i), x, z, .8, 17.0/segments+.02, y, 5-CaveFloorY/segments)
+		}
+	}
+	for i, dimensions := range [][4]float64{{106.6, -121, .8, 16.8}, {133.4, -121, .8, 16.8}, {120, -129.4, 27.6, .8}, {111.75, -113, 10.5, .8}, {128.25, -113, 10.5, .8}, {120, -124, 3, 8}} {
+		wall(fmt.Sprintf("cave_wall_%d", i), dimensions[0], dimensions[1], dimensions[2], dimensions[3], CaveFloorY, 5)
 	}
 }

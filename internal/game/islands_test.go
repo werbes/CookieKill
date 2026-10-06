@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"testing"
@@ -142,7 +143,7 @@ func TestIslandVisitorBuilderChestIsolationAndRevocation(t *testing.T) {
 		t.Fatal("visitor stole materials")
 	}
 	s := w.Snapshot("two")
-	if len(s.Players) != 0 || len(s.Animals) != 0 || len(s.Nodes) != 0 || len(s.Island.Chest) != 0 {
+	if len(s.Players) != 0 || len(s.Animals) != 0 || len(s.Nodes) != 1 || s.Nodes[0].Kind != "island_portal" || len(s.Island.Chest) != 0 {
 		t.Fatal("island leaked main entities or private chest")
 	}
 	mustAct(t, w, Action{Action: "island_builder", Target: "two", Enabled: true})
@@ -170,6 +171,107 @@ func TestIslandVisitorBuilderChestIsolationAndRevocation(t *testing.T) {
 	w.Join("two", "Friend")
 	if friend.island != "" {
 		t.Fatal("offline visitor bypassed closed island")
+	}
+}
+
+func TestIslandReturnPlatformForOwnersVisitorsAndExistingSaves(t *testing.T) {
+	w, p := testWorld()
+	buyTestIsland(t, w, p)
+	mustAct(t, w, Action{Action: "teleport_home"})
+	if err := w.Act("one", Action{Action: "teleport_cave"}); err == nil {
+		t.Fatal("platform can be used remotely")
+	}
+	for _, item := range []string{"wood", "stone", "stick"} {
+		setItem(p, item, 100)
+	}
+	for _, a := range []Action{
+		{Action: "build", Item: "wall", X: 0, Z: 28},
+		{Action: "build", Item: "roof", X: 0, Y: 5, Z: 28},
+		{Action: "build", Item: "wall", X: 4, Z: 28, Rotation: 45},
+	} {
+		if err := w.Act("one", a); err == nil {
+			t.Fatal("construction blocked the platform landing area")
+		}
+	}
+	mustAct(t, w, Action{Action: "build", Item: "chair", X: 6, Z: 24})
+	chair := p.profile.HomeIsland.Objects[len(p.profile.HomeIsland.Objects)-1]
+	if err := w.Act("one", Action{Action: "move_build", Target: chair.ID, X: 0, Z: 28}); err == nil {
+		t.Fatal("moving furniture blocked the platform")
+	}
+	p.x, p.z = 0, 28
+	mustAct(t, w, Action{Action: "interact", Target: "island_portal"})
+	if p.island != "" || p.x != 120 || p.z != -117 || groundY(p) != -10 || w.staticBlocked(p.x, p.z, .42) {
+		t.Fatal("platform did not return to an accessible underground cave fork")
+	}
+	if err := w.Act("one", Action{Action: "teleport_cave"}); err == nil {
+		t.Fatal("platform worked on the main island")
+	}
+	w.Join("visitor", "Visitor")
+	visitor := w.players["visitor"]
+	w.setIsland(visitor, "one")
+	visitor.x, visitor.z = 0, 28
+	if err := w.Act("visitor", Action{Action: "teleport_cave"}); err != nil {
+		t.Fatalf("visitor cannot leave through owner's platform: %v", err)
+	}
+
+	legacy := Profile{ID: "legacy", Name: "Old owner", HomeIsland: &Island{Objects: []BuildObject{{ID: "old_oven", Kind: "oven", X: 0, Z: 28, Rotation: 45, Lit: true}}}}
+	restored := New(map[string]Profile{"legacy": legacy})
+	restored.Join("legacy", "Old owner")
+	owner := restored.players["legacy"]
+	restored.setIsland(owner, "legacy")
+	snapshot := restored.Snapshot("legacy")
+	if len(snapshot.Nodes) != 1 || snapshot.Nodes[0].ID != "island_portal" || snapshot.Nodes[0].Island != "legacy" {
+		t.Fatal("existing island did not receive its permanent platform")
+	}
+	if len(snapshot.Island.Objects) != 1 || snapshot.Island.Objects[0].ID != "old_oven" || overlapsIslandPortal(snapshot.Island.Objects[0]) || snapshot.Island.Objects[0].Rotation != 45 || !snapshot.Island.Objects[0].Lit {
+		t.Fatal("existing furnishing was not preserved and moved clear of the platform")
+	}
+	again := New(restored.Profiles()).Profiles()["legacy"].HomeIsland
+	if len(again.Objects) != 1 || again.Objects[0] != snapshot.Island.Objects[0] {
+		t.Fatal("platform migration changed an already migrated island")
+	}
+}
+
+func TestIslandPlatformMigrationAllowsExistingFloorAndDecorOverlap(t *testing.T) {
+	// An entirely paved island with border plants is valid construction, but
+	// offers no wholly empty footprint for the oven covering its new platform.
+	objects := []BuildObject{{ID: "saved_oven", Kind: "oven", X: 0, Z: 28, Lit: true}, {ID: "saved_mixer", Kind: "mixer", X: 0, Z: 24}}
+	for x := -30.0; x <= 30; x += 3 {
+		for z := -30.0; z <= 30; z += 3 {
+			if math.Hypot(x, z)+math.Hypot(4, 4)/2 <= 34 {
+				objects = append(objects, BuildObject{ID: fmt.Sprintf("floor_%g_%g", x, z), Kind: "floor", X: x, Z: z})
+			}
+		}
+	}
+	for i := 0; i < 120; i++ {
+		a := float64(i) * 2 * math.Pi / 120
+		objects = append(objects, BuildObject{ID: fmt.Sprintf("plant_%d", i), Kind: "plant", X: 31.5 * math.Cos(a), Z: 31.5 * math.Sin(a)})
+	}
+	saved := Profile{ID: "paved", Name: "Paved island", HomeIsland: &Island{Objects: objects}}
+	w := New(map[string]Profile{"paved": saved})
+	h := w.Profiles()["paved"].HomeIsland
+	if len(h.Objects) != len(objects) {
+		t.Fatal("platform migration discarded a saved furnishing")
+	}
+	for i, o := range h.Objects {
+		if overlapsIslandPortal(o) {
+			t.Fatalf("%s still covers the platform after migrating a paved island", o.ID)
+		}
+		before := objects[i]
+		before.X, before.Z = o.X, o.Z
+		if o != before {
+			t.Fatalf("migration changed saved furnishing data for %s", o.ID)
+		}
+	}
+	oven, mixer := h.Objects[0], h.Objects[1]
+	if rectanglesOverlap(oven.X, oven.Z, 2, 1.7, oven.Rotation, mixer.X, mixer.Z, 1.5, 1.2, mixer.Rotation) {
+		t.Fatal("fallback migration stacked appliances")
+	}
+	reloaded := New(w.Profiles()).Profiles()["paved"].HomeIsland
+	for i, o := range reloaded.Objects {
+		if o != h.Objects[i] {
+			t.Fatalf("migration moved %s again after restart", o.ID)
+		}
 	}
 }
 

@@ -22,6 +22,8 @@ jobs:
       - run: node --check web/state-sync.js
       - run: node --check web/island-scene.js
       - run: node --check web/island-panels.js
+      - run: node --check web/cave-scenery.js
+      - run: node --check web/trader-scenery.js
       - run: node --test scripts/state-sync.test.cjs
       - run: node scripts/island-panels.test.cjs
   windows:
