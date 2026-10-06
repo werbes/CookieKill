@@ -5,16 +5,35 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dirname,'../.tools')]}));
 (async()=>{
+  const syncSource=fs.readFileSync(path.join(__dirname,'../web/state-sync.js'),'utf8');
+  const {createSnapshotDecoder}=await import(`data:text/javascript;base64,${Buffer.from(syncSource).toString('base64')}`);
   const baseURL=process.env.CK_TEST_URL||'http://127.0.0.1:8080';
   const executablePath=process.env.CK_CHROME||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined);
   const browser=await chromium.launch({executablePath,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-webgl']});
   const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
   // Tour input remains ordinary movement, validated against server collisions.
-  await page.addInitScript(()=>{const send=WebSocket.prototype.send;WebSocket.prototype.send=function(payload){try{const m=JSON.parse(payload);if(m.type==='input'&&window.__smokeInput)payload=JSON.stringify({...m,...window.__smokeInput});}catch{}return send.call(this,payload);};});
-  const errors=[],failed=[];let latest,layout;
+  await page.addInitScript(()=>{const send=WebSocket.prototype.send;WebSocket.prototype.send=function(payload){window.__smokeSocket=this;try{const m=JSON.parse(payload);if(m.type==='input'&&window.__smokeInput)payload=JSON.stringify({...m,...window.__smokeInput});}catch{}return send.call(this,payload);};});
+  const errors=[],failed=[];let latest,layout,activeSocket,connectionCount=0,deltaCount=0,retainedRecipes=false,retainedNodes=false;
   page.on('pageerror',e=>errors.push(e.message));
   page.on('response',r=>{if(r.status()>=400)failed.push(`${r.status()} ${r.url()}`);});
-  page.on('websocket',socket=>socket.on('framereceived',({payload})=>{try{const m=JSON.parse(payload.toString());if(m.type==='snapshot'){latest=m;if(m.layout)layout=m.layout;}}catch{}}));
+  page.on('websocket',socket=>{
+    activeSocket=socket;latest=undefined;connectionCount++;
+    const decoder=createSnapshotDecoder();
+    if(new URL(socket.url()).searchParams.get('updates')!=='delta-v1')errors.push('Browser did not request delta updates');
+    socket.on('framereceived',({payload})=>{
+      if(socket!==activeSocket)return;
+      try{
+        const m=JSON.parse(payload.toString()),before=latest,next=decoder.apply(m);
+        if(!next)return;
+        latest=next;if(next.layout)layout=next.layout;
+        if(m.type==='delta'){
+          deltaCount++;
+          if(!Object.hasOwn(m,'recipes')){assert.strictEqual(next.recipes,before.recipes);retainedRecipes=next.recipes.length>0;}
+          if(!Object.hasOwn(m,'nodes')){assert.strictEqual(next.nodes,before.nodes);retainedNodes=next.nodes.length>0;}
+        }
+      }catch(error){errors.push('WebSocket decoding: '+error.message);}
+    });
+  });
   const output=path.resolve(__dirname,'../test-results');fs.mkdirSync(output,{recursive:true});
   const screenshot=name=>page.screenshot({path:path.join(output,name+'.png')});
   async function until(predicate,label){const start=Date.now();while(!predicate()){assert.ok(Date.now()-start<7000,label);await page.waitForTimeout(100);}}
@@ -29,6 +48,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     if(!await page.locator('#login-code').inputValue()){const code=(await page.locator('#development-code').innerText()).match(/\b\d{6}\b/);assert.ok(code,'local code missing');await page.locator('#login-code').fill(code[0]);}
     await page.locator('#code-submit').click();await page.locator('#start-button').waitFor({state:'visible'});await until(()=>latest?.me,'missing snapshot');
     assert.equal(latest.me.inventory.sugar,10);assert.equal(latest.me.safeSlots.length,3);assert.equal(latest.me.bagSlots.length,15);assert.equal(latest.me.hotbar.length,5);assert.equal(latest.me.discovered?.sugar||false,false);
+    await until(()=>deltaCount>0&&retainedRecipes&&retainedNodes,'delta stream did not retain unchanged recipes and nodes');
     assert.equal(await page.locator('#play-overlay').isVisible(),false,'Escape menu shown before Escape');
     if(!process.argv.includes('--tour-only')){
     await page.locator('#start-button').click();await page.waitForFunction(()=>!!document.pointerLockElement);
@@ -36,7 +56,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     const initial={x:latest.me.x,z:latest.me.z};await page.keyboard.down('w');await page.waitForTimeout(900);await page.keyboard.up('w');await page.waitForTimeout(200);
     assert.ok(Math.hypot(latest.me.x-initial.x,latest.me.z-initial.z)>.5,'movement did not reach server');
     await page.mouse.click(720,500);await until(()=>latest.me.inventory.sugar===9,'throw did not consume cookie');await screenshot('first-person');
-    await page.keyboard.press('2');await until(()=>latest.me.selectedSlot===1,'hotbar key 2 ignored');assert.match(await page.locator('#selected-cookie-label').innerText(),/EMPTY SLOT/);
+    await page.keyboard.press('2');await until(()=>latest.me.selectedSlot===1,'hotbar key 2 ignored');await page.waitForFunction(()=>document.getElementById('selected-cookie-label').textContent.startsWith('EMPTY SLOT'));assert.match(await page.locator('#selected-cookie-label').innerText(),/EMPTY SLOT/);
     await page.keyboard.press('1');await until(()=>latest.me.selectedSlot===0,'hotbar key 1 ignored');
     await page.keyboard.press('i');await page.locator('#modal').waitFor({state:'visible'});
     assert.equal(await page.locator('.storage-safe .storage-slot').count(),3);assert.equal(await page.locator('.storage-bag .storage-slot').count(),15);assert.equal(await page.locator('.storage-hotbar .storage-slot').count(),5);
@@ -56,7 +76,12 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     await page.locator('#call-name-input').fill('Another name');assert.equal(await page.locator('#customize-form button[type="submit"]').isDisabled(),true,'hourly call-name limit missing');await resume();
     await page.keyboard.press('m');await page.locator('#modal').waitFor({state:'visible'});assert.match(await page.locator('#modal-content').innerText(),/Wildwood/i);assert.match(await page.locator('#modal-content').innerText(),/Crumb City/i);await screenshot('map');await resume();
     assert.equal(await page.locator('#play-overlay').isVisible(),false,'closing map opened pause menu');
-    await page.reload({waitUntil:'networkidle'});await page.locator('#start-button').waitFor({state:'visible'});await until(()=>latest.me.callName===newName,'saved identity missing');assert.equal(latest.me.username,username);assert.equal(latest.me.hotbar[2].count,8);assert.equal(latest.me.avatar.skin,4);
+    await page.reload({waitUntil:'networkidle'});await page.locator('#start-button').waitFor({state:'visible'});await until(()=>latest?.me.callName===newName,'saved identity missing');assert.equal(latest.me.username,username);assert.equal(latest.me.hotbar[2].count,8);assert.equal(latest.me.avatar.skin,4);
+    await page.waitForFunction(()=>window.__smokeSocket?.readyState===WebSocket.OPEN);
+    const previousConnections=connectionCount;
+    await page.evaluate(()=>window.__smokeSocket.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({type:'delta',seq:0,base:-1})})));
+    await until(()=>connectionCount>previousConnections&&latest?.seq>=2,'out-of-sequence update did not reconnect with a fresh baseline');
+    assert.equal(latest.me.hotbar[2].count,8);assert.equal(latest.me.callName,newName);assert.equal(await page.locator('#disconnect-banner').isVisible(),false);
     }
     if(process.argv.includes('--tour')||process.argv.includes('--tour-only')){
       await page.locator('#start-button').click();await page.waitForFunction(()=>!!document.pointerLockElement);
@@ -82,6 +107,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     }
     assert.deepEqual(errors,[],'browser runtime errors');assert.deepEqual(failed,[],'failed asset/API requests');
     console.log(process.argv.includes('--tour-only')?'PASS: Chrome route tour; forest, desert barter, city gym, Peace beach; no browser errors.':'PASS: Chrome WebGL; curved authoritative world; 12 bakery plots; login; movement; throw/eat; 3/15/5 inventory; protected transfers; 5-slot hotbar; undiscovered cookbook; Escape-only menu; direct panel resume; five-tone avatar; earned hats; hourly call name; reload persistence; no browser errors.');
+    console.log(`PASS: ${deltaCount} delta frames decoded; unchanged recipes and nodes retained${process.argv.includes('--tour-only')?'':'; fresh baseline after reconnect'}.`);
     console.log('Screenshots: '+output);
   }catch(error){await screenshot('failure').catch(()=>{});console.error('Browser diagnostics',{errors,failed,me:latest?.me&&{x:latest.me.x,z:latest.me.z,selectedSlot:latest.me.selectedSlot,callName:latest.me.callName},focus:await page.evaluate(()=>({active:document.activeElement?.id,locked:!!document.pointerLockElement,menu:!document.querySelector('#play-overlay').hidden,modal:!document.querySelector('#modal').hidden})).catch(()=>null)});throw error;}
   finally{await browser.close();}

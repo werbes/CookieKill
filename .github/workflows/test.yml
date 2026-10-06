@@ -19,6 +19,8 @@ jobs:
       - run: go build ./...
       - run: node --check web/game.js
       - run: node --check web/panels.js
+      - run: node --check web/state-sync.js
+      - run: node --test scripts/state-sync.test.cjs
   windows:
     runs-on: windows-latest
     steps:

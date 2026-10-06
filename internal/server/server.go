@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"cookiekill/internal/auth"
@@ -25,10 +24,16 @@ import (
 const maxPlayers = 64
 
 type peer struct {
-	conn       *websocket.Conn
-	out        chan []byte
-	cancel     context.CancelFunc
-	layoutSent atomic.Bool
+	conn   *websocket.Conn
+	out    chan outbound
+	cancel context.CancelFunc
+}
+
+// Queue complete, independent snapshots. Only the connection writer computes
+// deltas, so dropping a queued snapshot cannot invalidate the client's baseline.
+type outbound struct {
+	snapshot *game.Snapshot
+	message  []byte
 }
 
 type Server struct {
@@ -121,7 +126,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	// The network handshake must not hold the simulation mutex.
-	c, err := websocket.Accept(w, r, nil)
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionNoContextTakeover})
 	if err != nil {
 		return
 	}
@@ -135,7 +140,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	// net/http clears its deadlines on hijack. These loops own the connection's
 	// lifetime and set their own deadlines independently of the HTTP request.
 	ctx, cancel := context.WithCancel(context.Background())
-	client := &peer{conn: c, out: make(chan []byte, 2), cancel: cancel}
+	client := &peer{conn: c, out: make(chan outbound, 2), cancel: cancel}
 	if old := s.peers[p.ID]; old != nil {
 		go func() {
 			old.conn.Close(websocket.StatusCode(4001), "This account was opened in another tab")
@@ -162,26 +167,31 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	}()
 	go func() {
 		defer cancel()
+		// Old tabs keep receiving full snapshots until reloaded. Each new
+		// connection starts with a full baseline, including the world layout.
+		encoder := stateEncoder{delta: r.URL.Query().Get("updates") == "delta-v1"}
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case b := <-client.out:
+			case next := <-client.out:
+				b := next.message
+				if next.snapshot != nil {
+					var err error
+					b, err = encoder.encode(*next.snapshot)
+					if err != nil {
+						s.logger.Error("encode world", "error", err)
+						return
+					}
+				}
 				writeCtx, done := context.WithTimeout(ctx, 5*time.Second)
 				err := c.Write(writeCtx, websocket.MessageText, b)
 				done()
 				if err != nil {
 					return
 				}
-				// Every snapshot queued before this first successful write carries
-				// the map, so dropping a stale frame cannot lose initial scenery.
-				if len(b) > 20 && !client.layoutSent.Load() {
-					var frame struct {
-						Layout *game.Layout `json:"layout"`
-					}
-					if json.Unmarshal(b, &frame) == nil && frame.Layout != nil {
-						client.layoutSent.Store(true)
-					}
+				if next.snapshot != nil {
+					encoder.commit(*next.snapshot)
 				}
 			}
 		}
@@ -288,7 +298,7 @@ func (s *Server) sendError(p *peer, message string) {
 		Message string `json:"message"`
 	}{"error", message})
 	select {
-	case p.out <- b:
+	case p.out <- outbound{message: b}:
 	default:
 	}
 }
@@ -296,27 +306,16 @@ func (s *Server) sendError(p *peer, message string) {
 // Called with mu held; queues are bounded and never stall the simulation.
 func (s *Server) enqueueSnapshot(id string, p *peer) {
 	snapshot := s.world.Snapshot(id)
-	if p.layoutSent.Load() {
-		snapshot.Layout = nil
-	}
-	value := struct {
-		Type string `json:"type"`
-		game.Snapshot
-	}{"snapshot", snapshot}
-	b, err := json.Marshal(value)
-	if err != nil {
-		s.logger.Error("encode world", "error", err)
-		return
-	}
+	next := outbound{snapshot: &snapshot}
 	select {
-	case p.out <- b:
+	case p.out <- next:
 	default:
 		select {
 		case <-p.out:
 		default:
 		}
 		select {
-		case p.out <- b:
+		case p.out <- next:
 		default:
 		}
 	}

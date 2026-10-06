@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three.module.js';
+import {createSnapshotDecoder} from './state-sync.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
@@ -366,10 +367,18 @@ let reconnectTimer;
 function connect(){
   if(!state.player||state.sessionReplaced)return;
   clearTimeout(reconnectTimer);
-  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');state.ws=ws;
-  ws.addEventListener('open',()=>{state.connected=true;$('disconnect-banner').hidden=true;$('connection-state').innerHTML='<i></i> CONNECTED';});
+  const decoder=createSnapshotDecoder();
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws?updates=delta-v1');state.ws=ws;
+  ws.addEventListener('open',()=>{if(state.ws!==ws)return;state.connected=true;$('disconnect-banner').hidden=true;$('connection-state').innerHTML='<i></i> CONNECTED';});
   ws.addEventListener('message',(event)=>{
-    try{const message=JSON.parse(event.data);if(message.type==='snapshot')receiveSnapshot(message);else if(message.type==='error')toast(message.message||'That action is not available.','error');}catch(error){console.warn('Could not read game update',error);}
+    if(state.ws!==ws||ws.readyState!==WebSocket.OPEN)return;
+    let snapshot;
+    try{
+      const message=JSON.parse(event.data);
+      if(message.type==='error'){toast(message.message||'That action is not available.','error');return;}
+      snapshot=decoder.apply(message);
+    }catch(error){console.warn('Could not read game update; reconnecting',error);state.connected=false;ws.close(4000,'Game state resync');return;}
+    if(snapshot)receiveSnapshot(snapshot);
   });
   ws.addEventListener('close',(event)=>{
     if(state.ws!==ws||!state.player)return;
@@ -381,7 +390,7 @@ function connect(){
     }
     reconnectTimer=setTimeout(connect,2000);
   });
-  ws.addEventListener('error',()=>{state.connected=false;});
+  ws.addEventListener('error',()=>{if(state.ws===ws)state.connected=false;});
 }
 function send(message){if(state.ws&&state.ws.readyState===WebSocket.OPEN){state.ws.send(JSON.stringify(message));return true;}return false;}
 function action(actionName,extra={}){

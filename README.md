@@ -167,6 +167,7 @@ Resources, animals, world time, player positions, transient buffs, and campfires
 go test ./...
 go vet ./...
 go build ./...
+node --test scripts/state-sync.test.cjs
 ```
 
 On a machine with the C compiler needed by Go's race detector:
@@ -175,7 +176,9 @@ On a machine with the C compiler needed by Go's race detector:
 go test -race ./...
 ```
 
-The GitHub Actions workflow runs race-enabled tests, vet, the build, and browser JavaScript syntax validation on Linux. Its Windows job tests the service lifecycle and builds an installable deployment ZIP with a checksum as a downloadable artifact. Backend tests cover configuration paths, graceful shutdown, game rules, login security, persistence, and real authenticated WebSocket connections. `/healthz` provides a basic process health check.
+The GitHub Actions workflow runs race-enabled tests, vet, the build, browser JavaScript syntax validation, and state reconstruction tests on Linux. Its Windows job tests the service lifecycle and builds an installable deployment ZIP with a checksum as a downloadable artifact. Backend tests cover configuration paths, graceful shutdown, game rules, login security, persistence, real authenticated WebSocket connections, delta reconstruction, queue drops, and compression negotiation. `/healthz` provides a basic process health check.
+
+Run `go test ./internal/server -run TestDeltaSteadyStateBandwidth -v` to compare complete snapshots, deltas, and compressed deltas over 100 simulated updates. This measures payload sizes in a stock local world, excluding the initial snapshot and network overhead; actual hosting traffic depends on player activity and connection count.
 
 For the optional browser smoke check, keep a development server running and install Playwright locally with Node.js/npm:
 
@@ -207,6 +210,8 @@ internal/store/     versioned profile saves
 web/                browser UI, first-person renderer, local Three.js assets
 ```
 
-The simulation runs at 20 ticks per second and publishes state ten times per second using [coder/websocket](https://github.com/coder/websocket). The server limits the world to 64 simultaneous connections, validates actions and movement, bounds input rates, and disconnects superseded account connections. This is a playable alpha with one shared world, procedural graphics, fixed discoverable recipes, twelve exclusively owned bakery plots, player homes, and a compact economy. Swimming changes speed and height; free diving is not implemented. World geometry blocks movement and projectiles, with door openings for accessible buildings. The connection limit is a guardrail, not a measured capacity guarantee; public launch would benefit from load testing, playtesting/balance, monitoring, and a transactional database for multiple server instances.
+The simulation runs at 20 ticks per second and publishes state ten times per second using [coder/websocket](https://github.com/coder/websocket). The browser requests `/ws?updates=delta-v1`: each connection receives a complete initial snapshot, then only changed player fields and changed entity fields, additions, and removals. Inventory maps and slots replace their previous values when changed; recipes and event lists are sent only when changed. WebSocket compression is negotiated when supported. The server computes each delta against the last successfully written state, so discarding queued updates for a slow connection cannot lose changes. Sequence checks reconnect the browser with a fresh snapshot if its baseline is lost. Older tabs using `/ws` continue receiving full snapshots until refreshed; rebuild and deploy the executable with its embedded browser assets to enable the new protocol.
+
+The server limits the world to 64 simultaneous connections, validates actions and movement, bounds input rates, and disconnects superseded account connections. This is a playable alpha with one shared world, procedural graphics, fixed discoverable recipes, twelve exclusively owned bakery plots, player homes, and a compact economy. Swimming changes speed and height; free diving is not implemented. World geometry blocks movement and projectiles, with door openings for accessible buildings. The connection limit is a guardrail, not a measured capacity guarantee; public launch would benefit from load testing, playtesting/balance, monitoring, and a transactional database for multiple server instances.
 
 Three.js is vendored under its MIT license in `web/vendor/THREE-LICENSE.txt`.
