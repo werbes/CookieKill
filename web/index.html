@@ -1,0 +1,71 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#152b25">
+  <meta name="description" content="A multiplayer cookie fight in a world worth exploring. Gather, bake, trade, and make a little mischief.">
+  <title>CookieKill — A little sweet. A little savage.</title>
+  <link rel="icon" href="/cookie.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="app">
+    <canvas id="world" aria-label="First person CookieKill game world"></canvas>
+    <div id="scene-vignette"></div>
+    <div id="loading"><span class="cookie-mark spin"></span><span>Warming up the world…</span></div>
+    <div id="render-error" hidden><h1>Your world needs WebGL</h1><p>Open CookieKill in a browser with hardware acceleration enabled to explore the world.</p></div>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="CookieKill home"><span class="cookie-mark"><i></i></span><span>cookie<span class="brand-kill">kill</span><sup>α</sup></span></a>
+      <div class="header-tagline">A LITTLE SWEET. A LITTLE SAVAGE.</div>
+      <div class="header-actions"><span class="status-badge"><i></i><span id="server-status">AN OPEN WORLD OF MISCHIEF</span></span><button id="help-button" class="round-button" title="How to play" aria-label="How to play">?</button></div>
+    </header>
+    <section id="landing" aria-label="Welcome to CookieKill">
+      <div class="landing-copy">
+        <div class="eyebrow"><span class="tiny-star">✦</span> SURVIVAL HAS A SWEET SIDE</div>
+        <h1>Life is short.<br>Throw a <em>cookie.</em></h1>
+        <p class="landing-description">Get lost in the wild. Bake something dangerous.<br>A deliciously chaotic world is waiting for you.</p>
+        <div class="login-card">
+          <div id="email-stage">
+            <div class="card-heading"><span class="card-icon">↗</span><div><h2>Your adventure starts here</h2><p>A quick email login. Then it’s cookie time.</p></div></div>
+            <form id="email-form"><label for="email">EMAIL ADDRESS</label><div class="input-wrap"><span aria-hidden="true">✉</span><input id="email" type="email" autocomplete="email" placeholder="you@somewhere.com" required maxlength="254"></div><button class="button primary" id="email-submit" type="submit">Let’s get this bread <span>→</span></button></form>
+            <p class="fine-print">No password to remember. Just a one-time code.</p>
+          </div>
+          <div id="code-stage" hidden>
+            <div class="card-heading"><span class="card-icon">✉</span><div><h2>Check your inbox</h2><p id="code-destination">Your adventure is one code away.</p></div></div>
+            <form id="code-form"><label for="login-code">YOUR LOGIN CODE</label><input id="login-code" class="code-input" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="000000"><p id="development-code" class="dev-note" hidden></p><button class="button primary" id="code-submit" type="submit">Enter the wild <span>→</span></button></form>
+            <button id="change-email" class="text-button" type="button">← Use another email</button>
+          </div>
+          <p id="auth-message" class="form-message" role="status" hidden></p>
+        </div>
+        <div class="landing-perks"><span><i>✦</i> 10 cookies to your name</span><span><i>◇</i> A whole world to explore</span></div>
+      </div>
+      <div class="world-caption"><span class="caption-line"></span><div><span class="eyebrow">YOUR FIRST STOP</span><h2>The Wildwood</h2><p>Fresh air. Wild berries. Friendly fire.</p></div><span class="coordinates">35° W<br>35° N</span></div>
+      <div class="landing-bottom"><div class="world-links"><span class="world-link active"><i class="biome-dot forest"></i>Wildwood</span><span class="world-link"><i class="biome-dot desert"></i>Sunbaked Sands</span><span class="world-link"><i class="biome-dot ocean"></i>The Blue</span><span class="world-link"><i class="biome-dot city"></i>Crumb City</span></div><span class="early-access">BAKED FRESH · MULTIPLAYER ALPHA</span></div>
+    </section>
+    <section id="hud" hidden aria-label="Game interface">
+      <div class="compass"><span id="compass-direction">N</span><i></i><strong id="area-name">THE WILDWOOD</strong><i></i><span id="position-label">−35 · −35</span></div>
+      <div class="player-summary"><div class="coin-counter"><span class="coin-icon">¢</span><strong id="coin-count">0</strong><span>COINS</span></div><button id="menu-button" class="avatar-button" title="Open inventory (I)" aria-label="Open inventory">▦</button></div>
+      <div class="objective-card"><span class="eyebrow">A LITTLE SOMETHING TO DO</span><h3 id="objective-title">Bake your own trouble</h3><p id="objective-text">Gather wood, sticks, and stones to build your first campfire.</p><div class="objective-progress"><span id="objective-progress"></span></div><button class="text-button light" id="objective-help">Your field guide <span>↗</span></button></div>
+      <div id="buffs" class="buffs"></div>
+      <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+      <div id="hit-marker" hidden>×</div>
+      <div id="interaction-prompt" hidden><kbd>E</kbd><div><span id="interaction-label">Gather berries</span><small id="interaction-detail">A little sweetness goes a long way</small></div></div>
+      <div id="activity-feed" class="activity-feed" aria-live="polite"></div>
+      <div class="vitals"><div class="vital-label"><span>♥ &nbsp;HEALTH</span><strong><span id="health-value">100</span><small>/ 100</small></strong></div><div class="meter health"><span id="health-bar"></span></div><div class="vital-label stamina-label"><span>ϟ &nbsp;STAMINA</span><strong id="stamina-value">100</strong></div><div class="meter stamina"><span id="stamina-bar"></span></div><div class="vital-caption"><span id="player-name">Wanderer</span><span id="connection-state"><i></i> CONNECTED</span></div></div>
+      <div class="hotbar-wrap"><div id="selected-cookie-label">UNIDENTIFIED COOKIE <span>A recipe waiting to be discovered</span></div><div id="hotbar" class="hotbar"></div><div class="hotbar-hints"><span><kbd>1–5</kbd> select</span><span><b>LEFT CLICK</b> throw</span><span><b>Q / RIGHT CLICK</b> eat</span><span><kbd>I</kbd> inventory</span></div></div>
+      <button id="minimap-button" class="minimap-wrap" title="Open world map"><canvas id="minimap" width="180" height="180"></canvas><span class="minimap-north">N</span><span class="minimap-title">THE WORLD IS YOUR OVEN <kbd>M</kbd></span></button>
+      <div id="damage-overlay"></div>
+      <div id="disconnect-banner" hidden>Reconnecting to your world… <span>Your progress is saved.</span></div>
+    </section>
+    <section id="start-overlay" class="overlay" hidden><div class="play-card"><span class="cookie-mark big"></span><div class="eyebrow">YOUR ADVENTURE IS READY</div><h2>Ready to crumble?</h2><p>Ten cookies. A blank cookbook. A whole world of recipes to discover.</p><button id="start-button" class="button primary">Let’s play <span>→</span></button><div class="quick-controls"><span><kbd>W A S D</kbd> move</span><span><kbd>E</kbd> interact</span><span><kbd>I</kbd> inventory</span><span><kbd>C</kbd> cookbook</span></div><p class="mouse-note">Move your mouse to look around. Press Esc to open the menu.</p></div></section>
+    <section id="play-overlay" class="overlay" hidden><div class="play-card"><span class="cookie-mark big"></span><div class="eyebrow">A MOMENT BETWEEN BATCHES</div><h2 id="play-title">Back for seconds?</h2><p id="play-description">The world keeps moving while you take a breather.</p><button id="play-button" class="button primary">Back to the cookies <span>→</span></button><div class="quick-controls"><span><kbd>W A S D</kbd> move</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>E</kbd> interact</span><span><kbd>I</kbd> inventory</span></div><p class="mouse-note">Press Esc again to return to the world.</p><div class="menu-small-actions"><button id="customize-button" class="small-button">Customize avatar</button><button id="logout-button" class="text-button">Sign out</button></div></div></section>
+    <button id="capture-prompt" hidden>Click to look around <kbd>ESC</kbd> menu</button>
+    <div id="zone-notification" hidden aria-live="polite"><span>NOW ENTERING</span><strong></strong></div>
+    <section id="modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="modal-title"><div class="modal-shell"><header class="modal-header"><div><span class="eyebrow" id="modal-eyebrow">A WORLD OF POSSIBILITIES</span><h2 id="modal-title">Your backpack</h2></div><button id="close-modal" class="close-button" aria-label="Close panel">×</button></header><nav id="modal-tabs" class="modal-tabs"></nav><div id="modal-content" class="modal-content"></div><footer class="modal-footer"><span id="modal-footer-text">A cookie in the hand is worth two in the oven.</span><span><kbd>ESC</kbd> CLOSE</span></footer></div></section>
+    <div id="toast-stack" aria-live="polite"></div>
+    <div id="mobile-note" hidden>CookieKill plays best on a desktop with a mouse and keyboard.</div>
+  </main>
+  <script type="module" src="/game.js"></script>
+</body>
+</html>

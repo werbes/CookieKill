@@ -1,0 +1,13 @@
+/data/
+/certs/
+/bin/
+/.tools/
+/node_modules/
+/.env
+/.idea/
+*.exe
+*.log
+/test-results/
+/dist/
+/config.json
+/logs/

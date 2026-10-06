@@ -1,0 +1,15 @@
+{
+  "dev": false,
+  "addr": "127.0.0.1:8080",
+  "domain": "",
+  "email": "",
+  "dataDir": "data",
+  "logFile": "logs/cookiekill.log",
+  "smtp": {
+    "host": "",
+    "port": 587,
+    "user": "",
+    "password": "",
+    "from": ""
+  }
+}
