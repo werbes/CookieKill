@@ -30,11 +30,24 @@ func (w *World) Act(id string, a Action) (err error) {
 		return errors.New("Choose an amount between 1 and 20.")
 	}
 	switch a.Action {
+	case "friend_public", "friend_request", "friend_accept", "friend_decline", "friend_remove":
+		return w.socialAction(p, a)
+	case "eat_lollipop", "buy_home", "teleport_home", "teleport_main", "visit_island", "island_visitors", "island_builder", "chest_deposit", "chest_withdraw", "build", "move_build", "destroy_build", "use_build":
+		return w.islandAction(p, a)
+	case "adopt_animal":
+		return w.adoptAnimal(p, a.Target)
+	case "camel_rent", "camel_buy", "camel_gift", "camel_ride":
+		return w.camelAction(p, a)
 	case "throw":
 		return w.throw(p, a.Item)
 	case "eat":
 		return w.eat(p, a.Item)
 	case "select":
+		if a.Slot == 5 && p.profile.HomeIsland != nil {
+			p.profile.SelectedSlot = 5
+			syncInventory(&p.profile)
+			return nil
+		}
 		if a.Slot < 0 || a.Slot >= 5 {
 			return errors.New("Choose one of your five hotbar slots.")
 		}
@@ -118,7 +131,7 @@ func addCoins(p *player, count int) { p.profile.Coins = min(inventoryLimit, p.pr
 
 func (w *World) near(p *player, id string, radius float64) bool {
 	for _, n := range w.nodes {
-		if n.ID == id {
+		if n.ID == id && n.Island == p.island {
 			return n.Available && distance(p.x, p.z, n.X, n.Z) <= radius
 		}
 	}
@@ -136,6 +149,9 @@ func (w *World) requireBakery(p *player) error {
 }
 
 func (w *World) throw(p *player, item string) error {
+	if p.island != "" {
+		return errors.New("Home islands are peaceful. Return to the main island to throw cookies.")
+	}
 	if w.insideSafe(p.x, p.z) {
 		return errors.New("Leave the safe zone before throwing cookies.")
 	}
@@ -210,6 +226,15 @@ func (w *World) eat(p *player, item string) error {
 }
 
 func (w *World) interact(p *player, target string) error {
+	if target == "pink_lollipop" {
+		return w.islandAction(p, Action{Action: "eat_lollipop", Item: "pink"})
+	}
+	if target == "blue_lollipop" {
+		return w.islandAction(p, Action{Action: "eat_lollipop", Item: "blue"})
+	}
+	if p.island != "" {
+		return w.islandAction(p, Action{Action: "use_build", Target: target})
+	}
 	if p.cooldowns["interact"] > w.time {
 		return errors.New("Wait a moment before gathering again.")
 	}
@@ -219,7 +244,7 @@ func (w *World) interact(p *player, target string) error {
 		}
 	}
 	for _, n := range w.nodes {
-		if n.ID != target {
+		if n.ID != target || n.Island != p.island {
 			continue
 		}
 		if distance(p.x, p.z, n.X, n.Z) > 5 {
@@ -227,6 +252,9 @@ func (w *World) interact(p *player, target string) error {
 		}
 		if !n.Available {
 			return errors.New("This resource is regrowing. Come back shortly.")
+		}
+		if n.Kind == "wood" {
+			return w.chopTree(p, n)
 		}
 		if n.respawn <= 0 {
 			switch n.Kind {
@@ -276,6 +304,9 @@ func (w *World) craft(p *player, item string, amount int) error {
 		return errors.New("Your cookies are still baking.")
 	}
 	if item == "fire" {
+		if p.island != "" {
+			return w.islandAction(p, Action{Action: "build", Item: "fire", X: p.x + 2, Y: p.y, Z: p.z})
+		}
 		if inWater(p) {
 			return errors.New("You need dry land to build a fire.")
 		}
@@ -284,7 +315,7 @@ func (w *World) craft(p *player, item string, amount int) error {
 			return errors.New("Choose clear, dry ground for your campfire.")
 		}
 		for _, n := range w.nodes {
-			if n.Kind == "fire" && distance(p.x, p.z, n.X, n.Z) < 7 {
+			if n.Kind == "fire" && n.Island == p.island && distance(p.x, p.z, n.X, n.Z) < 7 {
 				return errors.New("There is already a cooking fire nearby.")
 			}
 		}
@@ -302,7 +333,7 @@ func (w *World) craft(p *player, item string, amount int) error {
 		}
 		spend(p, map[string]int{"wood": 2, "stick": 2, "stone": 3}, 1)
 		w.sequence++
-		w.nodes = append(w.nodes, &Node{ID: "fire_" + strconv.FormatUint(w.sequence, 10), Kind: "fire", Label: "Campfire", X: fireX, Z: fireZ, Available: true})
+		w.nodes = append(w.nodes, &Node{ID: "fire_" + strconv.FormatUint(w.sequence, 10), Kind: "fire", Label: "Campfire", X: fireX, Z: fireZ, Available: true, Owner: p.profile.ID, ExpiresAt: w.time + 25*60})
 		p.cooldowns["craft"] = w.time + 1
 		w.event("A cooking fire is ready. Time to bake!", "craft", p.x, p.z)
 		return nil
@@ -312,19 +343,20 @@ func (w *World) craft(p *player, item string, amount int) error {
 		return errors.New("That recipe is unknown.")
 	}
 	atBakery := p.profile.Bakery && w.near(p, p.profile.BakeryPlot, 10)
-	if item == "cake" && !atBakery {
+	atHomeOven := w.nearIslandAppliance(p, "oven")
+	if item == "cake" && !atBakery && !atHomeOven {
 		return errors.New("This recipe needs the oven in your own bakery.")
 	}
-	inDesert := area(p.x, p.z) == "desert"
-	if item == "sun_cookie" && !inDesert && !atBakery {
+	inDesert := p.island == "" && area(p.x, p.z) == "desert"
+	if item == "sun_cookie" && !inDesert && !atBakery && !atHomeOven {
 		return errors.New("This recipe needs desert heat or your bakery oven.")
 	}
-	canBake := atBakery
+	canBake := atBakery || atHomeOven || w.nearIslandAppliance(p, "fire")
 	if h := p.profile.Home; h != nil && distance(p.x, p.z, h.X, h.Z) <= 7 {
 		canBake = true
 	}
 	for _, n := range w.nodes {
-		if n.Kind == "fire" && n.Available && distance(p.x, p.z, n.X, n.Z) <= 7 {
+		if n.Kind == "fire" && n.Island == p.island && n.Available && distance(p.x, p.z, n.X, n.Z) <= 7 {
 			canBake = true
 			break
 		}
@@ -542,6 +574,12 @@ func (w *World) train(p *player, kind string) error {
 }
 
 func (w *World) helpAnimal(p *player, a *Animal) error {
+	if p.island != "" {
+		return errors.New("Visit the ocean to help wild animals.")
+	}
+	if a.Egg {
+		return w.disturbEgg(p, a)
+	}
 	if a.Health <= 0 || distance(p.x, p.z, a.X, a.Z) > 5 {
 		return errors.New("Swim closer to help that animal.")
 	}

@@ -29,7 +29,16 @@ func (w *World) step(dt float64) {
 			p.input.Sprint = false
 		}
 		moving := math.Hypot(p.input.X, p.input.Z) > .01
+		if moving {
+			p.posture = ""
+		}
+		if p.ridingCamel && (!p.profile.CamelOwned && p.profile.CamelRentalUntil <= w.now().Unix() || inWater(p)) {
+			p.ridingCamel = false
+		}
 		speed := 6 * (1 + float64(p.profile.Levels["legs"])*.04)
+		if p.ridingCamel {
+			speed *= 1.8
+		}
 		if inWater(p) {
 			speed = 4 * (1 + float64(p.profile.Levels["swim"])*.06)
 			if w.active(p, "swim") {
@@ -53,12 +62,15 @@ func (w *World) step(dt float64) {
 		steps := max(1, int(math.Ceil(math.Max(math.Abs(nx-p.x), math.Abs(nz-p.z))/.25)))
 		dx, dz := (nx-p.x)/float64(steps), (nz-p.z)/float64(steps)
 		for i := 0; i < steps; i++ {
-			if !w.solidBlocked(p.x+dx, p.z, .42) && !w.homeBlocked(p, p.x+dx, p.z) {
+			if p.island != "" && !w.islandBlocked(p, p.x+dx, p.z) || p.island == "" && !w.solidBlocked(p.x+dx, p.z, .42) && !w.homeBlocked(p, p.x+dx, p.z) {
 				p.x += dx
 			}
-			if !w.solidBlocked(p.x, p.z+dz, .42) && !w.homeBlocked(p, p.x, p.z+dz) {
+			if p.island != "" && !w.islandBlocked(p, p.x, p.z+dz) || p.island == "" && !w.solidBlocked(p.x, p.z+dz, .42) && !w.homeBlocked(p, p.x, p.z+dz) {
 				p.z += dz
 			}
+		}
+		if p.island != "" {
+			p.y = w.islandGround(p)
 		}
 		for key, until := range p.buffs {
 			if until <= w.time {
@@ -66,13 +78,41 @@ func (w *World) step(dt float64) {
 			}
 		}
 	}
+	nodes := w.nodes[:0]
 	for _, n := range w.nodes {
+		if n.ExpiresAt > 0 && n.ExpiresAt <= w.time {
+			continue
+		}
+		nodes = append(nodes, n)
 		if !n.Available && n.readyAt <= w.time {
+			if n.Kind == "wood" && w.treeRegrowthBlocked(n) {
+				n.readyAt = w.time + 1
+				continue
+			}
 			n.Available = true
+			if n.Kind == "wood" {
+				n.ChopRemaining = n.ChopTotal
+			}
 		}
 	}
+	w.nodes = nodes
 	w.moveAnimals(dt)
 	w.moveProjectiles(dt)
+}
+
+func (w *World) treeRegrowthBlocked(n *Node) bool {
+	radius := .45 * max(.65, n.Scale)
+	for _, p := range w.players {
+		if p.island == "" && distance(p.x, p.z, n.X, n.Z) < radius+.5 {
+			return true
+		}
+	}
+	for _, fire := range w.nodes {
+		if fire.Kind == "fire" && fire.Island == "" && distance(fire.X, fire.Z, n.X, n.Z) < radius+.7 {
+			return true
+		}
+	}
+	return false
 }
 
 // segmentHit finds the closest point along a projectile's swept segment. The
@@ -139,7 +179,7 @@ func (w *World) moveProjectiles(dt float64) {
 			return false
 		})
 		for id, p := range w.players {
-			if id == shot.Owner {
+			if id == shot.Owner || p.island != "" {
 				continue
 			}
 			t, coins, hit := playerHit(shot, nx, ny, nz, p)
@@ -234,7 +274,7 @@ func (w *World) moveProjectiles(dt float64) {
 			w.eventActor(fmt.Sprintf("Practice hit! %.0f damage.", shot.damage), "hit", -35, -47, shot.Owner)
 			continue
 		}
-		floor := 0.0
+		floor := caveGroundY(nx, nz)
 		if waterAt(nx, nz) {
 			floor = -1
 		}
@@ -251,7 +291,7 @@ func (w *World) moveProjectiles(dt float64) {
 }
 
 func (w *World) damagePlayer(killer, victim *player, damage float64, cause string) bool {
-	if w.active(victim, "spawn_shield") || w.insideSafe(victim.x, victim.z) {
+	if victim.island != "" || w.active(victim, "spawn_shield") || w.insideSafe(victim.x, victim.z) {
 		return false
 	}
 	victim.health -= damage
@@ -298,6 +338,12 @@ func (w *World) damagePlayer(killer, victim *player, damage float64, cause strin
 }
 
 func (w *World) damageAnimal(attacker *player, a *Animal, damage float64) {
+	if a.Egg {
+		a.eggSince = w.time
+		a.HatchIn = 120
+		w.event("The disturbed egg needs another quiet two minutes.", "animal", a.X, a.Z)
+		return
+	}
 	actor := ""
 	if attacker != nil {
 		actor = attacker.profile.ID

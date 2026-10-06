@@ -20,6 +20,10 @@ func syncInventory(p *Profile) {
 			p.Protected = append(p.Protected, s.Item)
 		}
 	}
+	if p.SelectedSlot == 5 && p.HomeIsland != nil {
+		p.Selected = "build_menu"
+		return
+	}
 	p.SelectedSlot = max(0, min(4, p.SelectedSlot))
 	p.Selected = p.Hotbar[p.SelectedSlot].Item
 }

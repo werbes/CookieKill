@@ -50,6 +50,7 @@ func New(saved map[string]Profile) *World {
 	w.seedMap()
 	w.seedAnimals()
 	w.restoreProperties()
+	w.restoreSocial()
 	w.rebuildPropertyColliders()
 	return w
 }
@@ -99,6 +100,7 @@ func sanitize(p Profile) Profile {
 	}
 	normalizeInventory(&p)
 	normalizeIdentity(&p)
+	normalizeIslandProfile(&p)
 	p.Kills = max(0, p.Kills)
 	p.Deaths = max(0, p.Deaths)
 	return p
@@ -125,6 +127,7 @@ func cloneProfile(p Profile) Profile {
 		h := *p.Home
 		p.Home = &h
 	}
+	cloneIslandProfile(&p)
 	return p
 }
 
@@ -153,6 +156,7 @@ func (w *World) Join(id, name string) {
 		profile = Profile{ID: id, Name: name, CallName: name, Inventory: map[string]int{"sugar": 10}, Selected: "sugar"}
 	}
 	profile = sanitize(profile)
+	w.ensureFriendCode(&profile)
 	if profile.CallName == "" {
 		profile.CallName = name
 	}
@@ -181,8 +185,16 @@ func (w *World) Leave(id string) {
 }
 
 func (w *World) spawn(p *player) {
-	p.x = -35 + rand.Float64()*12 - 6
-	p.z = -35 + rand.Float64()*12 - 6
+	p.island, p.posture = "", ""
+	p.y = 0
+	p.x, p.z = -35, -35
+	for attempt := 0; attempt < 24; attempt++ {
+		x, z := -35+rand.Float64()*12-6, -35+rand.Float64()*12-6
+		if !w.solidBlocked(x, z, .5) {
+			p.x, p.z = x, z
+			break
+		}
+	}
 	p.health = 100
 	p.stamina = 100 + float64(p.profile.Levels["stamina"])*10
 	p.input = Input{}
@@ -328,5 +340,6 @@ func (w *World) Snapshot(id string) Snapshot {
 		}
 		out.Recipes = append(out.Recipes, r)
 	}
+	w.decorateIslandSnapshot(id, &out)
 	return out
 }

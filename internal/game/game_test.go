@@ -157,7 +157,7 @@ func TestGatherRangeAndRenewal(t *testing.T) {
 	w, p := testWorld()
 	var node *Node
 	for _, n := range w.nodes {
-		if n.respawn > 0 && n.Kind != "chest" {
+		if n.respawn > 0 && n.Kind != "chest" && n.Kind != "wood" {
 			node = n
 			break
 		}
@@ -185,8 +185,8 @@ func TestGatherRangeAndRenewal(t *testing.T) {
 
 func TestFireAndRecipesChargeIngredients(t *testing.T) {
 	w, p := testWorld()
-	p.x = -60
-	p.z = -60
+	p.x = -35
+	p.z = -35
 	setItem(p, "dough", 8)
 	if err := w.Act("one", Action{Action: "craft", Item: "sugar"}); err == nil {
 		t.Fatal("baking without fire allowed")

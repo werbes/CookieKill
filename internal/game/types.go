@@ -25,6 +25,11 @@ type Action struct {
 	ToSlot   int     `json:"toSlot"`
 	CallName string  `json:"callName"`
 	Avatar   *Avatar `json:"avatar,omitempty"`
+	Enabled  bool    `json:"enabled"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Z        float64 `json:"z"`
+	Rotation float64 `json:"rotation"`
 }
 
 type Stack struct {
@@ -83,85 +88,113 @@ type Profile struct {
 	Equipment         map[string]bool   `json:"equipment"`
 	Paint             map[string]string `json:"paint"`
 	Home              *Home             `json:"home,omitempty"`
+	HomeIsland        *Island           `json:"homeIsland,omitempty"`
+	FriendCode        string            `json:"friendCode"`
+	PublicFriendCode  bool              `json:"publicFriendCode"`
+	Friends           map[string]bool   `json:"friends"`
+	FriendRequests    map[string]bool   `json:"friendRequests"`
+	CamelOwned        bool              `json:"camelOwned"`
+	CamelRentalUntil  int64             `json:"camelRentalUntil"`
+	CamelDiscount     bool              `json:"camelDiscount"`
 }
 
 type PlayerView struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	X         float64            `json:"x"`
-	Y         float64            `json:"y"`
-	Z         float64            `json:"z"`
-	Yaw       float64            `json:"yaw"`
-	Pitch     float64            `json:"pitch"`
-	Health    float64            `json:"health"`
-	MaxHealth float64            `json:"maxHealth"`
-	Area      string             `json:"area"`
-	Buffs     map[string]float64 `json:"buffs"`
-	Username  string             `json:"username"`
-	CallName  string             `json:"callName"`
-	Avatar    Avatar             `json:"avatar"`
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	X           float64            `json:"x"`
+	Y           float64            `json:"y"`
+	Z           float64            `json:"z"`
+	Yaw         float64            `json:"yaw"`
+	Pitch       float64            `json:"pitch"`
+	Health      float64            `json:"health"`
+	MaxHealth   float64            `json:"maxHealth"`
+	Area        string             `json:"area"`
+	Buffs       map[string]float64 `json:"buffs"`
+	Username    string             `json:"username"`
+	CallName    string             `json:"callName"`
+	Avatar      Avatar             `json:"avatar"`
+	Island      string             `json:"island"`
+	FriendCode  string             `json:"friendCode,omitempty"`
+	Posture     string             `json:"posture"`
+	RidingCamel bool               `json:"ridingCamel"`
 }
 
 type Self struct {
 	Profile
-	X              float64            `json:"x"`
-	Y              float64            `json:"y"`
-	Z              float64            `json:"z"`
-	Yaw            float64            `json:"yaw"`
-	Pitch          float64            `json:"pitch"`
-	Health         float64            `json:"health"`
-	MaxHealth      float64            `json:"maxHealth"`
-	Stamina        float64            `json:"stamina"`
-	MaxStamina     float64            `json:"maxStamina"`
-	Area           string             `json:"area"`
-	Buffs          map[string]float64 `json:"buffs"`
-	Zone           string             `json:"zone"`
-	CanBuildHome   bool               `json:"canBuildHome"`
-	HomeSafeReason string             `json:"homeSafeReason"`
+	X               float64            `json:"x"`
+	Y               float64            `json:"y"`
+	Z               float64            `json:"z"`
+	Yaw             float64            `json:"yaw"`
+	Pitch           float64            `json:"pitch"`
+	Health          float64            `json:"health"`
+	MaxHealth       float64            `json:"maxHealth"`
+	Stamina         float64            `json:"stamina"`
+	MaxStamina      float64            `json:"maxStamina"`
+	Area            string             `json:"area"`
+	Buffs           map[string]float64 `json:"buffs"`
+	Zone            string             `json:"zone"`
+	CanBuildHome    bool               `json:"canBuildHome"`
+	HomeSafeReason  string             `json:"homeSafeReason"`
+	Island          string             `json:"island"`
+	HomeOffer       bool               `json:"homeOffer"`
+	FriendsTeleport bool               `json:"friendsTeleport"`
+	Posture         string             `json:"posture"`
+	RidingCamel     bool               `json:"ridingCamel"`
 }
 
 type Node struct {
-	ID          string            `json:"id"`
-	Kind        string            `json:"kind"`
-	Label       string            `json:"label"`
-	X           float64           `json:"x"`
-	Z           float64           `json:"z"`
-	Available   bool              `json:"available"`
-	Amount      int               `json:"amount"`
-	Owner       string            `json:"owner,omitempty"`
-	CallName    string            `json:"callName,omitempty"`
-	Username    string            `json:"username,omitempty"`
-	Paint       map[string]string `json:"paint,omitempty"`
-	Equipment   map[string]bool   `json:"equipment,omitempty"`
-	BakeryLevel int               `json:"bakeryLevel"`
-	readyAt     float64
-	respawn     float64
+	ID            string            `json:"id"`
+	Kind          string            `json:"kind"`
+	Label         string            `json:"label"`
+	X             float64           `json:"x"`
+	Z             float64           `json:"z"`
+	Available     bool              `json:"available"`
+	Amount        int               `json:"amount"`
+	Owner         string            `json:"owner,omitempty"`
+	CallName      string            `json:"callName,omitempty"`
+	Username      string            `json:"username,omitempty"`
+	Paint         map[string]string `json:"paint,omitempty"`
+	Equipment     map[string]bool   `json:"equipment,omitempty"`
+	BakeryLevel   int               `json:"bakeryLevel"`
+	Island        string            `json:"island,omitempty"`
+	ExpiresAt     float64           `json:"expiresAt,omitempty"`
+	Scale         float64           `json:"scale,omitempty"`
+	Variant       int               `json:"variant,omitempty"`
+	Color         string            `json:"color,omitempty"`
+	ChopRemaining int               `json:"chopRemaining,omitempty"`
+	ChopTotal     int               `json:"chopTotal,omitempty"`
+	readyAt       float64
+	respawn       float64
 }
 
 type Animal struct {
-	ID                                                 string  `json:"id"`
-	Species                                            string  `json:"species"`
-	X                                                  float64 `json:"x"`
-	Z                                                  float64 `json:"z"`
-	Health                                             float64 `json:"health"`
-	MaxHealth                                          float64 `json:"maxHealth"`
-	Need                                               string  `json:"need"`
-	Disposition                                        string  `json:"disposition"`
-	Group                                              string  `json:"group"`
-	Speed                                              float64 `json:"speed"`
-	Yaw                                                float64 `json:"yaw"`
-	Y                                                  float64 `json:"y"`
-	Heading                                            float64 `json:"heading"`
-	Scale                                              float64 `json:"scale"`
-	GroupID                                            string  `json:"groupId"`
-	groupX, groupZ, orbitRadius, baseSpeed, injuryRate float64
-	homeX                                              float64
-	homeZ                                              float64
-	phase                                              float64
-	attackAt                                           float64
-	respawnAt                                          float64
-	needAt                                             float64
-	rewardAt                                           map[string]float64
+	ID                                                    string  `json:"id"`
+	Species                                               string  `json:"species"`
+	X                                                     float64 `json:"x"`
+	Z                                                     float64 `json:"z"`
+	Health                                                float64 `json:"health"`
+	MaxHealth                                             float64 `json:"maxHealth"`
+	Need                                                  string  `json:"need"`
+	Disposition                                           string  `json:"disposition"`
+	Group                                                 string  `json:"group"`
+	Speed                                                 float64 `json:"speed"`
+	Yaw                                                   float64 `json:"yaw"`
+	Y                                                     float64 `json:"y"`
+	Heading                                               float64 `json:"heading"`
+	Scale                                                 float64 `json:"scale"`
+	GroupID                                               string  `json:"groupId"`
+	Egg                                                   bool    `json:"egg"`
+	HatchIn                                               float64 `json:"hatchIn"`
+	Age                                                   float64 `json:"age"`
+	lifespan, sickUntil, eggSince, jumpPhase, wanderPhase float64
+	groupX, groupZ, orbitRadius, baseSpeed, injuryRate    float64
+	homeX                                                 float64
+	homeZ                                                 float64
+	phase                                                 float64
+	attackAt                                              float64
+	respawnAt                                             float64
+	needAt                                                float64
+	rewardAt                                              map[string]float64
 }
 
 type Projectile struct {
@@ -202,26 +235,32 @@ type Recipe struct {
 }
 
 type Snapshot struct {
-	Time        float64      `json:"time"`
-	ServerTime  int64        `json:"serverTime"`
-	Me          Self         `json:"me"`
-	Players     []PlayerView `json:"players"`
-	Projectiles []Projectile `json:"projectiles"`
-	Nodes       []Node       `json:"nodes"`
-	Animals     []Animal     `json:"animals"`
-	Events      []Event      `json:"events"`
-	Recipes     []Recipe     `json:"recipes"`
-	Homes       []Home       `json:"homes"`
-	Layout      *Layout      `json:"layout,omitempty"`
+	Time         float64       `json:"time"`
+	ServerTime   int64         `json:"serverTime"`
+	Me           Self          `json:"me"`
+	Players      []PlayerView  `json:"players"`
+	Projectiles  []Projectile  `json:"projectiles"`
+	Nodes        []Node        `json:"nodes"`
+	Animals      []Animal      `json:"animals"`
+	Events       []Event       `json:"events"`
+	Recipes      []Recipe      `json:"recipes"`
+	Homes        []Home        `json:"homes"`
+	Layout       *Layout       `json:"layout,omitempty"`
+	Island       *Island       `json:"island,omitempty"`
+	BuildCatalog []BuildRecipe `json:"buildCatalog"`
+	Friends      []FriendView  `json:"friends"`
 }
 
 type player struct {
-	profile          Profile
-	x, z, yaw, pitch float64
-	health, stamina  float64
-	input            Input
-	buffs            map[string]float64
-	cooldowns        map[string]float64
+	profile                                 Profile
+	island, posture                         string
+	y                                       float64
+	homeOffer, friendsTeleport, ridingCamel bool
+	x, z, yaw, pitch                        float64
+	health, stamina                         float64
+	input                                   Input
+	buffs                                   map[string]float64
+	cooldowns                               map[string]float64
 }
 
 type World struct {

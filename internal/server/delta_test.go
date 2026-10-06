@@ -26,6 +26,31 @@ type testDeltaReceiver struct {
 	seq   uint64
 }
 
+func TestIslandDeltaReplacesPermissionsAndClearsOnMain(t *testing.T) {
+	encoder := &stateEncoder{delta: true}
+	receiver := &testDeltaReceiver{}
+	first := game.Snapshot{
+		Island:       &game.Island{Owner: "owner", Visitors: true, Builders: map[string]bool{"friend": true}, Chest: map[string]int{"wood": 8}, Objects: []game.BuildObject{{ID: "chair", Kind: "chair"}}},
+		Friends:      []game.FriendView{{ID: "friend", Visitors: true}},
+		BuildCatalog: []game.BuildRecipe{{ID: "wall", Cost: map[string]int{"wood": 4}}},
+	}
+	receiver.apply(t, encodeDeltaTest(t, encoder, first))
+	encoder.commit(first)
+	second := first
+	second.Island = &game.Island{Owner: "owner", Builders: map[string]bool{}, Chest: map[string]int{}, Objects: []game.BuildObject{}}
+	second.Friends = []game.FriendView{}
+	got := receiver.apply(t, encodeDeltaTest(t, encoder, second))
+	assertDeltaSnapshot(t, got, second)
+	encoder.commit(second)
+	third := second
+	third.Island = nil
+	got = receiver.apply(t, encodeDeltaTest(t, encoder, third))
+	assertDeltaSnapshot(t, got, third)
+	if got.Island != nil || len(got.BuildCatalog) != 1 {
+		t.Fatal("return to main retained island or discarded the build catalog")
+	}
+}
+
 func (r *testDeltaReceiver) apply(t *testing.T, data []byte) game.Snapshot {
 	t.Helper()
 	var frame map[string]json.RawMessage

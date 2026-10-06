@@ -92,6 +92,20 @@ const {test} = require('node:test');
     assert.deepEqual(decoder.apply(delta({players:{upsert:null, remove:null}})).players, []);
   });
 
+  test('home-island transitions replace permissions and objects and clear on returning to main', () => {
+    const decoder = createSnapshotDecoder();
+    const before=decoder.apply(snapshot({island:{owner:'self',builders:{friend:true},objects:[{id:'chair'}]},friends:[{id:'friend',visitors:true}],buildCatalog:[{id:'wall'}]}));
+    const after=decoder.apply(delta({island:{owner:'self',builders:{},objects:[]},friends:[{id:'friend',visitors:false}]}));
+    assert.deepEqual(after.island.builders, {});
+    assert.deepEqual(after.island.objects, []);
+    assert.equal(before.island.objects.length,1);
+    assert.equal(after.friends[0].visitors,false);
+    assert.strictEqual(after.buildCatalog,before.buildCatalog);
+    const main=decoder.apply(delta({seq:3,base:2,island:null,me:{island:''},friends:[]}));
+    assert.equal(main.island,null);
+    assert.deepEqual(main.friends,[]);
+  });
+
   test('out-of-order, skipped and stale updates reject without changing the baseline', () => {
     const decoder = createSnapshotDecoder();
     assert.throws(() => decoder.apply(delta()), /sequence/);

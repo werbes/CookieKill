@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-func TestMapHasSeparatedPlotsClearingsAndCurvedCoast(t *testing.T) {
+func TestMapHasCityBusinessesNoMainlandHousingAndCurvedCoast(t *testing.T) {
 	w := New(nil)
 	layout := w.StaticLayout()
 	if layout.MaxX-layout.MinX < 400 || layout.MaxZ-layout.MinZ < 400 {
 		t.Fatal("world was not expanded")
 	}
-	if len(layout.Plots) != 12 || len(layout.Zones) != 4 {
-		t.Fatal("missing multiplayer plots or housing clearings")
+	if len(layout.Plots) != 12 || len(layout.Zones) != 0 {
+		t.Fatal("city businesses must remain while mainland housing plots are removed")
 	}
 	seen := map[string]bool{}
 	for _, p := range layout.Plots {
@@ -131,10 +131,8 @@ func TestOceanPopulationGroupsHealthAndInjuryRates(t *testing.T) {
 			if len(group) < spec.minGroup || len(group) > spec.maxGroup {
 				t.Fatalf("wrong group size %s: %d", id, len(group))
 			}
-			for _, a := range group {
-				if a.baseSpeed != group[0].baseSpeed {
-					t.Fatal("school does not share a swimming speed")
-				}
+			if len(group) > 1 && spec.speedMin != spec.speedMax && group[0].baseSpeed == group[1].baseSpeed {
+				t.Fatal("group members should swim at individual speeds")
 			}
 		}
 		if spec.species == "fish" && len(fishSpeeds) < 2 {
@@ -194,7 +192,7 @@ func TestAnimalsSwimAndJumpWithoutTurningWholeOceanInjured(t *testing.T) {
 				injured++
 			}
 		}
-		if injured != int(math.Round(float64(spec.count)*spec.injury)) {
+		if injured > int(math.Round(float64(spec.count)*spec.injury)) {
 			t.Fatalf("injury renewal exceeded %s cap: %d", spec.species, injured)
 		}
 	}

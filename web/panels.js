@@ -1,3 +1,5 @@
+import {createIslandPanels} from './island-panels.js';
+
 export function createPanels(deps) {
   const {$, state, action, toast, cookieIcon, materialEmoji, cookieNames, escapeHTML, pretty} = deps;
   const esc = value => escapeHTML(String(value ?? ''));
@@ -8,7 +10,7 @@ export function createPanels(deps) {
   const name = key => cookieNames[key] ? (known(key) ? (recipeList().find(r=>r.id===key)?.name || cookieNames[key]) : 'Mystery bake '+(Object.keys(cookieNames).indexOf(key)+1)) : pretty(key);
   const icon = key => cookieNames[key] || key==='fire' ? cookieIcon(key) : `<span class="material-icon" aria-hidden="true">${esc(materialEmoji[key] || '◇')}</span>`;
   const aliases = {craft:'recipes',crafting:'recipes',guide:'help',world:'map',worldmap:'map',context:'shop'};
-  const titles = {inventory:'A place for everything',recipes:'Your cookbook',map:'A world worth exploring',help:'The field guide',shop:'A good place to stop',customize:'Make yourself at home',build:'A little place of your own'};
+  const titles = {inventory:'A place for everything',recipes:'Your cookbook',map:'A world worth exploring',help:'The field guide',shop:'A good place to stop',customize:'Make yourself at home',build:'A little place of your own',friends:'Friends & your island',build_object:'Make it your own',chest:'A chest to share',animal:'A little ocean kindness'};
   const areas = {safe:'safeSlots',bag:'bagSlots',hotbar:'hotbar'};
   let previousMarkup='', selectedSlot=null, avatarDraft=null, callNameDraft='', pendingCustomization=null, pendingSnapshot=null, customizationSaved=false;
   function button(label, kind, data={}, disabled=false, accent=false) {
@@ -18,6 +20,7 @@ export function createPanels(deps) {
   function shopRow(symbol,label,description,buttons) {
     return `<div class="shop-row"><span class="shop-icon" aria-hidden="true">${esc(symbol)}</span><div class="shop-copy"><h3>${esc(label)}</h3><p>${esc(description)}</p></div><div class="item-actions">${buttons}</div></div>`;
   }
+  const islandPanels=createIslandPanels({...deps,button,shopRow,openModal,closeModal,renderModal});
   function slotGrid(area,size) {
     return `<div class="storage-grid storage-${area}" aria-label="${area==='safe'?'Permanent storage':area==='hotbar'?'Protected hotbar':'Inventory'}">${Array.from({length:size},(_,index)=>{
       const stack=me()[areas[area]]?.[index], occupied=stack?.item&&stack.count>0;
@@ -41,11 +44,11 @@ export function createPanels(deps) {
       const animal=state.snapshot?.animals?.find(a=>a.id===id);
       return `<span class="reputation-pill${v<0?' bad':''}">${esc(pretty(animal?.species||id))}: ${v>0?'+':''}${v}</span>`;
     }).join('');
-    return `<p class="panel-intro">Your permanent storage and hotbar survive every defeat. A player who defeats you can loot five random occupied inventory stacks.</p>${detail}<div class="section-label">PERMANENT STORAGE <span>3 slots · always protected</span></div>${slotGrid('safe',3)}<div class="section-label">HOTBAR <span>5 slots · keys 1–5 · always protected</span></div>${slotGrid('hotbar',5)}<div class="section-label">INVENTORY <span>15 slots · five occupied stacks can be looted</span></div>${slotGrid('bag',15)}${recovery.length?`<div class="section-label">SAVED ITEM RECOVERY <span>Your earlier items are safe here until you make room</span></div><div class="shop-list">${recovery.map(([key,n])=>shopRow('◇',name(key),`${n} saved`,button('Move to inventory','claim_recovery',{item:key},false,true))).join('')}</div>`:''}<div class="stats-grid">${stat(p.coins||0,'COINS')}${stat(Object.entries(p.inventory||{}).reduce((sum,[key,n])=>sum+(cookieNames[key]?n:0),0),'BAKED GOODS')}${stat(p.kills||0,'PLAYER DEFEATS')}${stat(p.deaths||0,'TIMES RESPAWNED')}</div><p class="panel-intro">Coin loot uses balances before the defeat: an opponent with fewer coins receives 10% rounded up; otherwise they receive 5% rounded down.</p>${reputation?`<div class="section-label">OCEAN REPUTATION</div><div class="reputation-list">${reputation}</div>`:''}`;
+    return `<p class="panel-intro">Your permanent storage and hotbar survive every defeat. A player who defeats you can loot five random occupied inventory stacks.</p>${detail}<div class="section-label">PERMANENT STORAGE <span>3 slots · always protected</span></div>${slotGrid('safe',3)}<div class="section-label">HOTBAR <span>5 slots · keys 1–5 · always protected</span></div>${slotGrid('hotbar',5)}${p.homeIsland?`<div class="notice good"><strong>6 - Build menu</strong><p>Your sixth hotbar slot opens Building, Decor, and Appliances on a home island.</p>${button('Open build menu','tab',{tab:'build'})}</div>`:''}<div class="section-label">INVENTORY <span>15 slots · five occupied stacks can be looted</span></div>${slotGrid('bag',15)}${islandPanels.companion()}${recovery.length?`<div class="section-label">SAVED ITEM RECOVERY <span>Your earlier items are safe here until you make room</span></div><div class="shop-list">${recovery.map(([key,n])=>shopRow('◇',name(key),`${n} saved`,button('Move to inventory','claim_recovery',{item:key},false,true))).join('')}</div>`:''}<div class="stats-grid">${stat(p.coins||0,'COINS')}${stat(Object.entries(p.inventory||{}).reduce((sum,[key,n])=>sum+(cookieNames[key]?n:0),0),'BAKED GOODS')}${stat(p.kills||0,'PLAYER DEFEATS')}${stat(p.deaths||0,'TIMES RESPAWNED')}</div><p class="panel-intro">Coin loot uses balances before the defeat: an opponent with fewer coins receives 10% rounded up; otherwise they receive 5% rounded down.</p>${reputation?`<div class="section-label">OCEAN REPUTATION</div><div class="reputation-list">${reputation}</div>`:''}`;
   }
   function recipes() {
     const list=[{id:'fire',name:'Campfire',description:'Build on dry land with room around you. Bake while standing close to its warmth.',cost:{wood:2,stick:2,stone:3}},...recipeList()];
-    return `<p class="panel-intro">Every recipe is recorded here. Bake an experiment beside a campfire, a shelter hearth, or your bakery oven to discover its name and abilities. Discoveries stay in your cookbook permanently.</p><div class="notice">Ingredients are visible from the beginning. Desert recipes still need a fire or oven; cakes require your bakery.</div><div class="recipe-grid">${list.map((r,index)=>{
+    return `<p class="panel-intro">Every recipe is recorded here. Bake an experiment beside a campfire or a home-island or bakery oven to discover its name and abilities. Discoveries stay in your cookbook permanently.</p><div class="notice">Ingredients are visible from the beginning. Desert recipes still need a fire or oven; cakes require an oven.</div><div class="recipe-grid">${list.map((r,index)=>{
       const discovered=r.id==='fire'||known(r.id), costMap=r.cost||{};
       const canAfford=amount=>Object.entries(costMap).every(([key,n])=>(r.id==='protein_cookie'&&key==='protein_powder'?count('protein_powder')+count('protein_drink'):count(key))>=n*amount);
       const cost=Object.entries(costMap).map(([key,n])=>{
@@ -80,6 +83,7 @@ export function createPanels(deps) {
   }
   function shop() {
     const p=me(), original=state.context||{}, n=state.snapshot?.nodes?.find(node=>node.id===original.id)||original, kind=n.kind||n.id;
+    const islandShop=islandPanels.shop(kind);if(islandShop!==null)return islandShop;
     let rows='', intro='Stay close to the station while trading. Your items and coins update when the server completes the trade.';
     if(kind==='peace') {
       intro='Peace pays three coins for every kilogram of beach trash. A clean coast is a good beginning; shells and ocean treasures are welcome, too.';
@@ -122,23 +126,9 @@ export function createPanels(deps) {
       for(const [key,cost] of Object.entries({dough:3,berry:2,nut:2,wood:2,stick:1,stone:1,sea_salt:3}))rows+=shopRow(materialEmoji[key]||'◇',name(key),`${cost} coins each · ${count(key)} held`,button('Buy one','trade',{target:'general_shop',item:key,amount:1},p.coins<cost,true)+button('Buy five','trade',{target:'general_shop',item:key,amount:5},p.coins<cost*5));
     } else if(kind==='outfit_shop') return customize();
     else if(kind==='fire') return recipes();
-    else if(kind==='home'||kind==='tent'||kind==='cabin') return building();
+    else if(kind==='home'||kind==='tent'||kind==='cabin') return islandPanels.render('build');
     else return `<p class="panel-intro">${esc(n.label||'Explore nearby resources and stations.')}</p>${button('Open inventory','tab',{tab:'inventory'})}${button('Open cookbook','tab',{tab:'recipes'})}`;
     return `<p class="panel-intro">${esc(intro)}</p>${kind==='desert_trader'?'<div class="notice good">Village barter · bring ingredients and treasures</div>':`<div class="notice good">${p.coins||0} coins in your pocket</div>`}<div class="shop-list">${rows}</div>`;
-  }
-  function building() {
-    const p=me(), home=p.home;
-    let rows='';
-    if(home) {
-      rows=shopRow('⌂',pretty(home.kind)+` · ${home.callName||p.callName}`,`Sign: ${home.callName||p.callName} (@${home.username||p.username}). Structure health ${Math.ceil(home.health)}/${home.maxHealth}.`,button('Open cookbook','tab',{tab:'recipes'}));
-      rows+=shopRow(home.safe?'◆':'◇',home.safe?'Your safe zone is active':'Protect your home',home.safe?'Other players cannot enter this space or damage your home.':p.homeSafeReason||'An eight metre clearing must be free of trees, bushes, paths, other homes, and other players.',button(home.safe?'Protected':'Create safe zone','create_safezone',{},home.safe||!!p.homeSafeReason,true));
-    } else {
-      for(const [kind,cost] of [['tent',{wood:6,stick:8,stone:4}],['cabin',{wood:18,stick:8,stone:12}]]) {
-        const enough=Object.entries(cost).every(([key,n])=>count(key)>=n);
-        rows+=shopRow('⌂',pretty(kind),Object.entries(cost).map(([key,n])=>`${n} ${name(key)} (${count(key)} held)`).join(' · '),button('Build '+kind,'build_home',{item:kind},!p.canBuildHome||!enough,true));
-      }
-    }
-    return `<p class="panel-intro">Find a marked clearing in the forest or desert to build a tent or cabin with a baking hearth. Each player may own one home. Stand in the spot where you want to build.</p><div class="notice${p.canBuildHome?' good':''}">${esc(p.zone||'Explore the building clearings')}${home?'':p.canBuildHome?' · building is allowed here':' · enter a building clearing to place your home'}</div><div class="shop-list">${rows}</div><p class="panel-intro">A safe zone needs space around the entire home. Homes too close to obstacles remain exposed and other players can destroy them. Your call name and permanent username appear on the sign outside.</p>`;
   }
   const skinTones=['#f4dac5','#dfb797','#bd8862','#8a583c','#4f3228'];
   const hats={chef:['Chef hat','Discover your first recipe'],recycler:['Recycler cap','Trade 10 kg of trash with Peace'],ocean:['Ocean crown','Help three ocean animals'],champion:['Champion cap','Defeat five players'],builder:['Builder hat','Own a bakery or a home']};
@@ -154,13 +144,15 @@ export function createPanels(deps) {
     return `<p class="panel-intro">Your account keeps one permanent username. Your call name is the name other players see above you and on your home sign.</p><form id="customize-form"><div class="customize-layout"><div class="avatar-preview" aria-label="Avatar preview"><div class="avatar-preview-figure" style="--avatar-skin:${skinTones[avatarDraft.skin]||skinTones[0]};--avatar-shirt:${colors[avatarDraft.shirtColor]||colors.teal};--avatar-pants:${colors[avatarDraft.pantsColor]||colors.sand}"><div class="preview-hat">${avatarDraft.hat?esc({chef:'♧',recycler:'♻',ocean:'♆',champion:'★',builder:'⌂'}[avatarDraft.hat]||''):''}</div><div class="preview-head"><span>• •</span></div><div class="preview-body ${esc(avatarDraft.shirt)}"><i></i><b></b></div><div class="preview-legs ${esc(avatarDraft.pants)}"><i></i><i></i></div></div><strong id="preview-call-name">${esc(callNameDraft)}</strong><span>@${esc(p.username||'username')}</span></div><div class="customize-fields"><label for="permanent-username">PERMANENT USERNAME</label><input id="permanent-username" value="${esc(p.username)}" readonly aria-readonly="true"><label for="call-name-input">CALL NAME</label><input id="call-name-input" name="callName" maxlength="24" minlength="2" value="${esc(callNameDraft)}" autocomplete="nickname"><p class="field-hint">${wait>0?`Your next call name change is available in ${Math.ceil(wait/60)} minute${Math.ceil(wait/60)===1?'':'s'}.`:'You can change your call name now. After a change, wait one hour.'}</p><div class="section-label">SKIN TONE <span>Choose from five tones</span></div><div class="skin-swatches">${skinTones.map((color,index)=>`<button type="button" class="skin-swatch${avatarDraft.skin===index?' chosen':''}" style="--swatch:${color}" aria-label="Skin tone ${index+1}, ${['very light','light','medium','dark','very dark'][index]}" aria-pressed="${avatarDraft.skin===index}" data-action="avatar-skin" data-payload="${esc(JSON.stringify({skin:index}))}"></button>`).join('')}</div><div class="customize-selects"><label>SHIRT STYLE<select data-avatar="shirt">${[['tee','T-shirt'],['hoodie','Hoodie'],['tank','Tank top']].map(([v,l])=>option(v,l,avatarDraft.shirt)).join('')}</select></label>${colorSelect('shirtColor','SHIRT COLOR')}<label>PANTS STYLE<select data-avatar="pants">${[['trousers','Trousers'],['shorts','Shorts']].map(([v,l])=>option(v,l,avatarDraft.pants)).join('')}</select></label>${colorSelect('pantsColor','PANTS COLOR')}</div></div></div><div class="section-label">ACHIEVEMENT HATS <span>Earn a hat, then wear it</span></div><div class="hat-options">${button(avatarDraft.hat===''?'✓ No hat':'No hat','avatar-hat',{hat:''})}${Object.entries(hats).map(([key,[label,condition]])=>`<div class="hat-option${p.hats?.[key]?'':' locked'}">${button((avatarDraft.hat===key?'✓ ':'')+label,'avatar-hat',{hat:key},!p.hats?.[key])}<span>${p.hats?.[key]?'Unlocked':esc(condition)}</span></div>`).join('')}</div><div class="customize-save"><button type="submit" class="small-button accent"${changedName&&wait>0?' disabled':''}>Save appearance${changedName?' & call name':''}</button><span id="customize-status" role="status">${saved?'Saved to your account.':pendingCustomization?'Waiting for the server to save your changes.':'Changes save when confirmed by the server.'}</span></div></form>`;
   }
   function guide() {
-    return `<p class="panel-intro">Ten mystery bakes. Four regions. A cookbook full of discoveries waiting to happen.</p><div class="field-guide"><section class="guide-section"><h3>Your first batch</h3><ol><li>Gather 2 wood, 2 sticks, and 3 stones with <kbd>E</kbd>.</li><li>Find dough in chests or dig pale ground patches.</li><li>Press <kbd>C</kbd> to open your cookbook and build a campfire.</li><li>Bake beside the fire. Your first successful bake reveals that recipe's name and effects permanently.</li></ol></section><section class="guide-section"><h3>Aim, bake, repeat</h3><p><kbd>W A S D</kbd> move · mouse to look.<br><kbd>SHIFT</kbd> sprint on land; train chest and back to swim faster.<br><kbd>LEFT CLICK</kbd> throw · <kbd>Q</kbd> or right click eat.<br><kbd>E</kbd> interact · <kbd>I</kbd> inventory.<br><kbd>C</kbd> cookbook · <kbd>M</kbd> map.<br><kbd>1–5</kbd> select a hotbar slot.<br><kbd>ESC</kbd> opens or closes the game menu.</p></section><section class="guide-section"><h3>Your bag and your battles</h3><p>Three permanent slots and five hotbar slots keep their contents through every defeat. Your fifteen inventory slots may lose five random occupied stacks to the player who defeats you. A killer with fewer coins than you receives 10% of your coins rounded up; otherwise they receive 5% rounded down. A headshot awards 5 coins, a hand or foot hit 3, and another body hit 1.</p></section><section class="guide-section"><h3>A place of your own</h3><p>Find marked building clearings in the forest and desert. Build a tent or cabin, bake at its hearth, and create a safe zone if the surrounding space is clear. Exposed homes can be destroyed. Your sign carries your call name and permanent username. The world map marks clearings and homes.</p></section><section class="guide-section"><h3>Village exchanges</h3><p>Look inside the desert's clay village buildings for bakers. They barter for berries, nuts, shells, and ocean treasures. Coins are used in the city and at Peace's beach stand. Bake desert experiments near a fire or oven.</p></section><section class="guide-section"><h3>The ocean remembers</h3><p>Peace pays 3 coins per kilogram of beach trash. Most animals swim freely; some need help with wounds or plastic. Help them to earn trust and find treasures. Witnesses remember animal kills: sharks and sea lions may pursue you, while other animals flee. Training at the gym can make you faster than a shark.</p></section><section class="guide-section"><h3>Start your bakery</h3><p>Claim one of the city's available bakery plots for 250 coins. Upgrades begin at 50 coins, then 75, 100, 125, and keep rising by 25. Improvements become more gradual. Buy a mixer, oven, and display at the kitchen shop, then buy paint to customize your bakery and its equipment.</p></section><section class="guide-section"><h3>A familiar face</h3><p>Choose Customize from the Escape menu for five skin tones, shirt and pants styles, colors, and earned achievement hats. Your username stays permanent. You may change your call name once per hour.</p></section></div>`;
+    return `<p class="panel-intro">Ten mystery bakes. Four regions. A cookbook full of discoveries waiting to happen.</p><div class="field-guide"><section class="guide-section"><h3>Your first batch</h3><ol><li>Gather 2 wood, 2 sticks, and 3 stones with <kbd>E</kbd>.</li><li>Find dough in chests or dig pale ground patches.</li><li>Press <kbd>C</kbd> to open your cookbook and build a campfire.</li><li>Bake beside the fire. Your first successful bake reveals that recipe's name and effects permanently.</li></ol></section><section class="guide-section"><h3>Aim, bake, repeat</h3><p><kbd>W A S D</kbd> move · mouse to look.<br><kbd>SHIFT</kbd> sprint on land; train chest and back to swim faster.<br><kbd>LEFT CLICK</kbd> throw · <kbd>Q</kbd> or right click eat.<br><kbd>E</kbd> interact · <kbd>I</kbd> inventory.<br><kbd>C</kbd> cookbook · <kbd>M</kbd> map.<br><kbd>1-5</kbd> select a hotbar slot. <kbd>6</kbd> opens your build menu.<br><kbd>V</kbd> mount or dismount your camel.<br><kbd>ESC</kbd> opens or closes the game menu.</p></section><section class="guide-section"><h3>Your bag and your battles</h3><p>Three permanent slots and five hotbar slots keep their contents through every defeat. Your fifteen inventory slots may lose five random occupied stacks to the player who defeats you. A killer with fewer coins than you receives 10% of your coins rounded up; otherwise they receive 5% rounded down. A headshot awards 5 coins, a hand or foot hit 3, and another body hit 1.</p></section><section class="guide-section"><h3>A place of your own</h3><p>Explore the rock-covered cave near the middle of Sunbaked Sands. Its clay tunnels lead to pink and blue lollipops. Eat the pink one to buy your home island for 200 coins, then choose whether to teleport. Hotbar slot 6 opens Building, Decor, and Appliances. Rotate by 45 degrees, move your creations, or destroy them for half the materials back.</p></section><section class="guide-section"><h3>Village exchanges</h3><p>Look inside the desert's clay village buildings for bakers. They barter for berries, nuts, shells, and ocean treasures. Coins are used in the city and at Peace's beach stand. Bake desert experiments near a fire or oven.</p></section><section class="guide-section"><h3>The ocean remembers</h3><p>Smaller groups swim at their own pace while staying close. Dolphins jump independently. Help sick animals quickly; illness and old age can end their lives. Leave an egg undisturbed for two minutes to let it hatch. Build a pond to adopt a wounded fish or turtle. Peace pays 3 coins per kilogram of beach trash.</p></section><section class="guide-section"><h3>Build, gather, and bake</h3><p>Build an oven and mixer on your home island. Garden beds grow nuts and berries. Chop trees for wood: larger trees take more hits and yield more wood, from three to six pieces. Campfires on the main island disappear after 25 minutes; home-island fires remain until put out or destroyed.</p></section><section class="guide-section"><h3>A familiar face</h3><p>Choose Customize from the Escape menu for five skin tones, shirt and pants styles, colors, and earned achievement hats. Your username stays permanent. You may change your call name once per hour.</p></section><section class="guide-section"><h3>Friends across the water</h3><p>Open Friends from the Escape menu. Every player has a permanent code: a four-letter word and four numbers. Make yours public to display it below your call name. Accept requests, allow island visits, and grant building permission to specific friends. The blue lollipop opens island visits. Share materials in the island chest.</p></section><section class="guide-section"><h3>Travel with Abu Fanous</h3><p>Find Abu Fanous in the far east. Borrow a camel for 20 minutes for 50 coins, or buy one for 350. Bring one of every cookie and cake to lower the permanent price to 175 coins.</p></section></div>`;
   }
   function mapPanel() {
-    return `<p class="panel-intro">You are the golden arrow. Find building clearings in the forest and desert, then follow city streets to an available bakery plot.</p><div class="map-canvas-wrap"><canvas id="world-map" width="880" height="650" aria-label="Map of four regions, organic coastline, building clearings, bakery plots, homes, stations, and players"></canvas></div><div class="map-legend"><div><h3><i class="biome-dot forest"></i>Wildwood</h3><p>Forest ingredients, dough, and quiet building clearings.</p></div><div><h3><i class="biome-dot desert"></i>Sunbaked Sands</h3><p>Clay villages, barter, and desert homesteads.</p></div><div><h3><i class="biome-dot ocean"></i>The Blue</h3><p>Peace, winding beaches, and open ocean.</p></div><div><h3><i class="biome-dot city"></i>Crumb City</h3><p>Twelve bakery plots, shops, and the gym.</p></div></div><div class="map-key"><span><b>▲</b> You</span><span><b>●</b> Players</span><span><b>◆</b> Stations</span><span><b>□</b> Building clearing</span><span><b style="color:#487d4d">■</b> Available bakery</span><span><b style="color:#996659">■</b> Claimed bakery</span></div>`;
+    if(me().island)return `<p class="panel-intro">${me().island===me().id?'Your home island':'A friend’s home island'}. Furnishings and visitors appear below. Open Home island to build, or Friends to manage visits.</p><div class="map-canvas-wrap"><canvas id="world-map" width="880" height="650" aria-label="Home island map with placed objects and players"></canvas></div><div class="item-actions">${button('Home island','tab',{tab:'build'})}${button('Return to main island','teleport_main')}</div>`;
+    return `<p class="panel-intro">You are the golden arrow. Explore the cave in Sunbaked Sands for your first home island and friend visits. Look for Abu Fanous in the far east.</p><div class="map-canvas-wrap"><canvas id="world-map" width="880" height="650" aria-label="Map of four regions, coastline, the desert cave, shops, stations, and players"></canvas></div><div class="map-legend"><div><h3><i class="biome-dot forest"></i>Wildwood</h3><p>Forest ingredients, dough, and trees to chop.</p></div><div><h3><i class="biome-dot desert"></i>Sunbaked Sands</h3><p>Clay villages, cave lollipops, and Abu Fanous.</p></div><div><h3><i class="biome-dot ocean"></i>The Blue</h3><p>Peace, winding beaches, and open ocean.</p></div><div><h3><i class="biome-dot city"></i>Crumb City</h3><p>City gardens, bakery businesses, shops, and the gym.</p></div></div><div class="map-key"><span><b>▲</b> You</span><span><b>●</b> Players</span><span><b>◆</b> Stations</span><span><b style="color:#487d4d">&#9632;</b> Available bakery</span><span><b style="color:#996659">&#9632;</b> Claimed bakery</span></div>`;
   }
   function paintMap(canvas,mini=false) {
     if(!canvas)return;
+    if(me().island){paintIslandMap(canvas,mini);return;}
     const ctx=canvas.getContext('2d');if(!ctx)return;
     const layout=state.snapshot?.layout||state.layout||{}, minX=layout.minX??-240,maxX=layout.maxX??240,minZ=layout.minZ??-260,maxZ=layout.maxZ??200;
     const width=canvas.width,height=canvas.height,margin=mini?0:25,mw=width-margin*2,mh=height-margin*2;
@@ -192,7 +184,7 @@ export function createPanels(deps) {
       ctx.fillStyle=mine?'#f4bc60':node?.owner?'#996659':'#487d4d';rect(plot.x,plot.z,plot.width||12,plot.depth||12);
       if(!mini) {ctx.fillStyle='#304c38';ctx.font='8px Arial';ctx.textAlign='center';ctx.fillText(mine?'Your bakery':node?.callName||'Available',px(plot.x),pz(plot.z)+13);}
     }
-    const stationNames={peace:'Peace',desert_trader:'Village barter',gym:'Gym',kitchen_shop:'Kitchen shop',general_shop:'Provisions',paint_shop:'Paint',outfit_shop:'Outfits',vending:'Protein',dummy:'Practice'};
+    const stationNames={pink_lollipop:'Home island',blue_lollipop:'Friend visits',abu_fanous:'Abu Fanous',peace:'Peace',desert_trader:'Village barter',gym:'Gym',kitchen_shop:'Kitchen shop',general_shop:'Provisions',paint_shop:'Paint',outfit_shop:'Outfits',vending:'Protein',dummy:'Practice'};
     for(const node of nodes) {
       const label=stationNames[node.kind];if(!label&&node.kind!=='fire')continue;
       const x=px(node.x),y=pz(node.z);ctx.fillStyle=node.kind==='fire'?'#c26c37':'#68573c';ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);ctx.fillRect(-2,-2,mini?4:6,mini?4:6);ctx.restore();
@@ -208,6 +200,22 @@ export function createPanels(deps) {
     const p=state.snapshot?.me||{x:-35,z:-35,yaw:0};ctx.save();ctx.translate(px(p.x),pz(p.z));ctx.rotate(-(p.yaw||0));ctx.fillStyle='#ffcb71';ctx.strokeStyle='#6b542c';ctx.lineWidth=1.5;const r=mini?6:9;ctx.beginPath();ctx.moveTo(0,-r);ctx.lineTo(r*.6,r*.65);ctx.lineTo(0,r*.3);ctx.lineTo(-r*.6,r*.65);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();ctx.restore();
     if(!mini) {ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillStyle='#5a654f';ctx.fillText('N',width/2,16);ctx.fillText('S',width/2,height-8);ctx.strokeStyle='#60754b55';ctx.strokeRect(margin,margin,mw,mh);}
   }
+  function paintIslandMap(canvas,mini=false) {
+    const ctx=canvas.getContext('2d');if(!ctx)return;
+    const width=canvas.width,height=canvas.height,scale=Math.min(width,height)/100;
+    const px=x=>width/2+x*scale,pz=z=>height/2+z*scale;
+    ctx.clearRect(0,0,width,height);ctx.fillStyle='#4b879d';ctx.fillRect(0,0,width,height);
+    for(const [radius,color]of [[42,'#8ac8c2'],[38,'#e4d4a0'],[33,'#86a565']]){ctx.fillStyle=color;ctx.beginPath();ctx.arc(width/2,height/2,radius*scale,0,Math.PI*2);ctx.fill();}
+    for(const object of state.snapshot?.island?.objects||[]) {
+      const recipe=state.snapshot?.buildCatalog?.find(recipe=>recipe.id===object.kind);
+      ctx.save();ctx.translate(px(object.x),pz(object.z));ctx.rotate(-(object.rotation||0)*Math.PI/180);ctx.fillStyle=object.kind==='pond'?'#679daf':object.kind==='garden_bed'?'#6d633c':object.kind==='chest'?'#d8ac68':'#a78660';
+      ctx.fillRect(-(recipe?.width||1)*scale/2,-(recipe?.depth||1)*scale/2,Math.max(2,(recipe?.width||1)*scale),Math.max(2,(recipe?.depth||1)*scale));ctx.restore();
+      if(!mini){ctx.font='10px Arial';ctx.fillStyle='#314931';ctx.textAlign='center';ctx.fillText(recipe?.name||pretty(object.kind),px(object.x),pz(object.z)+12);}
+    }
+    for(const player of state.snapshot?.players||[]){ctx.fillStyle='#fff5d9';ctx.beginPath();ctx.arc(px(player.x),pz(player.z),mini?2:4,0,Math.PI*2);ctx.fill();}
+    const p=me(),r=mini?6:10;ctx.save();ctx.translate(px(p.x),pz(p.z));ctx.rotate(-(p.yaw||0));ctx.fillStyle='#ffcb71';ctx.strokeStyle='#6b542c';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,-r);ctx.lineTo(r*.6,r*.65);ctx.lineTo(0,r*.3);ctx.lineTo(-r*.6,r*.65);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+    if(!mini){ctx.font='bold 15px Arial';ctx.fillStyle='#fff5d9';ctx.textAlign='center';ctx.fillText(p.island===p.id?'YOUR HOME ISLAND':'A FRIEND’S HOME ISLAND',width/2,28);}
+  }
   function drawWorldMap(){paintMap($('world-map'));}
   function drawMinimap(){paintMap($('minimap'),true);}
   function renderModal() {
@@ -215,12 +223,12 @@ export function createPanels(deps) {
     const tab=aliases[state.modal]||state.modal;state.modal=tab;
     $('modal-title').textContent=tab==='shop'?(state.context?.label||titles.shop):titles[tab]||titles.help;
     $('modal-eyebrow').textContent=tab==='shop'?'NEIGHBORS & NEW BEGINNINGS':tab==='recipes'?'LEARN BY BAKING':'YOUR LITTLE CORNER OF THE WORLD';
-    const tabs=[['inventory','Inventory'],['recipes','Cookbook'],['build','Build a home'],['map','World map'],['help','Field guide']];
+    const tabs=[['inventory','Inventory'],['recipes','Cookbook'],['build','Home island'],['friends','Friends'],['map','World map'],['help','Field guide']];
     if(tab==='shop')tabs.unshift(['shop','This station']);
     if(tab==='customize')tabs.unshift(['customize','Customize']);
     $('modal-tabs').innerHTML=tabs.map(([key,label])=>`<button class="modal-tab${tab===key?' active':''}" data-tab="${key}" type="button">${label}</button>`).join('');
     $('modal-footer-text').textContent=state.snapshot?`${me().coins||0} coins · Progress saves automatically. The world keeps moving while this panel is open.`:'Sign in to explore, gather, bake, and play.';
-    const markup=tab==='inventory'?inventory():tab==='recipes'?recipes():tab==='map'?mapPanel():tab==='shop'?shop():tab==='customize'?customize():tab==='build'?building():guide();
+    const markup=tab==='inventory'?inventory():tab==='recipes'?recipes():tab==='map'?mapPanel():tab==='shop'?shop():tab==='customize'?customize():(islandPanels.render(tab) ?? guide());
     if(markup!==previousMarkup) {
       const content=$('modal-content'),scroll=content.scrollTop,focused=document.activeElement;
       const focusID=content.contains(focused)&&focused.id?focused.id:null;
@@ -249,12 +257,14 @@ export function createPanels(deps) {
   function toggleModal(type,context=null){if(state.modal===(aliases[type]||type))closeModal();else openModal(type,context);}
   $('modal-tabs').addEventListener('click',event=>{const tab=event.target.closest('[data-tab]');if(tab)openModal(tab.dataset.tab);});
   $('close-modal').addEventListener('click',()=>closeModal());
+  $('friends-button')?.addEventListener('click',()=>openModal('friends'));
   $('modal').addEventListener('click',event=>{if(event.target===$('modal'))closeModal();});
   $('modal-content').addEventListener('click',event=>{
     const target=event.target.closest('[data-action]');if(!target||target.disabled)return;
     let data={};try{data=JSON.parse(target.dataset.payload||'{}');}catch{return;}
     const kind=target.dataset.action;
     if(kind==='tab'){openModal(data.tab);return;}
+    if(islandPanels.handle(kind,data))return;
     if(!state.snapshot){toast('Sign in to begin your adventure.');return;}
     if(kind==='pick-slot'){
       const stack=me()[areas[data.area]]?.[data.index];
@@ -270,6 +280,7 @@ export function createPanels(deps) {
     action(kind,data);
   });
   $('modal-content').addEventListener('input',event=>{
+    islandPanels.input(event);
     if(event.target.id==='call-name-input'){
       callNameDraft=event.target.value;customizationSaved=false;
       if($('preview-call-name'))$('preview-call-name').textContent=callNameDraft;
@@ -281,6 +292,7 @@ export function createPanels(deps) {
     if(event.target.dataset.avatar&&avatarDraft){avatarDraft[event.target.dataset.avatar]=event.target.value;customizationSaved=false;renderModal();}
   });
   $('modal-content').addEventListener('submit',event=>{
+    if(islandPanels.submit(event))return;
     if(event.target.id!=='customize-form')return;event.preventDefault();
     if(!state.snapshot||!avatarDraft)return;
     callNameDraft=$('call-name-input').value;

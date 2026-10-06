@@ -298,38 +298,21 @@ func TestAvatarCallNameCooldownAndEarnedHats(t *testing.T) {
 	}
 }
 
-func TestHomesProtectionOwnershipAndDestruction(t *testing.T) {
+func TestMainIslandResidentialConstructionRemoved(t *testing.T) {
 	w, p := testWorld()
 	gain(p, "wood", 30)
 	gain(p, "stick", 20)
 	gain(p, "stone", 20)
 	p.x, p.z = -85, -93.5
-	mustAct(t, w, Action{Action: "build_home", Item: "tent"})
-	h := p.profile.Home
-	if h == nil || h.X != -85 || h.Z != -90 || h.Safe {
-		t.Fatal("home placement incorrect")
-	}
-	mustAct(t, w, Action{Action: "create_safezone"})
-	if !h.Safe {
-		t.Fatal("clear building site not protected")
-	}
-	w.Join("two", "Visitor")
-	other := w.players["two"]
-	if !w.homeBlocked(other, h.X+7, h.Z) || w.homeBlocked(p, h.X+7, h.Z) {
-		t.Fatal("safe zone entrance did not enforce ownership")
-	}
-	w.damageHome("one", 1000)
-	if p.profile.Home == nil {
-		t.Fatal("safe home destroyed")
-	}
-	p.profile.Home.Safe = false
-	w.damageHome("one", 1000)
-	if p.profile.Home != nil {
-		t.Fatal("unprotected tent cannot be destroyed")
+	if err := w.Act("one", Action{Action: "build_home", Item: "tent"}); err == nil {
+		t.Fatal("old main-island home construction still available")
 	}
 	p.x, p.z = -35, -35
 	if err := w.Act("one", Action{Action: "build_home", Item: "cabin"}); err == nil {
-		t.Fatal("building outside a clearing accepted")
+		t.Fatal("main-island cabin construction still available")
+	}
+	if p.profile.Home != nil || p.profile.Inventory["wood"] != 30 || len(w.StaticLayout().Zones) != 0 {
+		t.Fatal("rejected build spent materials or left residential plots on the map")
 	}
 }
 
@@ -440,34 +423,32 @@ func TestBoostedMovementCannotSkipThinCabinWall(t *testing.T) {
 	}
 }
 
-func TestSafeZoneCannotTrapVisitorInCollisionMargin(t *testing.T) {
+func TestClosingIslandVisitsReturnsVisitorsToMain(t *testing.T) {
 	w, p := testWorld()
-	p.profile.Home = &Home{Owner: "one", Kind: "tent", X: -85, Z: -90, Health: 120, MaxHealth: 120}
-	p.x, p.z = -85, -93
+	p.profile.HomeIsland = &Island{Owner: "one", Visitors: true, Builders: map[string]bool{}}
 	w.Join("two", "Visitor")
 	v := w.players["two"]
-	v.x, v.z = -76.8, -90
-	if err := w.Act("one", Action{Action: "create_safezone"}); err == nil || p.profile.Home.Safe {
-		t.Fatal("safe-zone creation trapped a visitor inside its collision margin")
+	w.setIsland(v, "one")
+	mustAct(t, w, Action{Action: "island_visitors", Enabled: false})
+	if v.island != "" || p.profile.HomeIsland.Visitors {
+		t.Fatal("closing visits left a visitor on the island")
 	}
-	v.x = -75
-	mustAct(t, w, Action{Action: "create_safezone"})
 }
 
-func TestOfflineHomeDamageSurvivesReconnectAndRestart(t *testing.T) {
+func TestLegacyHomesMigrateToIslandsWithoutLosingMaterials(t *testing.T) {
 	w, p := testWorld()
 	p.profile.Home = &Home{Owner: "one", Kind: "tent", X: -85, Z: -90, Health: 120, MaxHealth: 120}
 	w.Leave("one")
-	w.damageHome("one", 25)
 	restored := New(w.Profiles())
 	restored.Join("one", "Baker")
-	if restored.players["one"].profile.Home.Health != 95 {
-		t.Fatal("offline home damage lost after restart")
+	q := restored.players["one"]
+	if q.profile.Home != nil || q.profile.HomeIsland == nil || q.profile.Recovery["wood"] != 6 || q.profile.Recovery["stick"] != 8 || q.profile.Recovery["stone"] != 4 {
+		t.Fatal("legacy home did not migrate to an island with material recovery")
 	}
-	w.damageHome("one", 1000)
-	w.Join("one", "Baker")
-	if w.players["one"].profile.Home != nil {
-		t.Fatal("reconnect resurrected a destroyed offline home")
+	again := New(restored.Profiles())
+	again.Join("one", "Baker")
+	if again.players["one"].profile.Recovery["wood"] != 6 {
+		t.Fatal("restarting repeated the legacy material refund")
 	}
 }
 
@@ -487,9 +468,8 @@ func TestShelterFootprintAndCampfirePlacementRespectObstacles(t *testing.T) {
 	}
 	w.colliders = nil
 	p.z = -79.5
-	mustAct(t, w, Action{Action: "build_home", Item: "cabin"})
-	if err := w.Act("one", Action{Action: "create_safezone"}); err == nil || p.profile.Home.Safe {
-		t.Fatal("shelter near clearing edge received a safe zone without clearance")
+	if err := w.Act("one", Action{Action: "build_home", Item: "cabin"}); err == nil {
+		t.Fatal("cleared ground bypassed home-island requirement")
 	}
 }
 

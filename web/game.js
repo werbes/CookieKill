@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import {createSnapshotDecoder} from './state-sync.js';
+import {createIslandScene} from './island-scene.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
@@ -18,6 +19,7 @@ const materialEmoji = {wood:'🪵',stick:'╱',stone:'◈',dough:'◕',berry:'�
 const buffNames = {speed:'QUICK FEET',slow:'SLOWED',weaken:'WEAKER THROWS',weak:'WEAKER THROWS',range:'LONG THROW',short:'SHORT THROW',swim:'OCEAN LEGS',superstrength:'SUPERSTRENGTH',protein:'PROTEIN BOOST',training:'TRAINING BOOST'};
 const state = {player:null,snapshot:null,ws:null,connected:false,playing:false,locked:false,modal:null,menuOpen:false,context:null,email:'',yaw:0,pitch:0,keys:new Set(),lastInput:0,selected:'sugar',selectedSlot:0,hotkeys:[],nodes:new Map(),animals:new Map(),players:new Map(),homes:new Map(),projectiles:new Map(),events:new Set(),nearest:null,lastHealth:100,localPosition:new THREE.Vector3(-35,1.7,-35),handSwing:0,lastThrow:0,lastSnapshot:0,hasPlayed:false,wasModalLocked:false,worldReady:false,serverRecipes:[],intentYaw:false};
 let renderer, scene, camera, clock, worldGroup, hand, water, waterPositions, landingTime=0, lastUI=0, lastMinimap=0, lastFrame=0, lastAnimation=0, lastPanelRefresh=0, miniContext;
+let islandScene, buildGhost;
 const dynamicGroup = new THREE.Group();
 const materials = new Map();
 const mat = (color, opts={}) => {
@@ -51,7 +53,7 @@ const flatLabel = (text,color,background,width=512,height=100) => {
   const label=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:sprite.material.map,transparent:true,side:THREE.DoubleSide,depthWrite:false}));
   label.scale.copy(sprite.scale);sprite.material.dispose();return label;
 };
-function addTree(x,z,scale=1,kind=0) {
+function addTree(x,z,scale=1,kind=0,color=null,variant=0) {
   const group=new THREE.Group();worldGroup.add(group);group.position.set(x,0,z);group.scale.setScalar(scale);
   const h=5+random()*3;
   cylinder(.24,.53,h,'#73503b',0,h/2,0,group,6);
@@ -66,6 +68,8 @@ function addTree(x,z,scale=1,kind=0) {
     sphere(1.8,'#759348',-1.4,h-.2,.1,group,0);
     sphere(1.3,'#92a65a',.2,h+1.8,.15,group,0);
   }
+  if(color)group.traverse(o=>{if(o.isMesh&&o.geometry.type==='IcosahedronGeometry')o.material=mat(color);});
+  group.rotation.y=variant*.83;group.scale.x*=1+(variant%3)*.08;
   return group;
 }
 function addRock(x,z,scale=1,parent=worldGroup) {
@@ -141,6 +145,7 @@ function coastAt(x) {
   return 32+11*Math.sin((x+240)*.021)+5*Math.sin(x*.057);
 }
 const worldBounds = () => state.layout||{minX:-240,maxX:240,minZ:-260,maxZ:200};
+const caveHeight = (x,z) => x>=117&&x<=123&&z<=-98&&z>=-115 ? -4*(-98-z)/17 : x>=107&&x<=133&&z<=-113&&z>=-129 ? -4 : 0;
 const scenery = new Map();
 function createEnvironment(layout=null) {
   if(layout)state.layout=layout;
@@ -156,6 +161,10 @@ function createEnvironment(layout=null) {
     const variation=Math.sin(x*.17)*Math.cos(z*.2)*.018;c.offsetHSL(0,0,variation);colors.push(c.r,c.g,c.b);
   }
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();
+  // Leave a genuine opening above the descending cave entrance.
+  const terrainIndex=geometry.index.array,kept=[];
+  for(let i=0;i<terrainIndex.length;i+=3){const ids=[terrainIndex[i],terrainIndex[i+1],terrainIndex[i+2]],x=ids.reduce((n,id)=>n+positions.getX(id),0)/3,z=ids.reduce((n,id)=>n+positions.getZ(id),0)/3;if(x>116&&x<124&&z<-97&&z>-116)continue;kept.push(...ids);}
+  geometry.setIndex(kept);
   const land=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,flatShading:true}));land.receiveShadow=true;worldGroup.add(land);
   const verts=[],indices=[],waterColors=[];
   for(let i=0;i<=80;i++){const x=bounds.minX+(0-bounds.minX)*i/80,coast=coastAt(x);for(let j=0;j<=52;j++){const t=j/52,z=coast+(bounds.maxZ-coast)*t;verts.push(x,.035,z);const c=new THREE.Color('#82c7c1').lerp(new THREE.Color('#377f94'),clamp(t*2,0,1));waterColors.push(c.r,c.g,c.b);if(i<80&&j<52){const n=i*53+j;indices.push(n,n+1,n+53,n+1,n+54,n+53);}}}
@@ -166,11 +175,13 @@ function createEnvironment(layout=null) {
   for(const p of state.layout?.paths||[]){ground(p.width,p.depth,p.z>=0&&p.x>=0?'#8c9187':'#b7ac80',p.x,p.z,.022);if(p.x>=0&&p.z>=0){const horizontal=p.width>p.depth;for(let i=-.5;i<.5;i+=.1)ground(horizontal?3:.15,horizontal?.15:3,'#e1d8af',p.x+(horizontal?i*p.width:0),p.z+(horizontal?0:i*p.depth),.029);}}
   for(const p of state.layout?.props||[]){
     let o;const s=p.scale||1;
-    if(p.kind==='tree'||p.kind==='pine')o=addTree(p.x,p.z,s,p.kind==='pine'?1:0);
+    if(p.kind==='tree'||p.kind==='pine')o=addTree(p.x,p.z,s,p.kind==='pine'?1:0,p.color,p.variant);
     else if(p.kind==='palm'){addPalm(p.x,p.z,s);o=worldGroup.children.at(-1);}
     else if(p.kind==='rock'||p.kind==='beach_rock'){o=addRock(p.x,p.z,s);if(p.kind==='beach_rock')o.material=mat('#cbb68e');}
     else if(p.kind==='bush'){o=sphere(s,'#6f8950',p.x,s*.48,p.z);o.scale.set(1,.7,.9);}
-    else if(p.kind==='cactus'){o=new THREE.Group();worldGroup.add(o);o.position.set(p.x,0,p.z);buildCactus(o,s);}
+    else if(p.kind==='cactus'){o=new THREE.Group();worldGroup.add(o);o.position.set(p.x,0,p.z);buildCactus(o,s,p.color,p.variant);}
+    else if(p.kind.startsWith('cave_'))continue;
+    else if(p.kind==='city_plant'||p.kind==='plant'){o=new THREE.Group();worldGroup.add(o);o.position.set(p.x,0,p.z);cylinder(.45,.32,.6,'#b58162',0,.3,0,o);sphere(.75,p.color||'#729062',0,1.05,0,o).scale.set(.8,1.2,.8);}
     else o=addBuilding(p.x,p.z,p.kind,p);
     if(o){o.userData.prop=p;scenery.set(p.id,o);}
   }
@@ -183,11 +194,35 @@ function createEnvironment(layout=null) {
   for(let i=0;i<520;i++){const x=-235+flowers()*228,z=-253+flowers()*278;if(z>coastAt(x)-22)continue;const blocked=(state.layout?.zones||[]).some(p=>Math.abs(x-p.x)<p.width/2&&Math.abs(z-p.z)<p.depth/2);if(!blocked){if(i%6===0)addMushroom(x,z,.6+flowers());else addGrass(x,z,'#718e4b',.5+flowers());}}
   for(let i=0;i<22;i++)addCloud(-230+random()*470,40+random()*30,-240+random()*450,1+random());
   const sun=sphere(6,'#fff0c4',-80,70,-245);sun.material=new THREE.MeshBasicMaterial({color:'#ffeebd'});sun.castShadow=false;
+  createCave();
+  worldGroup.visible=!state.snapshot?.me.island;
 }
-function buildCactus(g,scale=1){
+function buildCactus(g,scale=1,color=null,variant=0){
   cylinder(.25,.3,2.3,'#7b9b61',0,1.15,0,g,6);sphere(.25,'#86a86d',0,2.28,0,g);
   const arm=cylinder(.14,.18,.8,'#77975b',.43,1.1,0,g,6);arm.rotation.z=Math.PI/2;
   cylinder(.15,.18,.9,'#89a36c',.77,1.5,0,g,6);sphere(.16,'#91af74',.77,1.95,0,g);g.scale.setScalar(scale);
+  if(variant%2){const arm2=cylinder(.14,.17,.8,'#719166',-.48,.9,0,g);arm2.rotation.z=Math.PI/2;cylinder(.16,.18,1.3,'#779768',-.85,1.4,0,g);sphere(.17,'#86a472',-.85,2.05,0,g);}
+  if(color)g.traverse(o=>{if(o.isMesh)o.material=mat(color);});g.rotation.y=variant*.9;g.scale.y*=1+(variant%3)*.13;
+}
+function createCave(){
+  const clay='#ad825f',rock='#aa9980',firstChild=worldGroup.children.length;
+  // Ramp drops four metres before the two chambers branch to either side.
+  // The coarse terrain mesh cuts on four-metre cells; bridge its lip to the ramp.
+  ground(8,4,'#d4ae77',120,-96,.01);
+  const floor=box(6,.2,Math.hypot(17,4),clay,120,-2.1,-106.5);floor.rotation.x=-Math.atan2(4,17);
+  ground(26,16,clay,120,-121,-4);
+  box(.8,7,16.8,rock,106.6,-.5,-121);box(.8,7,16.8,rock,133.4,-.5,-121);
+  box(.8,7,17,rock,116.6,-.5,-106.5);box(.8,7,17,rock,123.4,-.5,-106.5);
+  box(27.6,7,.8,rock,120,-.5,-129.4);box(10.5,7,.8,rock,111.75,-.5,-113);box(10.5,7,.8,rock,128.25,-.5,-113);
+  box(3,4,8,rock,120,-2,-124);box(28,.6,16,rock,120,-.5,-122);
+  for(const x of [116.2,123.8])for(let i=0;i<7;i++){const r=sphere(1.5,rock,x,.25-i*.15,-98-i*2.4);r.scale.set(1,1.15,1.1);}
+  for(const [x,y,z,s] of [[117,1,-98,2.1],[123,1,-98,2.1],[120,3,-100,2.3],[115,.5,-105,1.7],[125,.6,-103,1.9]]){const r=sphere(s,rock,x,y,z);r.scale.set(1,.75,1.1);}
+  for(const [x,z] of [[114,-99],[126,-100],[116,-95],[125,-106]])addGrass(x,z,'#859367',1.6);
+  for(let i=0;i<7;i++)for(const side of [-1,1]){const r=sphere(.7+(i%3)*.15,rock,120+side*13.15,-3.25+(i%2)*1.15,-115.5-i*1.8);r.scale.set(.65,1.2,1.5);}
+  for(let i=0;i<3;i++){const r=sphere(1.3,rock,120,-3+i*1.15,-120.6);r.scale.set(1.05,.85,.65);}
+  // A little warm ambient fill keeps the shaded rock faces visible underground.
+  for(const object of worldGroup.children.slice(firstChild))object.traverse(child=>{if(child.isMesh)child.material=mat(child.material.color.getHex(),{emissive:'#9c6547',emissiveIntensity:.16});});
+  for(const [x,y,z,color] of [[120,1,-99,'#ffe1ad'],[120,-1.8,-108,'#ffe1ad'],[111,-1.8,-124,'#ffc0d7'],[129,-1.8,-124,'#9edff7']]){const lamp=new THREE.PointLight(color,14,17,2);lamp.position.set(x,y,z);worldGroup.add(lamp);}
 }
 function makeCookie(kind='sugar',scale=1) {
   const g=new THREE.Group();
@@ -270,13 +305,21 @@ function updateBakeryAppearance(n){
 function nodeObject(n) {
   const g=new THREE.Group();
   switch(n.kind){
-    case 'wood': for(let i=0;i<3;i++){const m=cylinder(.19,.22,1.4,'#91673f',(i-1)*.37,.24,i%2*.15,g,7);m.rotation.z=Math.PI/2;sphere(.18,'#bb9659',.72,.24,i%2*.15,g).scale.x=.15;}break;
+    case 'wood': {if(!scenery.has(n.id)){const tree=addTree(0,0,n.scale||1,n.variant%3===1?1:0,n.color,n.variant);worldGroup.remove(tree);g.add(tree);}break;}
     case 'stick':for(let i=0;i<4;i++){const m=cylinder(.035,.06,1.25,'#927a48',(i-2)*.12,.12,0,g,5);m.rotation.set(.2*i,.3*i,Math.PI/2-.1*i);}break;
     case 'stone':{const a=addRock(-.25,0,.35,g),b=addRock(.3,.1,.28,g);if(n.x<0&&n.z>coastAt(n.x)-18)a.material=b.material=mat('#cab590');break;}
     case 'dough':{const patch=cylinder(1.1,1.1,.025,'#d6c994',0,.027,0,g,12);for(let i=0;i<5;i++){const m=box(.65,.03,.055,'#b6a67b',(i-2)*.19,.057,(i%2-.5)*.35,g);m.rotation.y=-.7;}sphere(.1,'#eddeb0',.3,.1,.15,g);break;}
     case 'berry':sphere(.65,'#647f48',0,.5,0,g,1);sphere(.5,'#79924e',.4,.45,.1,g);for(let i=0;i<10;i++){const a=i*2.4;sphere(.105,'#b7504f',Math.cos(a)*.53,.65+(i%3)*.13,Math.sin(a)*.5,g);}break;
     case 'nut':sphere(.55,'#829355',0,.42,0,g);for(let i=0;i<7;i++)sphere(.15,'#9c7047',Math.cos(i)*.5,.13,Math.sin(i)*.5,g);break;
-    case 'cactus':buildCactus(g);break;
+    case 'cactus':buildCactus(g,n.scale||1,n.color,n.variant);break;
+    case 'pink_lollipop': case 'blue_lollipop': {
+      const color=n.kind==='pink_lollipop'?'#f4a8c5':'#88c9ee';
+      cylinder(.035,.035,.7,'#f5ead5',0,.35,0,g);const sweet=sphere(.22,color,0,.83,0,g,2);sweet.scale.z=.35;
+      mesh(new THREE.TorusGeometry(.12,.025,6,20),'#fff1dc',0,.83,.075,g);
+      const label=textSprite(n.kind==='pink_lollipop'?'A taste of home':'A taste of friendship',color,'#463e4588');label.position.y=1.4;label.scale.set(2.5,.49,1);g.add(label);break;
+    }
+    case 'abu_fanous': {g.add(makePerson('ABU FANOUS','#d9bf87'));const camel=islandScene?.camel();if(camel){camel.position.set(3,0,-1);camel.rotation.y=-.7;g.add(camel);}box(4,.12,3,'#bc8b65',0,3,-2,g);for(const x of [-1.8,1.8])cylinder(.08,.1,3,'#8b6e4d',x,1.5,-2,g);break;}
+    case 'island_chest': {box(1.6,.8,1,'#a07a51',0,.4,0,g);box(1.65,.17,1.06,'#bd935f',0,.85,0,g);box(.2,.25,.06,'#e6c77b',0,.65,.55,g);break;}
     case 'sea_salt':for(let i=0;i<6;i++){const m=box(.15,.17,.17,'#f5ecce',(i%3-1)*.2,.12,Math.floor(i/3)*.2,g);m.rotation.y=i*.3;}break;
     case 'shell':{const m=mesh(new THREE.ConeGeometry(.38,.23,8),'#e5bb9c',0,.12,0,g);m.rotation.z=.3;break;}
     case 'trash':{const b=cylinder(.11,.11,.52,'#8cb7b0',-.16,.13,0,g,8);b.rotation.z=1.2;box(.27,.19,.3,'#cd9b81',.22,.13,.12,g);const ring=mesh(new THREE.TorusGeometry(.18,.025,4,12),'#b7c9b3',.08,.11,-.18,g);ring.rotation.x=Math.PI/2;break;}
@@ -296,11 +339,12 @@ function nodeObject(n) {
     case 'dummy':cylinder(.09,.14,1.5,'#937546',0,.75,0,g,6);{const target=cylinder(.5,.5,.2,'#d5a65e',0,1.6,0,g,12);target.rotation.x=Math.PI/2;const ring=mesh(new THREE.TorusGeometry(.31,.025,4,16),'#a16343',0,1.6,.12,g);sphere(.075,'#a16343',0,1.6,.12,g);}break;
     default:sphere(.35,'#ccb477',0,.3,0,g);
   }
-  g.position.set(n.x,0,n.z);g.userData.node=n;
+  g.position.set(n.x,n.y??caveHeight(n.x,n.z),n.z);g.userData.node=n;
   return g;
 }
 function makeAnimal(a){
   const g=new THREE.Group(),s=a.species;
+  if(a.egg){const egg=sphere(.3,'#e7dfb9',0,.25,0,g,2);egg.scale.set(.8,1.3,.8);for(let i=0;i<5;i++)sphere(.035,'#baad81',Math.sin(i*2.4)*.2,.25+Math.cos(i)*.25,.15,g);const label=textSprite('Egg · leave undisturbed','#fff3dc','#294b43b0');label.position.y=1.3;label.scale.set(2.8,.5,1);g.add(label);g.userData.label=label;return g;}
   const size={whale:3.4,shark:1.5,dolphin:1.1,sea_lion:1.2,turtle:.65,fish:.5}[s]||.8;
   const color={whale:'#5d8796',shark:'#829593',dolphin:'#8fb5b2',sea_lion:'#a58e6d',turtle:'#83986b',fish:'#d0b87c'}[s]||'#81aaa5';
   if(s==='turtle'){
@@ -328,6 +372,7 @@ function initializeRenderer(){
     scene.add(new THREE.HemisphereLight('#f9efd3','#718b5b',2.15));
     const sun=new THREE.DirectionalLight('#ffe4ac',3.25);sun.position.set(-50,70,-30);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-65;sun.shadow.camera.right=65;sun.shadow.camera.top=65;sun.shadow.camera.bottom=-65;sun.shadow.camera.far=160;sun.shadow.bias=-.0004;sun.shadow.normalBias=.055;scene.add(sun);sun.target.position.set(-22,0,-20);scene.add(sun.target);
     worldGroup=new THREE.Group();scene.add(worldGroup);scene.add(dynamicGroup);createEnvironment();
+    islandScene=createIslandScene({THREE,scene,box,sphere,cylinder,mesh,mat,textSprite,disposeObject,makeAnimal});
     hand=new THREE.Group();hand.position.set(.48,-.43,-.82);camera.add(hand);
     const palm=box(.17,.18,.29,'#d8ad7d',.1,-.09,.12,hand);palm.name='hand-skin';palm.rotation.z=-.1;const sleeve=cylinder(.115,.15,.53,'#688660',.15,-.21,.34,hand,6);sleeve.name='hand-sleeve';sleeve.rotation.x=1.03;const cookie=makeCookie('sugar',1);cookie.name='held-cookie';hand.add(cookie);
     hand.rotation.set(.55,-.25,-.24);hand.visible=false;
@@ -411,15 +456,17 @@ function receiveSnapshot(snapshot){
   if(snapshot.layout&&state.layout?.version!==snapshot.layout.version)createEnvironment(snapshot.layout);
   else if(snapshot.layout)state.layout=snapshot.layout;
   state.snapshot=snapshot;state.serverRecipes=snapshot.recipes||[];state.lastSnapshot=performance.now();
+  worldGroup.visible=!snapshot.me.island;islandScene?.sync(snapshot);
+  if(old&&old.island!==snapshot.me.island){cancelBuild();state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+1.7,snapshot.me.z);state.zone=null;}
   if(first){state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+1.7,snapshot.me.z);state.yaw=snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.selected=snapshot.me.selected||'sugar';updateHeldCookie();}
   if(old&&snapshot.me.health<old.health-1){$('damage-overlay').style.opacity='.5';setTimeout(()=>$('damage-overlay').style.opacity='0',240);}
   if(old&&snapshot.me.deaths>old.deaths){toast('You were crumbled. Your safe slots and hotbar are still yours. Back to the Wildwood!','error');state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+1.7,snapshot.me.z);}
   state.selectedSlot=snapshot.me.selectedSlot||0;
   if(snapshot.me.selected!==state.selected){state.selected=snapshot.me.selected||'';updateHeldCookie();}
   const avatarSignature=JSON.stringify(snapshot.me.avatar||{});if(state.avatarSignature!==avatarSignature){state.avatarSignature=avatarSignature;const a=snapshot.me.avatar||{};hand.getObjectByName('hand-skin').material=mat(skinTones[a.skin]||skinTones[1]);hand.getObjectByName('hand-sleeve').material=mat(a.shirt==='tank'?(skinTones[a.skin]||skinTones[1]):avatarColor(a.shirtColor,'#688660'));}
-  syncObjects(snapshot.nodes||[],state.nodes,nodeObject,(o,n)=>{o.visible=n.available!==false||n.kind==='cactus';o.userData.node=n;if(n.kind==='bakery_plot')updateBakeryAppearance(n);});
-  syncObjects(snapshot.players||[],state.players,()=>new THREE.Group(),(o,p)=>{const signature=JSON.stringify([p.callName,p.name,p.avatar]);if(o.userData.signature!==signature){for(const child of [...o.children]){o.remove(child);disposeObject(child);}o.add(makePerson(p.callName||p.name,'#d19b69',false,p.avatar||{}));o.userData.signature=signature;}o.userData.target=new THREE.Vector3(p.x,p.y||0,p.z);o.userData.yaw=p.yaw;if(!o.userData.initialized){o.position.copy(o.userData.target);o.userData.initialized=true;}});
-  syncObjects((snapshot.animals||[]).filter((a)=>a.health>0),state.animals,makeAnimal,(o,a)=>{o.userData.target=new THREE.Vector3(a.x,a.y||0,a.z);o.scale.setScalar(a.scale||1);if(!o.userData.initialized){o.position.copy(o.userData.target);o.userData.initialized=true;}o.userData.animal=a;});
+  syncObjects(snapshot.nodes||[],state.nodes,nodeObject,(o,n)=>{o.visible=n.available!==false||n.kind==='cactus';o.userData.node=n;if(n.kind==='wood'&&scenery.has(n.id))scenery.get(n.id).visible=n.available!==false;if(n.kind==='bakery_plot')updateBakeryAppearance(n);});
+  syncObjects(snapshot.players||[],state.players,()=>new THREE.Group(),(o,p)=>{const signature=JSON.stringify([p.callName,p.name,p.avatar,p.friendCode,p.ridingCamel,p.posture]);if(o.userData.signature!==signature){for(const child of [...o.children]){o.remove(child);disposeObject(child);}const person=makePerson(p.callName||p.name,'#d19b69',false,p.avatar||{});o.add(person);if(p.friendCode){const label=textSprite(p.friendCode,'#e6e9c6','#37544588');person.children.filter(c=>c.isSprite).forEach(c=>c.position.y=2.65);label.position.y=2.22;label.scale.set(2,.34,1);person.add(label);}if(p.ridingCamel){o.add(islandScene.camel());person.position.y=1.5;}if(p.posture==='sitting')person.scale.y=.65;if(p.posture==='lying'){person.rotation.x=-Math.PI/2;person.position.y=.7;}o.userData.signature=signature;}o.userData.target=new THREE.Vector3(p.x,p.y||0,p.z);o.userData.yaw=p.yaw;if(!o.userData.initialized){o.position.copy(o.userData.target);o.userData.initialized=true;}});
+  syncObjects((snapshot.animals||[]).filter((a)=>a.health>0||a.egg),state.animals,()=>new THREE.Group(),(o,a)=>{if(o.userData.egg!==a.egg||!o.children.length){for(const child of [...o.children]){o.remove(child);disposeObject(child);}const animal=makeAnimal(a);o.add(animal);o.userData.label=animal.userData.label;o.userData.egg=a.egg;o.userData.lastNeed=null;}o.userData.target=new THREE.Vector3(a.x,a.y||0,a.z);o.scale.setScalar(a.egg?1:(a.scale||1));if(!o.userData.initialized){o.position.copy(o.userData.target);o.userData.initialized=true;}o.userData.animal=a;});
   syncObjects((snapshot.homes||[]).map(h=>({...h,id:h.owner})),state.homes,()=>new THREE.Group(),(o,h)=>{const signature=JSON.stringify([h.x,h.z,h.kind,h.safe,h.username,h.callName]);if(o.userData.signature!==signature){for(const child of [...o.children]){o.remove(child);disposeObject(child);}o.add(homeObject(h));o.userData.signature=signature;}});
   syncObjects(snapshot.projectiles||[],state.projectiles,(p)=>{const g=makeCookie(p.item,.65);g.position.set(p.x,p.y,p.z);return g;},(o,p)=>{o.userData.target=new THREE.Vector3(p.x,p.y,p.z);o.userData.velocity=new THREE.Vector3(p.vx,p.vy,p.vz);});
   for(const event of snapshot.events||[]){
@@ -427,6 +474,9 @@ function receiveSnapshot(snapshot){
     if(!first||snapshot.time-event.time<2){addFeed(event.text,event.kind);if((event.kind==='hit'||event.kind==='defeat')&&event.actor===state.player.id){const reward=event.reward>0?' <span class="hit-reward">'+escapeHTML(event.hitZone==='head'?'HEADSHOT':event.hitZone==='hand/foot'?'HAND / FOOT':'BODY')+' +'+event.reward+' coins</span>':'';$('hit-marker').innerHTML='×'+reward;$('hit-marker').hidden=false;clearTimeout(state.hitTimer);state.hitTimer=setTimeout(()=>$('hit-marker').hidden=true,event.reward?900:200);}}
   }
   if(state.events.size>300)state.events=new Set((snapshot.events||[]).map((e)=>e.id));
+  const incoming=Object.keys(snapshot.me.friendRequests||{});for(const id of incoming)if(old&&!old.friendRequests?.[id])toast('New friend request. Open Escape → Friends to respond.');
+  const islandSignature=JSON.stringify([snapshot.island,snapshot.friends,snapshot.me.friendRequests,snapshot.me.publicFriendCode,snapshot.me.homeIsland,snapshot.me.homeOffer,snapshot.me.friendsTeleport,snapshot.me.posture,snapshot.me.ridingCamel,snapshot.me.camelOwned,snapshot.me.camelDiscount,snapshot.me.camelRentalUntil]);
+  if(islandSignature!==state.islandSignature){state.islandSignature=islandSignature;if(state.modal)renderModal();updateHUD();}
   const signature=JSON.stringify([snapshot.me.safeSlots,snapshot.me.bagSlots,snapshot.me.hotbar,snapshot.me.recovery,snapshot.me.discovered,snapshot.me.coins,snapshot.me.levels,snapshot.me.bakery,snapshot.me.bakeryLevel,snapshot.me.home,snapshot.me.avatar,snapshot.me.callName,snapshot.me.hats,snapshot.me.equipment,snapshot.me.paint,snapshot.me.canBuildHome,snapshot.me.homeSafeReason]);
   if(signature!==state.inventorySignature){state.inventorySignature=signature;updateHUD();if(state.modal&&state.modal!=='map'&&state.modal!=='help')renderModal();}
   if(first)updateHUD();
@@ -460,20 +510,23 @@ function updateHUD(){
   $('coin-count').textContent=me.coins||0;$('player-name').textContent=me.callName||me.name;
   $('health-value').textContent=Math.ceil(me.health);$('health-bar').style.width=clamp(me.health/me.maxHealth*100,0,100)+'%';
   $('stamina-value').textContent=Math.ceil(me.stamina);$('stamina-bar').style.width=clamp(me.stamina/me.maxStamina*100,0,100)+'%';
-  $('area-name').textContent=areaNames[areaFor(me.x,me.z)];$('position-label').textContent=Math.round(me.x)+' · '+Math.round(me.z);
+  $('area-name').textContent=me.island?'HOME ISLAND':areaNames[areaFor(me.x,me.z)];$('position-label').textContent=Math.round(me.x)+' · '+Math.round(me.z);
   const angle=((state.yaw*180/Math.PI)%360+360)%360;$('compass-direction').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(angle/45)%8];
   const slots=Array.from({length:5},(_,i)=>me.hotbar?.[i]||{item:'',count:0});state.hotkeys=slots.map(s=>s.item);
-  const hotbarSignature=JSON.stringify([slots,state.selectedSlot,me.discovered]);
+  const hotbarSignature=JSON.stringify([slots,state.selectedSlot,me.discovered,!!me.homeIsland,!!me.island]);
   if(hotbarSignature!==state.hotbarSignature){
     state.hotbarSignature=hotbarSignature;
-    $('hotbar').innerHTML=slots.map((slot,i)=>'<button class="hotbar-slot '+(i===state.selectedSlot?'selected ':'')+(!slot.item?'empty':'')+'" data-slot="'+i+'" title="'+escapeHTML(slot.item?itemName(slot.item):'Empty hotbar slot')+' · '+(i+1)+'"><span class="slot-number">'+(i+1)+'</span>'+(slot.item?itemIcon(slot.item)+'<span class="slot-count">'+slot.count+'</span>':'<span class="empty-hotbar">+</span>')+'<span class="slot-safe" aria-label="Kept on death">◆</span></button>').join('');
+    $('hotbar').innerHTML=slots.map((slot,i)=>'<button class="hotbar-slot '+(i===state.selectedSlot?'selected ':'')+(!slot.item?'empty':'')+'" data-slot="'+i+'" title="'+escapeHTML(slot.item?itemName(slot.item):'Empty hotbar slot')+' · '+(i+1)+'"><span class="slot-number">'+(i+1)+'</span>'+(slot.item?itemIcon(slot.item)+'<span class="slot-count">'+slot.count+'</span>':'<span class="empty-hotbar">+</span>')+'<span class="slot-safe" aria-label="Kept on death">◆</span></button>').join('')+((me.homeIsland||me.island)?'<button class="hotbar-slot" data-slot="5" title="Build menu · 6"><span class="slot-number">6</span><span style="font-size:25px">⌂</span><span class="slot-count">BUILD</span></button>':'');
   }
-  const selected=slots[state.selectedSlot];
+  const selected=slots[state.selectedSlot]||{item:'',count:0};
   $('selected-cookie-label').innerHTML=selected.item?escapeHTML(itemName(selected.item).toUpperCase())+' <span>'+escapeHTML(cookieNames[selected.item]?cookieNote(selected.item):'Ready in your hotbar')+'</span>':'EMPTY SLOT <span>Move an item here from your inventory</span>';
+  if(state.building)$('selected-cookie-label').textContent='PLACE '+pretty(state.building.item).toUpperCase()+' · R rotate · PgUp/PgDn height · click place · Esc cancel';
   $('buffs').innerHTML=Object.entries(me.buffs||{}).filter(([,seconds])=>seconds>0).map(([key,seconds])=>'<div class="buff"><span>✦</span><strong>'+escapeHTML(buffNames[key]||pretty(key).toUpperCase())+'</strong><span>'+Math.ceil(seconds)+'s</span></div>').join('');
   const need=Math.min(itemCount('wood'),2)+Math.min(itemCount('stick'),2)+Math.min(itemCount('stone'),3);
-  if(me.bakery){$('objective-title').textContent='The next big batch';$('objective-text').textContent='Your bakery is open. Make dough, upgrade your oven, and build a cookie empire.';$('objective-progress').style.width='100%';}
-  else if(me.coins>=250){$('objective-title').textContent='A little slice of the city';$('objective-text').textContent='You can afford a bakery plot! Find the land sign in Crumb City.';$('objective-progress').style.width='100%';}
+  if(me.island){$('objective-title').textContent='A place of your own';$('objective-text').textContent='Press 6 to build and decorate. Open Friends to invite visitors and choose who can help build.';$('objective-progress').style.width='100%';}
+  else if(me.homeIsland){$('objective-title').textContent='Home across the water';$('objective-text').textContent='Press 6 to return home. Gather wood and stones, or find a wounded fish or turtle for your pond.';$('objective-progress').style.width='100%';}
+  else if(me.coins>=200){$('objective-title').textContent='A sweet path home';$('objective-text').textContent='Find the cave near the middle of Sunbaked Sands. The pink lollipop offers your first island for 200 coins.';$('objective-progress').style.width='100%';}
+  else if(me.bakery){$('objective-title').textContent='The next big batch';$('objective-text').textContent='Your bakery is open. Make dough, upgrade your oven, and build a cookie empire.';$('objective-progress').style.width='100%';}
   else if(Object.keys(inventory()).some((k)=>k!=='sugar'&&cookieNames[k]&&itemCount(k)>0)){$('objective-title').textContent='Cookies with benefits';$('objective-text').textContent='Explore the coast. Trade beach trash with Peace for 3 coins per kilogram.';$('objective-progress').style.width=Math.min(100,me.coins/250*100)+'%';}
   else{$('objective-title').textContent='Bake your own trouble';$('objective-text').textContent='Gather 2 wood, 2 sticks, and 3 stones. Press C to build your first campfire.';$('objective-progress').style.width=need/7*100+'%';}
 }
@@ -486,32 +539,65 @@ function toast(message,type=''){
   while($('toast-stack').children.length>3)$('toast-stack').firstElementChild.remove();
   setTimeout(()=>{el.classList.add('removing');setTimeout(()=>el.remove(),300);},4400);
 }
-function chooseCookie(key){const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot<0||slot>4)return;state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
+function chooseCookie(key){const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot===5&&(state.snapshot?.me.homeIsland||state.snapshot?.me.island)){cancelBuild();openModal('build');return;}if(slot<0||slot>4)return;cancelBuild();state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
 $('hotbar').addEventListener('click',(event)=>{const button=event.target.closest('[data-slot]');if(button)chooseCookie(Number(button.dataset.slot));});
 function throwCookie(){
   if(!state.locked||!state.snapshot||performance.now()-state.lastThrow<160)return;
+  if(state.building){placeBuild();return;}
   state.lastThrow=performance.now();send({type:'input',...movement(),yaw:state.yaw,pitch:state.pitch});action('throw',{item:state.selected});state.handSwing=1;
 }
 function eatCookie(){if(!state.snapshot||!state.selected)return;action(['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
 function nearby(){
   const me=state.snapshot?.me;if(!me)return null;let found=null,best=5;
-  for(const node of state.snapshot.nodes||[]){if(!node.available)continue;const d=Math.hypot(node.x-me.x,node.z-me.z);if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
-  for(const animal of state.snapshot.animals||[]){if(animal.health<=0)continue;const d=Math.hypot(animal.x-me.x,animal.z-me.z);if(d<best){best=d;found={...animal,distance:d,isAnimal:true};}}
+  for(const node of state.snapshot.nodes||[]){if(!node.available)continue;if(node.kind.endsWith('_lollipop')&&(me.y||0)>-2)continue;const d=Math.hypot(node.x-me.x,node.z-me.z);if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
+  for(const animal of state.snapshot.animals||[]){if(animal.health<=0&&!animal.egg)continue;const d=Math.hypot(animal.x-me.x,animal.z-me.z);if(d<best){best=d;found={...animal,distance:d,isAnimal:true};}}
+  for(const object of state.snapshot.island?.objects||[]){const d=Math.hypot(object.x-me.x,object.z-me.z);if(d<best&&Math.abs((object.y||0)-(me.y||0))<3){best=d;found={...object,distance:d,isBuild:true};}}
   return found;
 }
 function updateInteraction(){
   state.nearest=nearby();const n=state.nearest;$('interaction-prompt').hidden=!n||!state.locked;
   if(!n)return;
+  if(state.building){$('interaction-prompt').hidden=true;return;}
+  if(n.isBuild){$('interaction-label').textContent='Use / edit '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent='Move, rotate, use or recover half the materials';return;}
+  if(n.egg){$('interaction-label').textContent='A '+pretty(n.species).toLowerCase()+' egg';$('interaction-detail').textContent='Keep your distance · '+Math.ceil(n.hatchIn||120)+' seconds undisturbed to hatch';return;}
+  if(n.kind==='wood'){$('interaction-label').textContent='Chop tree · '+(n.chopRemaining||n.chopTotal||3)+' chops left';$('interaction-detail').textContent='Fell this tree to collect '+(n.amount||3)+' wood';return;}
   const phrases={wood:['Gather wood','Campfires start with the little things'],stick:['Gather sticks','Every good batch starts somewhere'],stone:['Collect stones','For fire pits and fair trades'],dough:['Dig up cookie dough','Soft earth. Sweet discoveries.'],berry:['Pick wild berries','Try them in your next recipe'],nut:['Gather nuts','Something new for the cookbook'],cactus:['Harvest cactus','An ingredient from the sunbaked sands'],sea_salt:['Collect sea salt','A taste of the ocean'],shell:['Collect seashells','A little treasure from the tide'],trash:['Clean up the beach','Peace pays 3 coins per kilogram'],chest:['Open chest','Good things come in wooden boxes'],fire:['Bake at the campfire','Turn your finds into something delicious'],peace:['Trade with Peace','Good karma. Fair prices.'],desert_trader:['Visit Saffron','The desert has a few secret recipes'],gym:['Get a little stronger','Good cookies deserve a good throwing arm'],vending:['Use protein vending machine','Fuel your next workout or next batch'],land:['Buy bakery land','Build your little cookie empire'],bakery:['Manage your bakery','Fresh batches and brighter prospects'],dummy:['Practice your aim','Left click to throw a cookie']};
   if(n.isAnimal){$('interaction-label').textContent=n.need==='trapped'?'Free the '+pretty(n.species).toLowerCase():n.need==='wounded'?'Help the wounded '+pretty(n.species).toLowerCase():'Befriend the '+pretty(n.species).toLowerCase();$('interaction-detail').textContent=n.need==='wounded'?'Offer one '+itemName('sugar').toLowerCase()+' to help it heal':n.need==='trapped'?'A small kindness goes a long way':n.disposition==='hostile'?'This animal remembers your actions':'The ocean remembers kindness';}
   else{const p=phrases[n.kind]||[n.label,'Press E to interact'];$('interaction-label').textContent=p[0];$('interaction-detail').textContent=p[1];}
 }
 function interact(){
   const n=state.nearest||nearby();if(!n){toast('Move closer to something you can gather or use.');return;}
+  if(n.isBuild){openModal(n.kind==='chest'?'chest':'build_object',n);return;}
+  if(n.kind==='island_chest'){openModal('chest',n);return;}
+  if(n.egg){toast('Stay at least two metres away so this egg can hatch undisturbed.');return;}
+  if(n.isAnimal&&n.need==='wounded'&&['fish','turtle'].includes(n.species)){openModal('animal',n);return;}
   if(n.isAnimal){action('interact',{target:n.id});return;}
   if(n.kind==='fire'){openModal('recipes',n);return;}if(n.kind==='outfit_shop'){openModal('customize',n);return;}
-  if(['peace','desert_trader','gym','vending','land','bakery','bakery_plot','kitchen_shop','general_shop','paint_shop','outfit_shop'].includes(n.kind)){openModal('context',n);return;}
+  if(['peace','desert_trader','gym','vending','land','bakery','bakery_plot','kitchen_shop','general_shop','paint_shop','outfit_shop','pink_lollipop','blue_lollipop','abu_fanous'].includes(n.kind)){openModal('context',n);return;}
   action('interact',{target:n.id});
+}
+function cancelBuild(){
+  state.building=null;if(buildGhost){scene.remove(buildGhost);buildGhost.traverse(o=>{if(o.isMesh)o.material.dispose();});disposeObject(buildGhost);buildGhost=null;}
+}
+function beginBuild({item,object=null}){
+  if(!state.snapshot?.me.island){toast('Travel to a home island to build.');return;}
+  cancelBuild();state.building={item:item||object?.kind,object,rotation:object?.rotation||0,y:object?.y||0};
+  buildGhost=islandScene.objectView({kind:state.building.item,lit:true},state.snapshot.buildCatalog);
+  buildGhost.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.48;o.material.depthWrite=false;o.castShadow=false;}});scene.add(buildGhost);
+  toast('R rotates 45°. Page Up / Down changes height. Click to place; Escape cancels.');setPlaying();
+}
+function updateBuildGhost(){
+  if(!state.building||!buildGhost||!state.snapshot)return;
+  const b=state.building,me=state.snapshot.me,range=clamp((1.7+(me.y||0)-b.y)/Math.max(.2,Math.tan(-state.pitch)),2.5,7);
+  b.x=Math.round((me.x-Math.sin(state.yaw)*range)*2)/2;b.z=Math.round((me.z-Math.cos(state.yaw)*range)*2)/2;
+  buildGhost.position.set(b.x,b.y,b.z);buildGhost.rotation.y=b.rotation*Math.PI/180;
+  const valid=Math.hypot(b.x,b.z)<32;buildGhost.traverse(o=>{if(o.isMesh)o.material.color.set(valid?'#b3e8b7':'#ed9b8b');});
+  buildGhost.visible=state.locked&&!state.modal;
+}
+function placeBuild(){
+  const b=state.building;if(!b)return;
+  action(b.object?'move_build':'build',{item:b.item,target:b.object?.id||'',x:b.x,y:b.y,z:b.z,rotation:b.rotation});state.lastThrow=performance.now();
+  if(b.object)cancelBuild();
 }
 function capturePrompt(){if(state.player&&!state.modal&&!state.menuOpen&&state.hasPlayed)$('capture-prompt').hidden=false;}
 function setPlaying(){
@@ -547,11 +633,12 @@ document.addEventListener('mousemove',(event)=>{if(!state.locked)return;state.ya
 document.addEventListener('mousedown',(event)=>{if(!state.locked)return;if(event.button===0)throwCookie();if(event.button===2)eatCookie();});
 document.addEventListener('contextmenu',(event)=>{if(state.player)event.preventDefault();});
 document.addEventListener('keydown',(event)=>{
-  if(event.code==='Escape'){if(event.repeat)return;event.preventDefault();escapeHandled=true;toggleMenu();return;}
+  if(event.code==='Escape'){if(event.repeat)return;event.preventDefault();escapeHandled=true;if(state.building){cancelBuild();return;}toggleMenu();return;}
   if(event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLSelectElement||event.ctrlKey||event.metaKey||event.altKey)return;
   if(!state.player)return;
   if(state.locked&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight'].includes(event.code)){event.preventDefault();state.keys.add(event.code);}
   if(event.repeat)return;
+  if(state.building&&state.locked){if(event.code==='KeyR'){state.building.rotation=(state.building.rotation+45)%360;return;}if(event.code==='PageUp'||event.code==='PageDown'){event.preventDefault();state.building.y=clamp(state.building.y+(event.code==='PageUp'?.5:-.5),0,12);return;}}
   if(event.code==='Enter'&&!state.locked&&!state.modal)setPlaying();
   if(state.menuOpen)return;
   if(event.code==='KeyI')toggleModal('inventory');
@@ -559,7 +646,8 @@ document.addEventListener('keydown',(event)=>{
   if(event.code==='KeyM')toggleModal('map');
   if(event.code==='KeyE'&&state.locked)interact();
   if(event.code==='KeyQ'&&state.locked)eatCookie();
-  if(/^Digit[1-5]$/.test(event.code)&&!state.modal)chooseCookie(Number(event.code.slice(5))-1);
+  if(event.code==='KeyV'&&state.locked)action('camel_ride');
+  if(/^Digit[1-6]$/.test(event.code)&&!state.modal)chooseCookie(Number(event.code.slice(5))-1);
 });
 document.addEventListener('keyup',(event)=>{state.keys.delete(event.code);if(event.code==='Escape'){if(!escapeHandled)toggleMenu();escapeHandled=false;}});
 window.addEventListener('blur',()=>{state.keys.clear();escapeHandled=false;});
@@ -579,22 +667,24 @@ function animate(now){
   const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;landingTime+=dt;
   const me=state.snapshot?.me;
   if(state.player&&me){
-    const target=new THREE.Vector3(me.x,(me.y||0)+1.7,me.z);
+    const eye=me.posture==='lying'?.5:me.posture==='sitting'?1.05:me.ridingCamel?3.1:1.7;
+    const target=new THREE.Vector3(me.x,(me.y||0)+eye,me.z);
     if(state.localPosition.distanceTo(target)>15)state.localPosition.copy(target);
     state.localPosition.lerp(target,Math.min(1,dt*15));
     const moving=movement();const walking=Math.hypot(moving.x,moving.z)>.05;
     const bob=walking&&state.locked?Math.sin(now*.012*(moving.sprint?1.45:1))*.027:0;
     camera.position.copy(state.localPosition);camera.position.y+=bob;camera.rotation.set(state.pitch,state.yaw,0);
     camera.fov=THREE.MathUtils.lerp(camera.fov,moving.sprint&&walking?73:68,dt*5);camera.updateProjectionMatrix();
+    updateBuildGhost();
     hand.visible=true;hand.position.set(.48,-.43+bob*.55,-.82);
     if(state.handSwing>0){hand.position.z-=Math.sin((1-state.handSwing)*Math.PI)*.36;hand.rotation.x=.55-state.handSwing*.35;state.handSwing=Math.max(0,state.handSwing-dt*4);}
     else if(state.handSwing<0){hand.position.y+=Math.sin((1+state.handSwing)*Math.PI)*.33;hand.position.x-=Math.sin((1+state.handSwing)*Math.PI)*.3;state.handSwing=Math.min(0,state.handSwing+dt*2.5);}
     else hand.rotation.x=.55;
     hand.rotation.z=-.24+(walking?Math.sin(now*.006)*.025:Math.sin(now*.002)*.009);
     if(now-lastUI>120){updateHUD();updateInteraction();lastUI=now;}
-    if(now-lastPanelRefresh>1000&&(state.modal==='customize'||(state.modal==='shop'&&state.context?.kind==='outfit_shop'))){renderModal();lastPanelRefresh=now;}
+    if(now-lastPanelRefresh>1000&&(['customize','build_object','chest','animal'].includes(state.modal)||(state.modal==='shop'&&['outfit_shop','abu_fanous'].includes(state.context?.kind)))){renderModal();lastPanelRefresh=now;}
     if(now-lastMinimap>150){panels?.drawMinimap();if(state.modal==='map')panels?.drawWorldMap();lastMinimap=now;}
-    if(interactionRing){interactionRing.visible=!!state.nearest&&state.locked;if(state.nearest){interactionRing.position.set(state.nearest.x,.08,state.nearest.z);interactionRing.material.opacity=.36+Math.sin(now*.004)*.1;}}
+    if(interactionRing){interactionRing.visible=!!state.nearest&&state.locked&&!state.building;if(state.nearest){interactionRing.position.set(state.nearest.x,(me.y||0)+.08,state.nearest.z);interactionRing.material.opacity=.36+Math.sin(now*.004)*.1;}}
   }else{
     camera.position.set(-27+Math.sin(landingTime*.05)*.55,3.4+Math.sin(landingTime*.12)*.07,-23+Math.cos(landingTime*.05)*.3);camera.lookAt(-42,2,-44);
   }
@@ -608,8 +698,9 @@ function animate(now){
     if(Math.hypot(dx,dz)>.02)object.rotation.y=Math.atan2(-dx,-dz);
     object.position.lerp(target,Math.min(1,dt*8));object.position.y+=Math.sin(now*.0017+object.position.x)*.002;
     const animal=object.userData.animal;if(Number.isFinite(animal.heading))object.rotation.y=animal.heading;
+    if(animal.egg){if(object.userData.label)object.userData.label.visible=!!me&&Math.hypot(animal.x-me.x,animal.z-me.z)<16;continue;}
     const plastic=object.getObjectByName('rescue-plastic');if(plastic)plastic.visible=animal.need==='trapped';const wound=object.getObjectByName('animal-wound');if(wound)wound.visible=animal.need==='wounded'; const animalStatus=animal.need+'|'+animal.disposition; if(object.userData.lastNeed!==animalStatus){
-      object.userData.lastNeed=animalStatus;const old=object.userData.label;if(old){object.remove(old);old.material.map.dispose();old.material.dispose();}
+      object.userData.lastNeed=animalStatus;const old=object.userData.label;if(old){old.parent?.remove(old);old.material.map.dispose();old.material.dispose();}
       const label=textSprite(pretty(animal.species)+(animal.need?' · '+pretty(animal.need):animal.disposition==='hostile'?' · ANGRY':''),'#fff3dc','#294b43b0',512,90);label.position.y=(animal.species==='whale'?3:1.4);label.scale.set(2.8,.5,1);object.add(label);object.userData.label=label;
     }
     if(object.userData.label)object.userData.label.visible=!!me&&Math.hypot(animal.x-me.x,animal.z-me.z)<22;
@@ -629,7 +720,7 @@ $('world').addEventListener('webglcontextlost',(event)=>{event.preventDefault();
 Object.assign(buffNames,{slowed:'SLOWED',weakened:'WEAKER THROWS',spawn_shield:'FRESHLY BAKED · PROTECTED'});
 initializeRenderer();
 if(scene){interactionRing=new THREE.Mesh(new THREE.TorusGeometry(.8,.022,5,40),new THREE.MeshBasicMaterial({color:'#f6d299',transparent:true,opacity:.45,depthWrite:false}));interactionRing.rotation.x=-Math.PI/2;interactionRing.visible=false;scene.add(interactionRing);}
-import('./panels.js').then(({createPanels})=>{panels=createPanels({$,state,action,toast,chooseCookie,itemCount,itemName,cookieName,cookieNote,isKnown,cookieIcon,itemIcon,materialEmoji,cookieNames,cookieNotes,escapeHTML,pretty,resume:setPlaying});}).catch((error)=>{console.warn('Field guide unavailable',error);toast('The field guide could not load. Please reload the page.','error');});
+import('./panels.js').then(({createPanels})=>{panels=createPanels({$,state,action,toast,chooseCookie,itemCount,itemName,cookieName,cookieNote,isKnown,cookieIcon,itemIcon,materialEmoji,cookieNames,cookieNotes,escapeHTML,pretty,beginBuild,resume:setPlaying});}).catch((error)=>{console.warn('Field guide unavailable',error);toast('The field guide could not load. Please reload the page.','error');});
 api('/api/world').then(({layout})=>{if(layout&&scene&&state.layout?.version!==layout.version)createEnvironment(layout);}).catch(()=>{});
 api('/api/session').then((session)=>{if(session.authenticated&&session.player)enterGame(session.player);}).catch(()=>{$('server-status').textContent='CONNECTING TO THE WORLD';});
 if(matchMedia('(pointer: coarse)').matches){$('mobile-note').hidden=false;}

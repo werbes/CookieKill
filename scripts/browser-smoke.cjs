@@ -42,7 +42,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     await page.goto(baseURL,{waitUntil:'networkidle'});await page.locator('#email').waitFor({state:'visible'});
     assert.equal(await page.locator('#render-error').isVisible(),false,'WebGL failed');
     const publicLayout=await page.evaluate(async()=>await(await fetch('/api/world')).json());
-    assert.equal(publicLayout.layout.version,2);assert.equal(publicLayout.layout.plots.length,12);assert.ok(new Set(publicLayout.layout.coast.map(p=>p.z.toFixed(1))).size>10,'coast is not curved');
+    assert.equal(publicLayout.layout.version,3);assert.equal(publicLayout.layout.plots.length,12);assert.equal(publicLayout.layout.zones.length,0);assert.ok(new Set(publicLayout.layout.coast.map(p=>p.z.toFixed(1))).size>10,'coast is not curved');
     await screenshot('landing');
     await page.locator('#email').fill(`smoke${Date.now()}@example.com`);await page.locator('#email-submit').click();await page.locator('#code-stage').waitFor({state:'visible'});
     if(!await page.locator('#login-code').inputValue()){const code=(await page.locator('#development-code').innerText()).match(/\b\d{6}\b/);assert.ok(code,'local code missing');await page.locator('#login-code').fill(code[0]);}

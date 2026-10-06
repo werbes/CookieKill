@@ -2,7 +2,7 @@ package game
 
 import (
 	"errors"
-	"fmt"
+
 	"sort"
 )
 
@@ -155,43 +155,7 @@ func (w *World) homeSafeReason(p *player) string {
 	return ""
 }
 func (w *World) buildHome(p *player, kind string) error {
-	if !validChoice(kind, "tent", "cabin") {
-		return errors.New("Choose a tent or a cabin.")
-	}
-	if p.profile.Home != nil {
-		return errors.New("You already own a home.")
-	}
-	x, z := p.x, p.z+3.5
-	if buildZone(x, z) == "" {
-		return errors.New("Build inside a marked forest or desert building clearing.")
-	}
-	radius := homeRadius(kind)
-	if !w.safeSpace(x, z, radius) {
-		return errors.New("Keep the whole shelter clear of obstacles, paths and the edge of the building clearing.")
-	}
-	for _, h := range w.homes() {
-		if distance(x, z, h.X, h.Z) < radius+homeRadius(h.Kind) || (h.Safe && distance(x, z, h.X, h.Z) < 8.4+radius) {
-			return errors.New("Another home occupies this space.")
-		}
-	}
-	for id, other := range w.players {
-		if id != p.profile.ID && distance(x, z, other.x, other.z) < radius+.42 {
-			return errors.New("Another player is standing where this shelter would be built.")
-		}
-	}
-	cost := map[string]int{"wood": 6, "stick": 8, "stone": 4}
-	if kind == "cabin" {
-		cost = map[string]int{"wood": 18, "stick": 8, "stone": 12}
-	}
-	if !afford(p, cost, 1) {
-		return fmt.Errorf("A %s needs %d wood, %d sticks and %d stones.", kind, cost["wood"], cost["stick"], cost["stone"])
-	}
-	spend(p, cost, 1)
-	hp := homeHealth(kind)
-	p.profile.Home = &Home{Owner: p.profile.ID, CallName: p.profile.CallName, Username: p.profile.Username, Kind: kind, X: x, Z: z, Health: hp, MaxHealth: hp}
-	awardHats(&p.profile)
-	w.event(p.profile.CallName+" built a "+kind+". Clear 8 metres around it to create a safe zone.", "build", x, z)
-	return nil
+	return errors.New("Construction is now available only on home islands. Find the pink lollipop in the desert cave.")
 }
 func (w *World) createSafeZone(p *player) error {
 	if p.profile.Home == nil {
