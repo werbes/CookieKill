@@ -76,7 +76,7 @@ test('the hidden entrance aperture preserves continuous desert around the outcro
 });
 
 test('rendered first and last stairs agree with the authoritative Go dimensions', async () => {
-  const [THREE,{buildCave,caveHeight,CAVE_DEPTH,CAVE_STEPS,CAVE_RUN}] = await modules;
+  const [THREE,{buildCave,caveHeight,CAVE_DEPTH,CAVE_STEPS,CAVE_RUN,CAVE_SURFACE_COLORS}] = await modules;
   const backend=fs.readFileSync(path.join(root,'internal/game/worldmap.go'),'utf8');
   const floor=Number(backend.match(/CaveFloorY\s*=\s*(-?[\d.]+)/)?.[1]);
   const count=Number(backend.match(/CaveStairCount\s*=\s*(\d+)/)?.[1]);
@@ -130,18 +130,37 @@ test('rendered first and last stairs agree with the authoritative Go dimensions'
   for(const z of [-81,-89,-98,-106,-114])assert.ok(firstHit(120,caveHeight(120,z)+3.1,z,0,1,0)>1,'arched stairway must leave headroom above a camel rider');
   assert.ok(firstHit(120,floor+3.1,-117,0,1,0)>4,'chamber needs a tall, closed rock vault');
   const crownRocks=scene.children.filter(object=>object.name==='cave-crown-rock');
-  assert.ok(crownRocks.length>=8,'substantial rock clusters must dress the crown');
+  assert.ok(crownRocks.length>=35,'overlapping rock layers must replace the visible smooth crown');
   const crownShell=scene.children.filter(object=>object.name==='cave-outcrop');
   let silhouetteRocks=0;
   for(const rock of crownRocks){
-    const bounds=new THREE.Box3().setFromObject(rock);
+    const bounds=new THREE.Box3().setFromObject(rock,true);
+    assert.ok(bounds.min.x>=106-1e-5&&bounds.max.x<=134+1e-5&&bounds.min.z>=-92.5-1e-5&&bounds.max.z<=-74.5+1e-5,'crown rock extends beyond the solid inaccessible outcrop');
     ray.set(new THREE.Vector3(rock.position.x,20,rock.position.z),new THREE.Vector3(0,-1,0));
     const shellHit=ray.intersectObjects(crownShell,false)[0];
     assert.ok(shellHit,'crown rock must be attached to the actual outcrop');
     assert.ok(bounds.max.y>shellHit.point.y+.3,'roof decoration is buried beneath the visible crown');
+    const supports=rock.userData.pileLayer===0?crownShell:crownRocks.filter(r=>r.userData.pileLayer===0);
+    const support=ray.intersectObjects(supports,false)[0];
+    assert.ok(support&&support.point.y>=bounds.min.y+.1,'layered boulder floats above its support');
+    const color=rock.geometry.attributes.color,average=new THREE.Color(0,0,0);
+    for(let i=0;i<color.count;i++){average.r+=color.getX(i)/color.count;average.g+=color.getY(i)/color.count;average.b+=color.getZ(i)/color.count;}
+    assert.ok(CAVE_SURFACE_COLORS.some(hex=>{const face=new THREE.Color(hex);return Math.hypot(face.r-average.r,face.g-average.g,face.b-average.b)<.045;}),'crown rock must use the entrance warm-brown palette');
     if(bounds.max.y>8.8)silhouetteRocks++;
   }
   assert.ok(silhouetteRocks>=3,'rock clusters must visibly break the upper silhouette');
+  let covered=0,samples=0;
+  for(let x=108;x<=132;x+=2)for(let z=-76.5;z>=-90.5;z-=2){
+    samples++;ray.set(new THREE.Vector3(x,20,z),new THREE.Vector3(0,-1,0));
+    if(ray.intersectObjects([...crownRocks,...crownShell],false)[0]?.object.name==='cave-crown-rock')covered++;
+  }
+  assert.ok(covered/samples>=.85,`rock pile covers only ${covered}/${samples} crown samples`);
+  let approachRocks=0;
+  for(let x=110;x<=130;x+=2){
+    ray.set(new THREE.Vector3(x,6.5,-70),new THREE.Vector3(0,0,-1));
+    if(ray.intersectObject(scene,true)[0]?.object.name==='cave-crown-rock')approachRocks++;
+  }
+  assert.ok(approachRocks>=6,'the front shell hides the pile from players approaching the mouth');
   const boulder=scene.getObjectByName(groundRock.id),point=new THREE.Vector3(),boulderPositions=boulder.geometry.attributes.position;
   for(let i=0;i<boulderPositions.count;i++){
     point.fromBufferAttribute(boulderPositions,i).applyMatrix4(boulder.matrixWorld);

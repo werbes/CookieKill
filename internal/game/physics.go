@@ -21,6 +21,7 @@ func staminaCapacity(p *player) float64 {
 func resetMovement(p *player) {
 	p.input = Input{}
 	p.clubSeatID = ""
+	p.bakerySeatID = ""
 	p.jumpOffset, p.jumpVelocity = 0, 0
 	p.jumpQueued, p.sprinting = false, false
 	// Preserve physical key holds: arriving at a destination is not a new Space
@@ -53,19 +54,29 @@ func (w *World) step(dt float64) {
 			p.input.Jump = false
 			p.jumpQueued = false
 		}
+		if p.bakerySeatID != "" && (math.Hypot(p.input.X, p.input.Z) > .01 || p.jumpQueued) {
+			w.releaseBakerySeat(p)
+		}
 		previousGround := groundY(p)
 		previousY := playerY(p)
-		if p.jumpQueued && grounded(p) && !inWater(p) && !p.ridingCamel && p.cooldowns["jump"] <= w.time {
+		if p.fallen {
+			p.jumpQueued = false
+			if math.Hypot(p.input.X, p.input.Z) > .01 || p.input.Jump {
+				_ = w.stand(p)
+			}
+		}
+		if !p.fallen && p.jumpQueued && grounded(p) && !inWater(p) && !p.ridingCamel && p.cooldowns["jump"] <= w.time {
 			p.jumpVelocity = jumpSpeed
 			p.posture = ""
 		}
 		p.jumpQueued = false
-		moving := math.Hypot(p.input.X, p.input.Z) > .01
+		moving := !p.fallen && math.Hypot(p.input.X, p.input.Z) > .01
 		if moving {
 			p.posture = ""
 		}
 		if p.posture != "sitting" {
 			p.clubSeatID = ""
+			p.bakerySeatID = ""
 		}
 		w.updateMountedCamel(p)
 		speed := 6 * (1 + float64(p.profile.Levels["legs"])*.04)
@@ -103,16 +114,28 @@ func (w *World) step(dt float64) {
 		if w.active(p, "slowed") {
 			speed *= .55
 		}
-		nx, nz := max(MinX+1, min(MaxX-1, p.x+p.input.X*speed*dt)), max(MinZ+1, min(MaxZ-1, p.z+p.input.Z*speed*dt))
+		inputX, inputZ := p.input.X, p.input.Z
+		if p.fallen {
+			inputX, inputZ = 0, 0
+		}
+		nx, nz := max(MinX+1, min(MaxX-1, p.x+inputX*speed*dt)), max(MinZ+1, min(MaxZ-1, p.z+inputZ*speed*dt))
 		// Fast sprint buffs must still collide with thin cabin walls.
 		steps := max(1, int(math.Ceil(math.Max(math.Abs(nx-p.x), math.Abs(nz-p.z))/.25)))
 		dx, dz := (nx-p.x)/float64(steps), (nz-p.z)/float64(steps)
 		for i := 0; i < steps; i++ {
+			beforeX, beforeZ := p.x, p.z
+			onFoot := grounded(p) && !p.ridingCamel && !inWater(p) && !p.fallen
 			if p.island != "" && !w.islandBlocked(p, p.x+dx, p.z) || p.island == "" && w.moveMainland(p, p.x+dx, p.z, previousY) {
 				p.x += dx
 			}
 			if p.island != "" && !w.islandBlocked(p, p.x, p.z+dz) || p.island == "" && w.moveMainland(p, p.x, p.z+dz, previousY) {
 				p.z += dz
+			}
+			if onFoot && !inWater(p) {
+				w.recordFootTravel(p, distance(beforeX, beforeZ, p.x, p.z))
+			}
+			if p.fallen {
+				break
 			}
 		}
 		if p.island != "" {
@@ -120,6 +143,9 @@ func (w *World) step(dt float64) {
 		}
 		w.moveJump(p, dt, previousGround, previousY)
 		w.updateMountedCamel(p)
+		if (p.bakeryBuildMode || p.editingBakeryFurnitureID != "") && w.requireBakeryBuild(p) != nil {
+			p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
+		}
 		for key, until := range p.buffs {
 			if until <= w.time {
 				delete(p.buffs, key)
@@ -144,6 +170,8 @@ func (w *World) step(dt float64) {
 		}
 	}
 	w.nodes = nodes
+	w.tickProduction(dt)
+	w.tickBakeries(dt)
 	w.moveAnimals(dt)
 	w.moveProjectiles(dt)
 }
@@ -235,10 +263,7 @@ func (w *World) jumpCeiling(p *player, fromY, toY float64) (float64, bool) {
 			if c.resource != nil && !c.resource.Available {
 				continue
 			}
-			overlaps := circleRect(p.x, p.z, .42, c.X, c.Z, c.Width, c.Depth)
-			if c.Radius > 0 {
-				overlaps = distance(p.x, p.z, c.X, c.Z) <= c.Radius+.42
-			}
+			overlaps := colliderOverlaps(c, p.x, p.z, .42)
 			consider(c.Y, overlaps)
 		}
 	}

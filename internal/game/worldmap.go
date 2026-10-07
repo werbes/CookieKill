@@ -78,6 +78,7 @@ type Collider struct {
 	ID                                 string
 	X, Z, Width, Depth, Height, Radius float64
 	Y                                  float64
+	Rotation                           float64
 	resource                           *Node
 }
 
@@ -197,7 +198,7 @@ func (w *World) StaticLayout() Layout {
 	return l
 }
 func (w *World) seedMap() {
-	w.layout = Layout{Version: 7, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
+	w.layout = Layout{Version: 9, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
 	for x := MinX; x <= 0; x += 3 {
 		w.layout.Coast = append(w.layout.Coast, Point{x, coastZ(x)})
 	}
@@ -233,6 +234,8 @@ func (w *World) seedMap() {
 	building("gym_building", "gym", "ROLLING PIN GYM", 45, 20, 12, 10, 6)
 	addNode("kitchen_shop", "kitchen_shop", "The Kitchen Workshop", 80, 22, 0, 0)
 	building("kitchen_store", "kitchen_shop", "KITCHEN WORKSHOP", 80, 22, 12, 9, 5)
+	addNode("ingredient_shop", "ingredient_shop", "Baker's Pantry", 145, 22, 0, 0)
+	building("ingredient_store", "ingredient_shop", "BAKER'S PANTRY", 145, 22, 12, 9, 5)
 	building("paint_store", "paint_shop", "PIGMENT & COLOUR", 178, 22, 12, 9, 5)
 	addNode("paint_shop", "paint_shop", "Pigment & Colour", 178, 22, 0, 0)
 	building("outfit_store", "outfit_shop", "THREAD & THIMBLE", 210, 22, 11, 9, 5)
@@ -246,18 +249,18 @@ func (w *World) seedMap() {
 			if col >= 3 {
 				x += 5
 			}
-			w.layout.Plots = append(w.layout.Plots, BakeryPlot{id, x, z, 10, 9})
+			w.layout.Plots = append(w.layout.Plots, BakeryPlot{id, x, z, 20, 16})
 			addNode(id, "bakery_plot", "Bakery plot • 250 coins", x, z, 0, 0)
-			building(id, "bakery", "BAKERY • AVAILABLE", x, z, 10, 9, 5)
+			building(id, "bakery", "BAKERY • AVAILABLE", x, z, 20, 16, 5.8)
 		}
 	}
 	addNode("dummy", "dummy", "Practice dummy", -35, -47, 0, 0)
-	labels := map[string]string{"wood": "Tree · chop for wood", "stick": "Dry sticks", "stone": "Loose stones", "dough": "Light dough patch • dig", "berry": "Wild berries", "nut": "Forest nuts", "cactus": "Cactus fruit", "sea_salt": "Sea salt", "trash": "Beach litter • kilograms", "shell": "Washed-up seashell", "chest": "Forgotten chest"}
+	labels := map[string]string{"wood": "Tree · chop for wood", "stick": "Dry sticks", "stone": "Loose stones", "berry": "Wild berries", "nut": "Forest nuts", "cactus": "Cactus fruit", "sea_salt": "Sea salt", "trash": "Beach litter • kilograms", "shell": "Washed-up seashell", "chest": "Forgotten chest"}
 	starters := []struct {
 		kind  string
 		x, z  float64
 		count int
-	}{{"wood", -39, -36, 2}, {"stick", -40, -31, 2}, {"stone", -31, -31, 3}, {"dough", -29, -39, 3}, {"berry", -41, -40, 3}, {"nut", -31, -44, 3}, {"chest", -43, -29, 1}}
+	}{{"wood", -39, -36, 2}, {"stick", -40, -31, 2}, {"stone", -31, -31, 3}, {"chest", -29, -39, 1}, {"berry", -41, -40, 3}, {"nut", -31, -44, 3}, {"chest", -43, -29, 1}}
 	for i, n := range starters {
 		addNode(fmt.Sprintf("starter_%d", i), n.kind, labels[n.kind], n.x, n.z, n.count, 25)
 		if n.kind == "wood" {
@@ -266,7 +269,7 @@ func (w *World) seedMap() {
 	}
 	rng := rand.New(rand.NewPCG(2323, 7819))
 	for i := 0; i < 130; i++ {
-		kind := []string{"wood", "stick", "stone", "dough", "berry", "nut", "chest"}[i%7]
+		kind := []string{"wood", "stick", "stone", "chest", "berry", "nut", "chest"}[i%7]
 		x := -12 - rng.Float64()*220
 		z := -15 - rng.Float64()*233
 		if w.staticBlocked(x, z, 2) || buildZone(x, z) != "" || caveReserved(x, z) {
@@ -278,7 +281,7 @@ func (w *World) seedMap() {
 		}
 	}
 	for i := 0; i < 80; i++ {
-		kind := []string{"cactus", "dough", "stone", "chest"}[i%4]
+		kind := []string{"cactus", "chest", "stone", "chest"}[i%4]
 		x := 12 + rng.Float64()*218
 		z := -16 - rng.Float64()*232
 		if w.staticBlocked(x, z, 3) || buildZone(x, z) != "" || caveReserved(x, z) || distance(x, z, 226, -126) < 8 {
@@ -292,7 +295,7 @@ func (w *World) seedMap() {
 		}
 	}
 	for i := 0; i < 75; i++ {
-		kind := []string{"trash", "trash", "shell", "stone", "sea_salt", "dough", "chest"}[i%7]
+		kind := []string{"trash", "trash", "shell", "stone", "sea_salt", "chest", "chest"}[i%7]
 		x := -8 - rng.Float64()*225
 		z := coastZ(x) - 3 - rng.Float64()*12
 		amount := 1
@@ -341,8 +344,13 @@ func (w *World) buildingColliders(p WorldProp) {
 	}
 	switch p.Kind {
 	case "bakery":
-		furniture("_oven", -2.6, -2.5, 2.2, 1.2, 1.6)
-		furniture("_shelf", 2.5, -2.5, 2, .8, 1.4)
+		for _, side := range []float64{-1, 1} {
+			add(fmt.Sprintf("_partition%v", side), p.X+side*(1.6+wing/2), p.Z-1, wing, .24)
+		}
+		for _, z := range []float64{p.Z - 1, p.Z + p.Depth/2} {
+			w.colliders = append(w.colliders, Collider{ID: fmt.Sprintf("%s_lintel_%v", p.ID, z), X: p.X, Z: z, Width: 3.2, Depth: .24, Y: 3.5, Height: p.Height - 3.5})
+		}
+		w.colliders = append(w.colliders, Collider{ID: p.ID + "_ceiling", X: p.X, Z: p.Z, Width: p.Width, Depth: p.Depth, Y: p.Height, Height: .36})
 	case "gym":
 		furniture("_treadmill_left", -3, -2, 1.2, 2.7, 1.4)
 		furniture("_treadmill_right", 3, -2, 1.2, 2.7, 1.4)
@@ -352,7 +360,7 @@ func (w *World) buildingColliders(p WorldProp) {
 			w.colliders = append(w.colliders, Collider{ID: fmt.Sprintf("%s_awning_%v", p.ID, side), X: p.X + side*1.9, Z: p.Z + p.Depth/2 + 2.2, Radius: .07, Height: 3})
 		}
 		w.colliders = append(w.colliders, Collider{ID: p.ID + "_pot", X: p.X - 3, Z: p.Z + p.Depth/2 + .5, Radius: .5, Height: 1.2})
-	case "kitchen_shop", "paint_shop", "outfit_shop":
+	case "kitchen_shop", "paint_shop", "outfit_shop", "ingredient_shop":
 		for _, side := range []float64{-1, 1} {
 			furniture(fmt.Sprintf("_window_display_%v", side), side*(p.Width/2-1.6), p.Depth/2+.5, 2, .8, 1.1)
 		}
@@ -419,7 +427,7 @@ func (w *World) seedDecor(rng *rand.Rand) {
 			}
 		}
 		for _, p := range w.layout.Props {
-			if p.Kind == "desert_building" || p.Kind == "gym" || p.Kind == "bakery" || p.Kind == "kitchen_shop" || p.Kind == "paint_shop" || p.Kind == "outfit_shop" {
+			if p.Kind == "desert_building" || p.Kind == "gym" || p.Kind == "bakery" || p.Kind == "kitchen_shop" || p.Kind == "paint_shop" || p.Kind == "outfit_shop" || p.Kind == "ingredient_shop" {
 				if circleRect(x, z, r+3, p.X, p.Z, p.Width, p.Depth) {
 					return false
 				}

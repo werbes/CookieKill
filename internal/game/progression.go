@@ -13,13 +13,13 @@ func (w *World) buyLand(p *player, target string) error {
 	}
 	if target == "" {
 		for _, n := range w.nodes {
-			if n.Kind == "bakery_plot" && distance(p.x, p.z, n.X, n.Z) <= 8 {
+			if n.Kind == "bakery_plot" && distance(p.x, p.z, n.X, n.Z) <= 11 {
 				target = n.ID
 				break
 			}
 		}
 	}
-	if !w.isPlot(target) || !w.near(p, target, 8) {
+	if !w.isPlot(target) || !w.near(p, target, 11) {
 		return errors.New("Visit an unclaimed bakery plot in the city.")
 	}
 	if w.plotOwner(target) != "" {
@@ -34,6 +34,8 @@ func (w *World) buyLand(p *player, target string) error {
 	}
 	p.profile.Bakery = true
 	p.profile.BakeryPlot = target
+	normalizeBakeryFurniture(&p.profile)
+	w.startBakeryBusiness(p)
 	w.rebuildPropertyColliders()
 	w.clearNewBakeryDisplay(target)
 	awardHats(&p.profile)
@@ -54,7 +56,7 @@ func (w *World) upgradeBakery(p *player) error {
 	}
 	p.profile.Coins -= cost
 	p.profile.BakeryLevel++
-	w.event("Bakery upgraded: faster baking and mixing, better batch yields and sales.", "bakery", p.x, p.z)
+	w.event("Bakery upgraded: customers now pay a larger bonus for your baked goods.", "bakery", p.x, p.z)
 	return nil
 }
 func (w *World) kitchenTrade(p *player, item string, amount int) error {
@@ -106,5 +108,10 @@ func (w *World) paintBakery(p *player, target, color string) error {
 		return errors.New("Buy a tin of that paint at the kitchen shop.")
 	}
 	p.profile.Paint[target] = color
+	for i := range p.profile.BakeryFurniture {
+		if p.profile.BakeryFurniture[i].Kind == target {
+			p.profile.BakeryFurniture[i].Color = color
+		}
+	}
 	return nil
 }

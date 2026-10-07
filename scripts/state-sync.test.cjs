@@ -117,6 +117,33 @@ const {test} = require('node:test');
     assert.deepEqual(main.friends,[]);
   });
 
+  test('bakery catalog survives deltas and furniture replacement clears moved or packed objects', () => {
+    const decoder=createSnapshotDecoder();
+    const first=decoder.apply(snapshot({bakeryFurnitureCatalog:[{id:'table',price:25}],nodes:[{id:'bakery_plot_0',bakeryFurniture:[{id:'table_1',kind:'table',x:4,z:3}]}]}));
+    const moved=decoder.apply(delta({me:{bakeryBuildMode:true,editingBakeryFurnitureId:'table_1'},nodes:{upsert:[{id:'bakery_plot_0',bakeryFurniture:[{id:'table_1',kind:'table',x:-4,z:4,rotation:90}]}]}}));
+    assert.strictEqual(moved.bakeryFurnitureCatalog,first.bakeryFurnitureCatalog);
+    assert.equal(moved.nodes[0].bakeryFurniture[0].x,-4);
+    assert.equal(first.nodes[0].bakeryFurniture[0].x,4);
+    const packed=decoder.apply(delta({seq:3,base:2,me:{editingBakeryFurnitureId:''},nodes:{upsert:[{id:'bakery_plot_0',bakeryFurniture:[]}]},bakeryFurnitureCatalog:[{id:'table',price:30}]}));
+    assert.deepEqual(packed.nodes[0].bakeryFurniture,[]);
+    assert.equal(packed.bakeryFurnitureCatalog[0].price,30);
+    const cleared=decoder.apply(delta({seq:4,base:3,bakeryFurnitureCatalog:null}));
+    assert.deepEqual(cleared.bakeryFurnitureCatalog,[]);
+  });
+
+  test('ingredient catalog and timed station output survive and clear through deltas', () => {
+    const decoder=createSnapshotDecoder(),catalog=[{id:'baking_sugar',name:'Sugar',price:4}];
+    const first=decoder.apply(snapshot({bakingIngredients:catalog,me:{id:'self',production:{bakery_mixer:{job:{item:'dough',amount:40,remaining:40,total:40},output:{}}}}}));
+    const ready=decoder.apply(delta({me:{production:{bakery_mixer:{output:{dough:40}}}}}));
+    assert.strictEqual(ready.bakingIngredients,first.bakingIngredients);
+    assert.equal(ready.me.production.bakery_mixer.job,undefined);
+    assert.equal(ready.me.production.bakery_mixer.output.dough,40);
+    assert.equal(first.me.production.bakery_mixer.job.remaining,40);
+    const collected=decoder.apply(delta({seq:3,base:2,me:{production:{bakery_mixer:{output:{}}}},bakingIngredients:null}));
+    assert.deepEqual(collected.me.production.bakery_mixer.output,{});
+    assert.deepEqual(collected.bakingIngredients,[]);
+  });
+
   test('out-of-order, skipped and stale updates reject without changing the baseline', () => {
     const decoder = createSnapshotDecoder();
     assert.throws(() => decoder.apply(delta()), /sequence/);

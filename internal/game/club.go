@@ -52,16 +52,30 @@ type ClubResult struct {
 	Payout     int     `json:"payout"`
 }
 
-// Seven equally likely sectors; two distinct sectors award x2. Integer
-// arithmetic floors fractional coin payouts without floating-point rounding.
-var clubSectorTenths = [...]int{50, 30, 20, 20, 5, 1, 100}
+// Sector widths match their exact percentage chances. Integer arithmetic
+// floors fractional coin payouts without floating-point rounding.
+var clubSectorTenths = [...]int{50, 30, 20, 10, 5, 1, 100}
+var clubSectorWeights = [...]int{7, 10, 10, 10, 30, 30, 3}
+
+func clubSectorForRoll(roll int) int {
+	if roll < 0 || roll >= 100 {
+		return -1
+	}
+	for sector, weight := range clubSectorWeights {
+		if roll < weight {
+			return sector
+		}
+		roll -= weight
+	}
+	return -1
+}
 
 func randomClubSector() (int, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(clubSectorTenths))))
+	n, err := rand.Int(rand.Reader, big.NewInt(100))
 	if err != nil {
 		return 0, err
 	}
-	return int(n.Int64()), nil
+	return clubSectorForRoll(int(n.Int64())), nil
 }
 
 func clubDrinkFor(item string) (ClubDrink, bool) {
@@ -184,6 +198,9 @@ func (w *World) drink(p *player, item string) error {
 	}
 	if !take(p, item, 1) {
 		return errors.New("You do not have that drink.")
+	}
+	if drink.Alcoholic {
+		p.alcoholDrinks = min(100, p.alcoholDrinks+1)
 	}
 	p.health = min(100, p.health+drink.Heal)
 	p.stamina = min(staminaCapacity(p), p.stamina+drink.Stamina)

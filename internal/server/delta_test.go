@@ -43,6 +43,42 @@ func TestClubCatalogAndPersonalSpinResultSurviveDeltaReconstruction(t *testing.T
 	assertDeltaSnapshot(t, got, third)
 }
 
+func TestBakeryFurnitureAndCatalogSurviveDeltaReconstruction(t *testing.T) {
+	encoder := &stateEncoder{delta: true}
+	receiver := &testDeltaReceiver{}
+	first := game.Snapshot{BakeryFurnitureCatalog: []game.BakeryFurnitureRecipe{{ID: "table", Name: "Cafe table", Cost: 25}}, Nodes: []game.Node{{ID: "bakery_plot_0", BakeryFurniture: []game.BakeryFurniture{{ID: "table_1", Kind: "table", X: 4, Z: 3}}}}}
+	receiver.apply(t, encodeDeltaTest(t, encoder, first))
+	encoder.commit(first)
+	second := first
+	second.Me.BakeryBuildMode = true
+	second.Me.EditingBakeryFurnitureID = "table_1"
+	second.Nodes = []game.Node{{ID: "bakery_plot_0", BakeryFurniture: []game.BakeryFurniture{{ID: "table_1", Kind: "table", X: -4, Z: 3, Rotation: 90}}}}
+	got := receiver.apply(t, encodeDeltaTest(t, encoder, second))
+	assertDeltaSnapshot(t, got, second)
+	encoder.commit(second)
+	third := second
+	third.Me.EditingBakeryFurnitureID = ""
+	third.Nodes = []game.Node{{ID: "bakery_plot_0", BakeryFurniture: []game.BakeryFurniture{}}}
+	third.BakeryFurnitureCatalog = []game.BakeryFurnitureRecipe{}
+	got = receiver.apply(t, encodeDeltaTest(t, encoder, third))
+	assertDeltaSnapshot(t, got, third)
+}
+
+func TestBakingIngredientCatalogSurvivesAndReplacesInDelta(t *testing.T) {
+	encoder := &stateEncoder{delta: true}
+	receiver := &testDeltaReceiver{}
+	first := game.Snapshot{BakingIngredients: []game.BakingIngredient{{ID: "baking_sugar", Name: "Sugar", Price: 4}}}
+	receiver.apply(t, encodeDeltaTest(t, encoder, first))
+	encoder.commit(first)
+	second := first
+	second.Me.Coins = 50
+	assertDeltaSnapshot(t, receiver.apply(t, encodeDeltaTest(t, encoder, second)), second)
+	encoder.commit(second)
+	third := second
+	third.BakingIngredients = []game.BakingIngredient{{ID: "egg", Name: "Egg", Price: 3}}
+	assertDeltaSnapshot(t, receiver.apply(t, encodeDeltaTest(t, encoder, third)), third)
+}
+
 func TestIslandDeltaReplacesPermissionsAndClearsOnMain(t *testing.T) {
 	encoder := &stateEncoder{delta: true}
 	receiver := &testDeltaReceiver{}

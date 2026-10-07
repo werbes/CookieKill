@@ -14,8 +14,27 @@ func clubWorld() (*World, *player) {
 	return w, p
 }
 
+func TestClubWheelExactRequestedProbabilities(t *testing.T) {
+	counts := [7]int{}
+	for roll := 0; roll < 100; roll++ {
+		sector := clubSectorForRoll(roll)
+		if sector < 0 || sector >= len(counts) {
+			t.Fatalf("roll %d has no outcome", roll)
+		}
+		counts[sector]++
+	}
+	if counts != [7]int{7, 10, 10, 10, 30, 30, 3} {
+		t.Fatalf("wrong odds: %v", counts)
+	}
+	for _, roll := range []int{-1, 100, 101} {
+		if clubSectorForRoll(roll) != -1 {
+			t.Fatal("out-of-range entropy accepted")
+		}
+	}
+}
+
 func TestClubWheelAllSectorsExactWholeCoinPayouts(t *testing.T) {
-	for sector, multiplier := range []int{50, 30, 20, 20, 5, 1, 100} {
+	for sector, multiplier := range []int{50, 30, 20, 10, 5, 1, 100} {
 		w, p := clubWorld()
 		w.clubRandom = func() (int, error) { return sector, nil }
 		stake := 37
@@ -246,7 +265,7 @@ func TestForestClubApproachStairsLayersAndFurniture(t *testing.T) {
 	if !w.solidBlockedAt(-215.5, ClubFloorY, -232, .42) || !w.solidBlockedAt(-188.5, ClubFloorY, -237, .42) {
 		t.Fatal("club furniture has no collision")
 	}
-	if w.layout.Version != 7 {
+	if w.layout.Version != 9 {
 		t.Fatal("club map change did not invalidate cached layout")
 	}
 }

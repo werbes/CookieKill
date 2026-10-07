@@ -7,6 +7,7 @@ import (
 
 func testWorld() (*World, *player) {
 	w := New(nil)
+	w.fallRandom = func() int { return 999 } // Fall tests override this deterministic non-fall roll.
 	w.Join("one", "Baker")
 	p := w.players["one"]
 	p.buffs = map[string]float64{}
@@ -121,13 +122,15 @@ func TestMovementIsAuthoritativeAndFinite(t *testing.T) {
 	}
 }
 
-func TestReconnectPreservesHealthPositionAndProductionCooldown(t *testing.T) {
+func TestReconnectPreservesHealthPositionAndProductionJob(t *testing.T) {
 	w, p := testWorld()
 	p.profile.Bakery = true
 	p.profile.BakeryPlot = "bakery_plot_0"
+	normalizeBakeryFurniture(&p.profile)
 	nodePosition(w, p, "bakery_plot_0_mixer")
 	x, z := p.x, p.z
 	p.health = 35
+	baseBakingIngredients(p, 2)
 	mustAct(t, w, Action{Action: "make_dough"})
 	w.Input("one", Input{X: 1, Sprint: true})
 	w.Leave("one")
@@ -142,15 +145,20 @@ func TestReconnectPreservesHealthPositionAndProductionCooldown(t *testing.T) {
 	}
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
 	if err := w.Act("one", Action{Action: "make_dough"}); err == nil {
-		t.Fatal("reconnect bypassed production cooldown")
+		t.Fatal("reconnect replaced the unfinished production job")
+	}
+	if job := p.profile.Production["bakery_mixer"].Job; job == nil || job.Remaining != 40 || p.profile.Inventory["dough"] != 0 {
+		t.Fatal("reconnect advanced or lost the paused dough batch")
 	}
 	if w.active(p, "spawn_shield") {
 		t.Fatal("reconnect granted new combat protection")
 	}
-	advance(w, 8)
+	advance(w, 40)
+	nodePosition(w, p, "bakery_plot_0_mixer")
+	mustAct(t, w, Action{Action: "production_collect", Target: "bakery_plot_0_mixer", Item: "dough", Amount: 40})
 	mustAct(t, w, Action{Action: "make_dough"})
-	if p.profile.Inventory["dough"] != 4 {
-		t.Fatal("production did not resume after original cooldown")
+	if p.profile.Inventory["dough"] != 40 || p.profile.Production["bakery_mixer"].Job.Remaining != 40 {
+		t.Fatal("production did not resume with its original output and a new timed batch")
 	}
 }
 

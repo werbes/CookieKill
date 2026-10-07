@@ -62,7 +62,7 @@ func TestBakeryDisconnectReleasesPlotAndFreeClaimRestoresProgress(t *testing.T) 
 		t.Fatal("old disconnect or free reopening created duplicate ownership")
 	}
 	for _, n := range w.Snapshot("one").Nodes {
-		if n.PlotID == "bakery_plot_1" && (n.Owner != "one" || !n.Available || n.BakeryLevel != saved.BakeryLevel || n.Paint["walls"] != "teal") {
+		if n.PlotID == "bakery_plot_1" && validChoice(n.Kind, "bakery_oven", "bakery_mixer", "bakery_display") && (n.Owner != "one" || !n.Available || n.BakeryLevel != saved.BakeryLevel || n.Paint["walls"] != "teal") {
 			t.Fatal("reopened stations did not load the saved bakery")
 		}
 	}
@@ -103,7 +103,7 @@ func TestBakeryStationsHaveDistinctLocationsAndEnforceOwnershipAndRange(t *testi
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
 	positions := map[string][2]float64{}
 	for _, n := range w.Snapshot("one").Nodes {
-		if n.PlotID == "bakery_plot_0" {
+		if n.PlotID == "bakery_plot_0" && validChoice(n.Kind, "bakery_oven", "bakery_mixer", "bakery_display") {
 			if !n.Available || n.Owner != "one" {
 				t.Fatal("claimed base station is unavailable")
 			}
@@ -141,9 +141,14 @@ func TestBakeryStationsHaveDistinctLocationsAndEnforceOwnershipAndRange(t *testi
 		})
 	}
 	nodePosition(w, p, "bakery_plot_0_oven")
+	holdTestItem(t, p, "dough")
 	mustAct(t, w, Action{Action: "craft", Target: "bakery_plot_0_oven", Item: "sugar"})
 	nodePosition(w, p, "bakery_plot_0_mixer")
+	baseBakingIngredients(p, 1)
 	mustAct(t, w, Action{Action: "make_dough", Target: "bakery_plot_0_mixer"})
+	advance(w, 40)
+	nodePosition(w, p, "bakery_plot_0_cooling_table")
+	mustAct(t, w, Action{Action: "production_collect", Target: "bakery_plot_0_cooling_table", Item: "sugar"})
 	nodePosition(w, p, "bakery_plot_0_display")
 	mustAct(t, w, Action{Action: "trade", Target: "bakery_plot_0_display", Item: "sugar"})
 	w.Join("two", "Visitor")
@@ -168,7 +173,7 @@ func TestClaimingBakeryDoesNotTrapPlayersInNewDisplay(t *testing.T) {
 			w, p := testWorld()
 			plot := w.layout.Plots[0]
 			p.profile.Bakery, p.profile.Coins = returning, 250
-			p.x, p.z = plot.X+2.4, plot.Z+2
+			p.x, p.z = plot.X+5, plot.Z+3
 			if w.solidBlocked(p.x, p.z, .42) {
 				t.Fatal("future display footprint should be empty before claiming")
 			}

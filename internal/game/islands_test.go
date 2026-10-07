@@ -368,8 +368,25 @@ func TestIslandGardenOvenPondAndPermanentFire(t *testing.T) {
 		t.Fatal("garden did not harvest")
 	}
 	mustAct(t, w, Action{Action: "build", Item: "oven", X: -4, Z: 0})
-	mustAct(t, w, Action{Action: "craft", Item: "cake"})
+	oven := p.profile.HomeIsland.Objects[len(p.profile.HomeIsland.Objects)-1].ID
 	mustAct(t, w, Action{Action: "build", Item: "pond", X: 0, Z: -8})
+	mustAct(t, w, Action{Action: "build", Item: "mixer", X: 0, Z: -4})
+	mixer := p.profile.HomeIsland.Objects[len(p.profile.HomeIsland.Objects)-1].ID
+	mustAct(t, w, Action{Action: "build", Item: "table", X: -4, Z: 3.5})
+	table := p.profile.HomeIsland.Objects[len(p.profile.HomeIsland.Objects)-1].ID
+	holdTestItem(t, p, "dough")
+	mustAct(t, w, Action{Action: "production_mix", Target: mixer, Item: "cake"})
+	advance(w, 3)
+	mustAct(t, w, Action{Action: "production_collect", Target: mixer, Item: "prepared_cake"})
+	holdTestItem(t, p, "prepared_cake")
+	mustAct(t, w, Action{Action: "production_bake", Target: oven, Item: "prepared_cake"})
+	advance(w, 5)
+	p.x, p.z = -2, 2
+	mustAct(t, w, Action{Action: "production_collect", Target: table, Item: "cake"})
+	if p.profile.Inventory["cake"] != 1 {
+		t.Fatal("home oven did not deliver the mixed cake to its cooling table")
+	}
+	p.x, p.z = 0, 0
 	mustAct(t, w, Action{Action: "build", Item: "fire", X: 0, Z: 4})
 	fire := p.profile.HomeIsland.Objects[len(p.profile.HomeIsland.Objects)-1].ID
 	w.time += 1501

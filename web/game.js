@@ -3,6 +3,12 @@ import {createSnapshotDecoder} from './state-sync.js';
 import {createIslandScene} from './island-scene.js';
 import {buildCave,caveHeight,cutCaveOpening} from './cave-scenery.js';
 import {buildForestClub,cutClubOpening} from './club-scenery.js';
+import {createBakeryScene} from './bakery-scene.js';
+import {bakingItemName,bakingIngredientIcons,isDoughItem,createDoughView} from './baking-items.js';
+import {buildFlatRoof} from './roof-scenery.js';
+import {createProductionScene} from './production-scenery.js';
+import {buildBakeryRoom} from './bakery-room.js';
+import {createBakeryFurnishings,insideOwnBakery,ownedBakery,bakeryPlacementValid} from './bakery-furnishings.js';
 import {clubReducedFlashing,setClubReducedFlashing} from './club-settings.js';
 import {createFlowerScenery} from './flower-scenery.js';
 import {createTraderScenery} from './trader-scenery.js';
@@ -26,12 +32,13 @@ const materialEmoji = {wood:'🪵',stick:'╱',stone:'◈',dough:'◕',berry:'�
 const buffNames = {speed:'QUICK FEET',slow:'SLOWED',weaken:'WEAKER THROWS',weak:'WEAKER THROWS',range:'LONG THROW',short:'SHORT THROW',swim:'OCEAN LEGS',superstrength:'SUPERSTRENGTH',protein:'PROTEIN BOOST',training:'TRAINING BOOST'};
 const state = {player:null,snapshot:null,ws:null,connected:false,playing:false,locked:false,modal:null,menuOpen:false,context:null,email:'',yaw:0,pitch:0,keys:new Set(),lastInput:0,selected:'sugar',selectedSlot:0,hotkeys:[],nodes:new Map(),animals:new Map(),players:new Map(),homes:new Map(),projectiles:new Map(),events:new Set(),nearest:null,lastHealth:100,localPosition:new THREE.Vector3(-35,1.7,-35),handSwing:0,lastThrow:0,lastSnapshot:0,hasPlayed:false,wasModalLocked:false,worldReady:false,serverRecipes:[],intentYaw:false};
 let renderer, scene, camera, clock, worldGroup, hand, water, waterPositions, landingTime=0, lastUI=0, lastMinimap=0, lastFrame=0, lastAnimation=0, lastPanelRefresh=0, miniContext;
-let islandScene, buildGhost, riddenCamel, flowerScenery, caveScenery, forestClub, daylight, skylight;
+let islandScene, buildGhost, riddenCamel, flowerScenery, caveScenery, forestClub, bakeryScene, bakeryFurnishings, productionScene, daylight, skylight;
 const nearForestClub=me=>!!me&&!me.island&&me.x>-229&&me.x<-175&&me.z<-184;
 const motionClock=createMotionClock(),localMotion=createMotionTrack(),localPose={};
 const motionIdentity=p=>`${p.island||''}|${p.deaths||0}|${p.posture||''}|${p.ridingCamel?1:0}`;
 const eyeHeight=p=>p.posture==='lying'?.5:p.posture==='sitting'?1.05:p.ridingCamel?3.1:1.7;
 const dynamicGroup = new THREE.Group();
+const buildGhostTints={valid:new THREE.Color('#b3e8b7'),invalid:new THREE.Color('#ed9b8b')};
 const materials = new Map();
 const mat = (color, opts={}) => {
   const key = color + JSON.stringify(opts);
@@ -107,6 +114,7 @@ function addCloud(x,y,z,scale=1) {
 }
 function addBuilding(x,z,type,options={}) {
   const g=new THREE.Group();g.position.set(x,0,z);worldGroup.add(g);
+  if(type==='bakery'){buildBakeryRoom({THREE,parent:g,box,sphere,cylinder,mat,flatLabel},options);return g;}
   const desert=type==='desert'||type==='desert_building', bakery=type==='bakery', gym=type==='gym',shop=type.includes('shop');
   const wall=desert?'#cfaa79':bakery?'#e6d6b0':gym?'#839998':type==='kitchen_shop'?'#b87961':shop?'#b7b98d':'#aaa996';
   const w=options.width||(desert?8:bakery?9:12),h=options.height||(desert?4:5),d=options.depth||(desert?7:8);
@@ -122,7 +130,7 @@ function addBuilding(x,z,type,options={}) {
   }
   box(door,h-doorHeight,.24,wall,0,doorHeight+(h-doorHeight)/2,d/2,g);
   box(door+.3,.16,.38,desert?'#9b754f':'#927c5f',0,doorHeight,d/2,g);
-  box(w,.18,d,wall,0,h,0,g);
+  buildFlatRoof({box,parent:g},{width:w,depth:d,wallTop:h,color:desert?'#b58a5f':'#79735c',name:'building-roof'});
   for(const child of g.children)if(child.material===mat(wall))child.userData.paintTarget='walls';
   const rug=box(door+1,.025,d-1,desert?'#aa6650':bakery?'#ac8060':'#82917c',0,.09,0,g);
   for(const side of [-1,1]) {
@@ -131,24 +139,24 @@ function addBuilding(x,z,type,options={}) {
     lantern.material=mat('#ffe2a0',{emissive:'#efb559',emissiveIntensity:.6});
   }
   if(desert) {
-    box(w+.5,.4,d+.5,'#b58a5f',0,h,0,g);
     if(options.label){const sign=flatLabel(options.label.replace('BARTER','INGREDIENTS'),'#674d36','#efdbaf',768,90);sign.position.set(0,h-.45,d/2+.17);sign.scale.set(w-.6,.62,1);g.add(sign);}
-    for(let i=0;i<5;i++) box(.6,.7,.6,'#c39a6b',-w/2+i*w/4,h+.4,-d/2,g);
     const awning=box(4,.12,2.4,'#c67e4c',0,3,d/2+1.2,g);awning.rotation.x=.08;
     cylinder(.06,.07,3,'#8d7146',-1.9,1.5,d/2+2.2,g);cylinder(.06,.07,3,'#8d7146',1.9,1.5,d/2+2.2,g);
     sphere(.5,'#b97650',-3,.5,d/2+.5,g);cylinder(.4,.5,.7,'#b7774e',-3,.8,d/2+.5,g);
     for(const side of [-1,1]) box(1,1.15,.12,'#7a8066',side*2.6,2.4,d/2+.05,g);
   }else{
-    const roof=cylinder(0,w*.8,2,'#79735c',0,h+.85,0,g,4);roof.rotation.y=Math.PI/4;roof.scale.z=d/w;
     for(const side of [-1,1]){box(2.1,1.8,.14,'#6f9990',side*(w/2-1.8),2.5,d/2+.08,g);box(.09,1.8,.2,'#eddfbb',side*(w/2-1.8),2.5,d/2+.16,g);}
     if(bakery){const a=box(7,.12,2.6,'#df996a',0,3.7,d/2+1.2,g);a.rotation.x=.12;for(let i=0;i<7;i++)box(.5,.12,2.65,'#f6e6bd',-3+i,3.73,d/2+1.2,g);}
     if(bakery||gym||shop){const sign=flatLabel(options.label||(bakery?'BAKERY PLOT':gym?'CRUMB CITY GYM':type==='kitchen_shop'?'KETTLE & COLOUR':'THE CORNER PANTRY'),bakery?'#74482d':'#354f43','#f3e6c5',512,90);sign.position.set(0,h-.65,d/2+.17);sign.scale.set(Math.min(w-1,9),1.1,1);g.add(sign);g.userData.sign=sign;}
-    if(bakery){const oven=box(2.2,1.6,1.2,'#7f786b',-2.6,.85,-2.5,g);oven.userData.paintTarget='oven';box(1.4,.75,.08,'#3d443b',-2.6,.8,-1.85,g);cylinder(.2,.2,2.6,'#746b5b',-2.6,2.9,-2.5,g);box(2,.14,.8,'#8f7554',2.5,1.3,-2.5,g);}
     if(gym){for(const side of [-1,1]){box(1.2,.25,2.7,'#546a60',side*3,.5,-2,g);box(.09,1,.1,'#949989',side*3-.5,.9,-3,g);box(.09,1,.1,'#949989',side*3+.5,.9,-3,g);}box(4,.2,.85,'#bd9b70',0,.55,-2.8,g);}
     if(gym){
       for(const side of [-1,1]){box(2.2,2.35,.04,'#486c72',side*(w/2-1.6),1.75,d/2+.14,g);box(1.25,.075,.12,'#ddd9c0',side*(w/2-1.6),1.65,d/2+.21,g);for(const end of [-1,1])cylinder(.3,.3,.14,'#253c40',side*(w/2-1.6)+end*.51,1.65,d/2+.25,g,12).rotation.z=Math.PI/2;}
     }
     if(shop){box(w+.6,.22,1.8,type==='kitchen_shop'?'#7d9c88':'#d6ad67',0,3.45,d/2+.75,g);for(const side of [-1,1]){box(2.1,1.8,.05,'#658c8d',side*(w/2-1.6),2,d/2+.17,g);box(2,.15,.8,'#926a4c',side*(w/2-1.6),1,d/2+.5,g);}if(type==='kitchen_shop')for(let i=0;i<3;i++)cylinder(.22,.22,.35,['#c86656','#85a085','#d9b765'][i],-w/2+1+i*.5,1.28,d/2+.5,g);}
+  }
+  if(type==='ingredient_shop'){
+    for(const side of [-1,1]){box(3.4,.12,.8,'#98734f',side*3.5,1,-2.5,g);box(3.4,.12,.8,'#98734f',side*3.5,2,-2.5,g);for(let i=0;i<5;i++){box(.38,.6,.3,side===-1?'#ece0c2':'#dbc27c',side*3.5-1.2+i*.6,1.36,-2.5,g);box(.38,.55,.3,side===-1?'#b5c5a2':'#e2c3a2',side*3.5-1.2+i*.6,2.34,-2.5,g);}}
+    const label=flatLabel('SUGAR  BUTTER  FLOUR  EGGS','#5b684c','#ece4c9',768,90);label.position.set(0,3.4,-3.8);label.scale.set(7,.7,1);g.add(label);
   }
   return g;
 }
@@ -272,7 +280,7 @@ function homeObject(home){
     for(const side of [-1,1]){box(.8,3.6,d,'#a67b50',side*(w/2-.4),1.8,0,g);box(1.8,3.6,.8,'#a67b50',side*1.9,1.8,-d/2+.4,g);}
     box(2,.65,.8,'#a67b50',0,3.275,-d/2+.4,g);
     for(let y=.4;y<3.5;y+=.45)box(w+.08,.045,.83,'#805e40',0,y,d/2-.4,g);
-    const roof=cylinder(0,w*.78,2,'#657d63',0,4.1,0,g,4);roof.rotation.y=Math.PI/4;roof.scale.z=d/w;
+    buildFlatRoof({box,parent:g},{width:w,depth:d,wallTop:3.6,color:'#657d63',name:'cabin-roof'});
   }else{
     const color=home.safe?'#8d9c71':'#c2a175',roof=new THREE.BufferGeometry();
     roof.setAttribute('position',new THREE.Float32BufferAttribute([-w/2,0,-d/2,0,3,-d/2,0,3,d/2,-w/2,0,d/2,w/2,0,-d/2,w/2,0,d/2,0,3,d/2,0,3,-d/2],3));roof.setIndex([0,1,2,0,2,3,4,5,6,4,6,7]);roof.computeVertexNormals();mesh(roof,color,0,0,0,g,{side:THREE.DoubleSide});
@@ -288,19 +296,13 @@ function homeObject(home){
 }
 function updateBakeryAppearance(n){
   const building=scenery.get(n.id);if(!building)return;
-  const own=n.owner===state.snapshot?.me.id,level=n.bakeryLevel||(own?state.snapshot.me.bakeryLevel:0)||0,equipment=n.equipment||(own?state.snapshot.me.equipment:{}),paint=n.paint||{};
-  const signature=JSON.stringify([n.owner,n.label,n.callName,n.username,paint,equipment,level]);if(building.userData.bakerySignature===signature)return;building.userData.bakerySignature=signature;
+  const paint=n.paint||{},level=n.bakeryLevel||0,signature=JSON.stringify([n.owner,n.label,n.username,paint,level]);if(building.userData.bakerySignature===signature)return;building.userData.bakerySignature=signature;
   if(building.userData.sign){building.remove(building.userData.sign);disposeObject(building.userData.sign);}
-  const sign=flatLabel(n.owner?(n.label||(n.callName||'A baker')+"'s BAKERY"):'AVAILABLE BAKERY','#74482d','#f3e6c5',768,100);sign.position.set(0,4.35,4.67);sign.scale.set(8.5,1.1,1);building.add(sign);building.userData.sign=sign;
+  const sign=flatLabel(n.owner?(n.label||'BAKERY'):'AVAILABLE BAKERY','#74482d','#f3e6c5',768,100);sign.position.set(0,5.15,8.19);sign.scale.set(9,.85,1);building.add(sign);building.userData.sign=sign;
   const old=building.getObjectByName('bakery-custom');if(old){building.remove(old);disposeObject(old);}
   const custom=new THREE.Group();custom.name='bakery-custom';building.add(custom);
-  if(n.owner){const username=flatLabel('@'+(n.username||'baker'),'#605c40','#eaddb7',512,75);username.position.set(0,3.58,4.69);username.scale.set(3.8,.5,1);custom.add(username);}
-  if(n.owner){const stand=box(.7,.7,.65,avatarColor(paint.mixer,'#7f9b90'),2.5,1.68,-2.5,custom);stand.userData.paintTarget='mixer';sphere(.34,'#c7ccc0',2.5,1.4,-2.28,custom).scale.y=.6;}
-  if(n.owner){box(2.7,1.1,.7,avatarColor(paint.display,'#b99d75'),2.4,.6,2,custom);box(2.8,.045,.8,'#d1e7d4',2.4,1.6,2,custom);for(let i=0;i<3;i++){const cookie=makeCookie(i===2?'cake':'sugar',.8);cookie.position.set(1.6+i*.75,1.2,2);custom.add(cookie);}}
-  if(equipment?.oven){box(1.85,.15,1.15,'#d2cbb5',-2.6,1.74,-2.5,custom);for(let i=0;i<3;i++)sphere(.065,'#e6c98d',-3.15+i*.5,1.37,-1.83,custom);}
-  for(let i=0;i<Math.min(level,8);i++){const loaf=makeCookie('sugar',.55);loaf.position.set(-3.6+(i%4)*.32,1.1+Math.floor(i/4)*.12,2.65);custom.add(loaf);}
-  if(level){const badge=flatLabel('OVEN LEVEL '+level,'#e3c984','#4c6b58',384,70);badge.position.set(-3.3,2.15,4.69);badge.scale.set(2,.4,1);custom.add(badge);}
-  building.traverse(o=>{if(o.userData.paintTarget){const target=o.userData.paintTarget,fallback=target==='walls'?'#e6d6b0':target==='oven'?'#7f786b':'#b99d75';o.material=mat(avatarColor(paint[target],fallback));}});
+  if(n.owner){const username=flatLabel('@'+(n.username||'baker')+(level?' - OVEN LEVEL '+level:''),'#605c40','#eaddb7',512,75);username.position.set(0,3.85,8.21);username.scale.set(5,.45,1);custom.add(username);}
+  building.traverse(o=>{if(o.userData.paintTarget==='walls')o.material=mat(avatarColor(paint.walls,'#e6d6b0'));});
 }
 function updateCamelName(object,node){
   if(!object||object.userData.camelName===node.label)return;
@@ -310,7 +312,8 @@ function updateCamelName(object,node){
 function nodeObject(n) {
   const g=new THREE.Group();
   switch(n.kind){
-    case 'club_bar':case 'club_casino':case 'club_seat':break; // The club scene owns their furniture.
+    case 'ingredient_shop':{const vendor=makePerson('Baker\u2019s Pantry','#bd9562',false,{shirt:'tee',shirtColor:'sand',pantsColor:'black',hat:'chef'});g.add(vendor);break;}
+    case 'bakery_chair':case 'club_bar':case 'club_casino':case 'club_seat':break; // The club scene owns their furniture.
     case 'item_drop': {
       const count=n.amount||1,size=count>=10?.72:count>=5?.5:.24;
       if(count===1&&cookieNames[n.item]){const cookie=makeCookie(n.item,.7);cookie.position.y=.16;g.add(cookie);}
@@ -322,7 +325,6 @@ function nodeObject(n) {
     case 'wood': {if(!scenery.has(n.id)){const tree=addTree(0,0,n.scale||1,n.variant%3===1?1:0,n.color,n.variant);worldGroup.remove(tree);g.add(tree);}break;}
     case 'stick':for(let i=0;i<4;i++){const m=cylinder(.035,.06,1.25,'#927a48',(i-2)*.12,.12,0,g,5);m.rotation.set(.2*i,.3*i,Math.PI/2-.1*i);}break;
     case 'stone':{const a=addRock(-.25,0,.35,g),b=addRock(.3,.1,.28,g);if(n.x<0&&n.z>coastAt(n.x)-18)a.material=b.material=mat('#cab590');break;}
-    case 'dough':{const patch=cylinder(1.1,1.1,.025,'#d6c994',0,.027,0,g,12);for(let i=0;i<5;i++){const m=box(.65,.03,.055,'#b6a67b',(i-2)*.19,.057,(i%2-.5)*.35,g);m.rotation.y=-.7;}sphere(.1,'#eddeb0',.3,.1,.15,g);break;}
     case 'berry':sphere(.65,'#647f48',0,.5,0,g,1);sphere(.5,'#79924e',.4,.45,.1,g);for(let i=0;i<10;i++){const a=i*2.4;sphere(.105,'#b7504f',Math.cos(a)*.53,.65+(i%3)*.13,Math.sin(a)*.5,g);}break;
     case 'nut':sphere(.55,'#829355',0,.42,0,g);for(let i=0;i<7;i++)sphere(.15,'#9c7047',Math.cos(i)*.5,.13,Math.sin(i)*.5,g);break;
     case 'cactus':if(!scenery.has(n.id))buildCactus(g,n.scale||1,n.color,n.variant);break;
@@ -335,7 +337,7 @@ function nodeObject(n) {
     case 'abu_fanous': {g.add(makePerson('ABU FANOUS','#d9bf87'));const camel=islandScene?.camel();if(camel){camel.position.set(3,0,-1);camel.rotation.y=-.7;g.add(camel);}box(4,.12,3,'#bc8b65',0,3,-2,g);for(const x of [-1.8,1.8])cylinder(.08,.1,3,'#8b6e4d',x,1.5,-2,g);break;}
     case 'camel': {g.add(islandScene.camel());const label=textSprite(n.label||'Camel','#f5e2bd','#654d3d99');label.position.y=3.25;label.scale.set(2.4,.4,1);g.add(label);break;}
     case 'island_chest': {box(1.6,.8,1,'#a07a51',0,.4,0,g);box(1.65,.17,1.06,'#bd935f',0,.85,0,g);box(.2,.25,.06,'#e6c77b',0,.65,.55,g);break;}
-    case 'island_portal': case 'bakery_oven': case 'bakery_mixer': case 'bakery_display': break;
+    case 'island_portal': case 'bakery_oven': case 'bakery_mixer': case 'bakery_cooling_table': case 'bakery_display': break;
     case 'sea_salt':for(let i=0;i<6;i++){const m=box(.15,.17,.17,'#f5ecce',(i%3-1)*.2,.12,Math.floor(i/3)*.2,g);m.rotation.y=i*.3;}break;
     case 'shell':{const m=mesh(new THREE.ConeGeometry(.38,.23,8),'#e5bb9c',0,.12,0,g);m.rotation.z=.3;break;}
     case 'trash':{const b=cylinder(.11,.11,.52,'#8cb7b0',-.16,.13,0,g,8);b.rotation.z=1.2;box(.27,.19,.3,'#cd9b81',.22,.13,.12,g);const ring=mesh(new THREE.TorusGeometry(.18,.025,4,12),'#b7c9b3',.08,.11,-.18,g);ring.rotation.x=Math.PI/2;break;}
@@ -347,7 +349,7 @@ function nodeObject(n) {
     case 'general_shop':g.add(makePerson('CRUMB MARKET','#b39465'));break;
     case 'paint_shop':g.add(makePerson('PIGMENT & COLOUR','#927cad'));break;
     case 'outfit_shop':g.add(makePerson('THREAD & THIMBLE','#b67c83'));break;
-    case 'bakery_plot':{const menu=flatLabel('CLAIM / MANAGE BAKERY','#714e33','#edddaf',384,80);menu.position.set(0,1.7,0);menu.scale.set(2.1,.5,1);g.add(menu);cylinder(.055,.07,1.5,'#8d724e',0,.75,0,g);break;}
+    case 'bakery_plot':{const menu=flatLabel('CLAIM / MANAGE BAKERY','#714e33','#edddaf',384,80);menu.position.set(0,1.7,0);menu.scale.set(2.1,.5,1);g.add(menu);cylinder(.055,.07,1.5,'#8d724e',0,.75,0,g);g.position.set(n.x-2.7,0,n.z+8.6);break;}
     case 'gym':{const bar=cylinder(.07,.07,2,'#6d706b',0,.65,0,g,8);bar.rotation.z=Math.PI/2;for(const side of [-1,1]){const weight=cylinder(.4,.4,.25,'#536b63',side*.75,.65,0,g,10);weight.rotation.z=Math.PI/2;}break;}
     case 'vending':box(1.3,2.2,.8,'#81928a',0,1.1,0,g);box(.93,1.23,.1,'#4c7067',-.07,1.36,.46,g);for(let i=0;i<6;i++)cylinder(.075,.07,.24,['#e3c398','#b493bc','#d4d5a5'][i%3],-.33+(i%3)*.29,1.16+Math.floor(i/3)*.46,.55,g);box(.7,.17,.12,'#294d43',0,.37,.45,g);break;
     case 'land':cylinder(.05,.07,1.7,'#897343',0,.85,0,g,5);box(1.65,.8,.12,'#ebd8a8',0,1.45,0,g);{const sign=flatLabel('YOUR BAKERY HERE','#6c7850',null,512,120);sign.position.set(0,1.47,.08);sign.scale.set(1.55,.37,1);g.add(sign);}break;
@@ -357,7 +359,7 @@ function nodeObject(n) {
   }
   if(n.kind==='abu_fanous')traderScenery?.decorateAbu(g);
   if(n.kind==='peace')traderScenery?.decoratePeace(g);
-  g.position.set(n.x,n.y??(n.kind.endsWith('_lollipop')?caveHeight(n.x,n.z):0),n.z);g.userData.node=n;
+  g.position.set(n.x,n.y??(n.kind.endsWith('_lollipop')?caveHeight(n.x,n.z):0),n.z);if(n.kind==='bakery_plot')g.position.set(n.x-2.7,0,n.z+8.6);g.userData.node=n;
   return g;
 }
 function makeAnimal(a){
@@ -393,6 +395,9 @@ function initializeRenderer(){
     islandScene=createIslandScene({THREE,scene,box,sphere,cylinder,mesh,mat,textSprite,disposeObject,makeAnimal});
     riddenCamel=islandScene.camel();riddenCamel.visible=false;scene.add(riddenCamel);
     traderScenery=createTraderScenery({THREE,box,sphere,cylinder,mesh,mat,flatLabel,textSprite});
+    bakeryFurnishings=createBakeryFurnishings({THREE,box,cylinder,sphere,flatLabel,disposeObject});
+    bakeryScene=createBakeryScene({THREE,parent:scene,makePerson,makeCookie,makeDough:(item,scale)=>createDoughView({THREE,sphere,box},item,scale),box,cylinder,flatLabel,disposeObject});
+    productionScene=createProductionScene({THREE,parent:scene,makeCookie,makeDough:(item,scale)=>createDoughView({THREE,sphere,box},item,scale),flatLabel,disposeObject});
     hand=new THREE.Group();hand.position.set(.48,-.43,-.82);camera.add(hand);
     const palm=box(.17,.18,.29,'#d8ad7d',.1,-.09,.12,hand);palm.name='hand-skin';palm.rotation.z=-.1;const sleeve=cylinder(.115,.15,.53,'#688660',.15,-.21,.34,hand,6);sleeve.name='hand-sleeve';sleeve.rotation.x=1.03;const cookie=makeCookie('sugar',1);cookie.name='held-cookie';hand.add(cookie);
     hand.rotation.set(.55,-.25,-.24);hand.visible=false;
@@ -440,7 +445,7 @@ function connect(){
     let snapshot;
     try{
       const message=JSON.parse(event.data);
-      if(message.type==='error'){state.pendingBuildEdit=null;state.buildOperationPending=false;panels?.actionFailed?.(message.message);toast(message.message||'That action is not available.','error');return;}
+      if(message.type==='error'){state.pendingBuildEdit=null;state.pendingBakeryEdit=null;state.buildOperationPending=false;panels?.actionFailed?.(message.message);toast(message.message||'That action is not available.','error');return;}
       snapshot=decoder.apply(message);
     }catch(error){console.warn('Could not read game update; reconnecting',error);state.connected=false;ws.close(4000,'Game state resync');return;}
     if(snapshot)receiveSnapshot(snapshot);
@@ -461,8 +466,10 @@ function connect(){
 function send(message){if(state.ws&&state.ws.readyState===WebSocket.OPEN){state.ws.send(JSON.stringify(message));return true;}return false;}
 function action(actionName,extra={}){
   if(!state.connected){toast(state.sessionReplaced?'Account opened in another tab. Reload to reconnect.':'Reconnect to the world to do that.','error');return;}
+  if(state.snapshot?.me.fallen&&actionName!=='stand'){toast(fallPrompt(state.snapshot.me));return;}
   send({type:'action',action:actionName,...extra});
 }
+function fallPrompt(me){return me.standIn>0?'You fell over. Rest for '+me.standIn.toFixed(1)+'s before standing.':'Press E, Space, or move to stand up.';}
 function movement(){
   if(!state.locked||state.modal||!state.connected)return{x:0,z:0,sprint:false,jump:false};
   const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')?1:0);
@@ -481,17 +488,24 @@ function receiveSnapshot(snapshot){
   const motionTime=snapshot.time*1000,acceptMotion=motionClock.accept(motionTime,state.lastSnapshot,{reset:snapshot.seq===1});
   if(acceptMotion&&localMotion.push(motionTime,{x:snapshot.me.x,y:(snapshot.me.y||0)+eyeHeight(snapshot.me),z:snapshot.me.z},{key:motionIdentity(snapshot.me),epoch:motionClock.generation}))state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+eyeHeight(snapshot.me),snapshot.me.z);
   worldGroup.visible=!snapshot.me.island;islandScene?.sync(snapshot);
+  if(state.pendingBakeryEdit&&snapshot.me.editingBakeryFurnitureId===state.pendingBakeryEdit){const object=snapshot.me.bakeryFurniture?.find(o=>o.id===state.pendingBakeryEdit);state.pendingBakeryEdit=null;if(object)beginBuild({object,acquired:true,scope:'bakery'});}
   if(state.pendingBuildEdit&&snapshot.me.editingBuildId===state.pendingBuildEdit){const object=snapshot.island?.objects?.find(o=>o.id===state.pendingBuildEdit);state.pendingBuildEdit=null;if(object)beginBuild({object,acquired:true});}
-  if(state.building&&(!snapshot.me.buildMode||state.building.object&&snapshot.me.editingBuildId!==state.building.object.id))cancelBuild({notify:false});
+  if(state.building){const bakery=state.building.scope==='bakery',mode=bakery?snapshot.me.bakeryBuildMode:snapshot.me.buildMode,editing=bakery?snapshot.me.editingBakeryFurnitureId:snapshot.me.editingBuildId;if(!mode||state.building.object&&editing!==state.building.object.id)cancelBuild({notify:false});}
+  if(state.pendingBakeryEdit&&!snapshot.me.bakeryBuildMode)state.pendingBakeryEdit=null;
+  if(state.building?.scope==='bakery'&&state.building.object){const current=snapshot.me.bakeryFurniture?.find(o=>o.id===state.building.object.id),color=current?.color||snapshot.me.paint?.[current?.kind]||'';if(current&&color!==state.building.color){const rotation=state.building.rotation;beginBuild({object:current,acquired:true,scope:'bakery',silent:true});if(state.building)state.building.rotation=rotation;}}
   if(old&&old.island!==snapshot.me.island){cancelBuild();state.zone=null;}
   if(first){state.yaw=snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.selected=snapshot.me.selected||'sugar';updateHeldCookie();}
   if(old&&snapshot.me.health<old.health-1){$('damage-overlay').style.opacity='.5';setTimeout(()=>$('damage-overlay').style.opacity='0',240);}
   if(old&&!old.sprintExhausted&&snapshot.me.sprintExhausted)toast('Out of stamina — walking to recover. Release Shift, then sprint again once stamina reaches 20%.');
   if(old&&snapshot.me.deaths>old.deaths){toast('You were crumbled. All your inventory items are still yours. Back to the Wildwood!','error');}
+  if(old&&!old.fallen&&snapshot.me.fallen){state.handSwing=0;toast('You stumbled! Rest for two seconds, then press E, Space, or move to stand up.');}
   state.selectedSlot=snapshot.me.selectedSlot||0;
   if(snapshot.me.selected!==state.selected){state.selected=snapshot.me.selected||'';updateHeldCookie();}
   const avatarSignature=JSON.stringify(snapshot.me.avatar||{});if(state.avatarSignature!==avatarSignature){state.avatarSignature=avatarSignature;const a=snapshot.me.avatar||{};hand.getObjectByName('hand-skin').material=mat(skinTones[a.skin]||skinTones[1]);hand.getObjectByName('hand-sleeve').material=mat(a.shirt==='tank'?(skinTones[a.skin]||skinTones[1]):avatarColor(a.shirtColor,'#688660'));}
-  syncObjects(snapshot.nodes||[],state.nodes,nodeObject,(o,n)=>{o.visible=n.available!==false;o.userData.node=n;if(n.kind==='camel'||n.kind==='item_drop'){o.position.set(n.x,n.y||0,n.z);o.rotation.y=n.yaw||0;o.visible=o.visible&&!!n.inCave===!!snapshot.me.inCave;}if(['wood','cactus'].includes(n.kind)&&scenery.has(n.id)){const root=scenery.get(n.id);root.visible=n.available!==false;sceneryBatches?.setVisible(root,root.visible);}if(n.kind==='bakery_plot')updateBakeryAppearance(n);});
+  syncObjects((snapshot.nodes||[]).filter(n=>!['bakery_customer','bakery_chef','bakery_cashier'].includes(n.kind)),state.nodes,nodeObject,(o,n)=>{o.visible=n.available!==false;o.userData.node=n;if(n.kind==='camel'||n.kind==='item_drop'||n.kind.startsWith('bakery_')&&n.kind!=='bakery_plot'){o.position.set(n.x,n.y||0,n.z);o.rotation.y=n.yaw||0;o.visible=o.visible&&!!n.inCave===!!snapshot.me.inCave;}if(['wood','cactus'].includes(n.kind)&&scenery.has(n.id)){const root=scenery.get(n.id);root.visible=n.available!==false;sceneryBatches?.setVisible(root,root.visible);}if(n.kind==='bakery_plot')updateBakeryAppearance(n);});
+  bakeryFurnishings?.sync(snapshot,scenery);
+  bakeryScene?.sync(snapshot,scenery);
+  productionScene?.sync(snapshot,scenery);
   syncObjects(snapshot.players||[],state.players,()=>new THREE.Group(),(o,p)=>{const signature=JSON.stringify([p.callName,p.name,p.avatar,p.friendCode,p.ridingCamel,p.posture]);if(o.userData.signature!==signature){for(const child of [...o.children]){o.remove(child);disposeObject(child);}const person=makePerson(p.callName||p.name,'#d19b69',false,p.avatar||{});o.add(person);if(p.friendCode){const label=textSprite(p.friendCode,'#e6e9c6','#37544588');person.children.filter(c=>c.isSprite).forEach(c=>c.position.y=2.65);label.position.y=2.22;label.scale.set(2,.34,1);person.add(label);}if(p.ridingCamel){o.add(islandScene.camel());person.position.y=1.5;}if(p.posture==='sitting')person.scale.y=.65;if(p.posture==='lying'){person.rotation.x=-Math.PI/2;person.position.y=.7;}o.userData.signature=signature;}
     o.userData.motion??=createMotionTrack();o.userData.pose??={};
     if(acceptMotion&&o.userData.motion.push(motionTime,p,{key:motionIdentity(p),epoch:motionClock.generation})){o.position.set(p.x,p.y||0,p.z);o.rotation.y=p.yaw||0;}
@@ -514,7 +528,7 @@ function receiveSnapshot(snapshot){
   if(namesSignature!==state.namesSignature){state.namesSignature=namesSignature;if(state.modal)renderModal();}
   const islandSignature=JSON.stringify([snapshot.island,snapshot.friends,snapshot.me.friendRequests,snapshot.me.publicFriendCode,snapshot.me.homeIsland,snapshot.me.homeOffer,snapshot.me.friendsTeleport,snapshot.me.posture,snapshot.me.buildMode,snapshot.me.editingBuildId,snapshot.me.ridingCamel,snapshot.me.camels?.map(c=>[c.id,c.island,c.rentalUntil]),snapshot.me.camelDiscount,snapshot.me.camelRentalUntil]);
   if(islandSignature!==state.islandSignature){state.islandSignature=islandSignature;if(state.modal)renderModal();updateHUD();}
-  const signature=JSON.stringify([snapshot.me.bagSlots,snapshot.me.hotbar,snapshot.me.recovery,snapshot.me.discovered,snapshot.me.coins,snapshot.me.levels,snapshot.me.bakery,snapshot.me.bakeryPlot,snapshot.nodes?.find(n=>n.id===state.context?.id),snapshot.me.bakeryLevel,snapshot.me.home,snapshot.me.avatar,snapshot.me.callName,snapshot.me.hats,snapshot.me.equipment,snapshot.me.paint,snapshot.me.canBuildHome,snapshot.me.homeSafeReason]);
+  const signature=JSON.stringify([snapshot.me.selectedSlot,snapshot.me.selected,snapshot.me.bagSlots,snapshot.me.hotbar,snapshot.me.recovery,snapshot.me.discovered,snapshot.me.coins,snapshot.me.levels,snapshot.me.bakery,snapshot.me.bakeryPlot,snapshot.nodes?.find(n=>n.id===state.context?.id),snapshot.me.bakeryLevel,snapshot.me.bakeryBuildMode,snapshot.me.editingBakeryFurnitureId,snapshot.me.bakeryFurniture,snapshot.me.production,snapshot.me.bakeryDisplay,snapshot.me.bakeryPantry,snapshot.me.bakeryStaff,snapshot.me.bakeryChefRecipe,snapshot.me.bakeryBusiness?.customers,snapshot.me.bakeryBusiness?.chefStatus,snapshot.me.home,snapshot.me.avatar,snapshot.me.callName,snapshot.me.hats,snapshot.me.equipment,snapshot.me.paint,snapshot.me.canBuildHome,snapshot.me.homeSafeReason],(key,value)=>key==='remaining'&&typeof value==='number'?Math.ceil(value):value);
   if(signature!==state.inventorySignature){state.inventorySignature=signature;updateHUD();if(state.modal&&state.modal!=='map'&&state.modal!=='help')renderModal();}
   if(first)updateHUD();
 }
@@ -525,13 +539,13 @@ function syncObjects(items,collection,create,update){
 }
 function disposeObject(object){object.traverse((child)=>{if(child.isMesh)child.geometry?.dispose();if(child.isSprite){child.material?.map?.dispose();child.material?.dispose();}});}
 function updateHeldCookie(){
-  if(!hand)return;const old=hand.getObjectByName('held-cookie');if(old){hand.remove(old);disposeObject(old);}if(cookieNames[state.selected]){const held=makeCookie(state.selected,1);held.name='held-cookie';hand.add(held);}else if(state.snapshot?.clubDrinks?.some(d=>d.id===state.selected)){const held=new THREE.Group();held.name='held-cookie';const shake=state.selected.includes('shake'),color=state.selected==='chocolate_shake'?'#785138':state.selected==='strawberry_shake'?'#df9aaf':state.selected==='orange_juice'?'#efb44c':'#a1c9c6';cylinder(.11,.075,.32,color,0,0,0,held,10);cylinder(.115,.115,.025,'#ecedd9',0,.17,0,held,10);const straw=cylinder(.013,.013,.27,shake?'#e48fa3':'#f2ecd2',.045,.3,0,held,6);straw.rotation.z=-.16;held.position.y=.08;hand.add(held);}
+  if(!hand)return;const old=hand.getObjectByName('held-cookie');if(old){hand.remove(old);disposeObject(old);}if(cookieNames[state.selected]){const held=makeCookie(state.selected,1);held.name='held-cookie';hand.add(held);}else if(isDoughItem(state.selected)){const held=createDoughView({THREE,sphere,box},state.selected,1);held.name='held-cookie';hand.add(held);}else if(state.snapshot?.clubDrinks?.some(d=>d.id===state.selected)){const held=new THREE.Group();held.name='held-cookie';const shake=state.selected.includes('shake'),color=state.selected==='chocolate_shake'?'#785138':state.selected==='strawberry_shake'?'#df9aaf':state.selected==='orange_juice'?'#efb44c':'#a1c9c6';cylinder(.11,.075,.32,color,0,0,0,held,10);cylinder(.115,.115,.025,'#ecedd9',0,.17,0,held,10);const straw=cylinder(.013,.013,.27,shake?'#e48fa3':'#f2ecd2',.045,.3,0,held,6);straw.rotation.z=-.16;held.position.y=.08;hand.add(held);}
 }
 function cookieIcon(kind){return '<span class="cookie-icon '+escapeHTML(kind)+'" aria-hidden="true"></span>';}
-function itemIcon(kind){return cookieNames[kind]?cookieIcon(kind):'<span class="material-icon" aria-hidden="true">'+(state.snapshot?.clubDrinks?.some(d=>d.id===kind)?'🥤':materialEmoji[kind]||'◇')+'</span>';}
+function itemIcon(kind){return cookieNames[kind]?cookieIcon(kind):'<span class="material-icon" aria-hidden="true">'+(state.snapshot?.clubDrinks?.some(d=>d.id===kind)?'🥤':bakingIngredientIcons[kind]||materialEmoji[kind]||(isDoughItem(kind)?'\u25d5':'◇'))+'</span>';}
 function inventory(){return state.snapshot?.me.inventory||{};}
 function itemCount(key){return inventory()[key]||0;}
-function itemName(key){return state.snapshot?.clubDrinks?.find(d=>d.id===key)?.name||(cookieNames[key]?cookieName(key):key.startsWith('build_')?pretty(key.slice(6).replace(':',' · ')):pretty(key));}
+function itemName(key){const ingredient=bakingItemName(key,cookieName);if(ingredient)return ingredient;if(key.startsWith('bakery_')){const [kind,color]=key.slice(7).split(':');return 'Packed '+(state.snapshot?.bakeryFurnitureCatalog?.find(r=>r.id===kind)?.name||pretty(kind))+(color?' · '+pretty(color):'');}return state.snapshot?.clubDrinks?.find(d=>d.id===key)?.name||(cookieNames[key]?cookieName(key):key.startsWith('build_')?pretty(key.slice(6).replace(':',' · ')):pretty(key));}
 function areaFor(x,z){return x<0?(z>coastAt(x)-18?'ocean':'forest'):(z<0?'desert':'city');}
 const areaNames={forest:'THE WILDWOOD',desert:'SUNBAKED SANDS',ocean:'THE BLUE',city:'CRUMB CITY'};
 let zoneTimer;
@@ -552,22 +566,25 @@ function updateHUD(){
   $('area-name').textContent=me.island?'HOME ISLAND':me.inCave&&me.x<0?'WILDWOOD UNDERGROUND':areaNames[areaFor(me.x,me.z)];$('position-label').textContent=Math.round(me.x)+' · '+Math.round(me.z);
   const angle=((state.yaw*180/Math.PI)%360+360)%360;$('compass-direction').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(angle/45)%8];
   const slots=Array.from({length:5},(_,i)=>me.hotbar?.[i]||{item:'',count:0});state.hotkeys=slots.map(s=>s.item);
-  const hotbarSignature=JSON.stringify([slots,state.selectedSlot,me.discovered,!!me.homeIsland,!!me.island]);
+  const hotbarSignature=JSON.stringify([slots,state.selectedSlot,me.discovered,!!me.homeIsland,!!me.island,!!insideOwnBakery(state.snapshot)]);
   if(hotbarSignature!==state.hotbarSignature){
     state.hotbarSignature=hotbarSignature;
-    $('hotbar').innerHTML=slots.map((slot,i)=>'<button class="hotbar-slot '+(i===state.selectedSlot?'selected ':'')+(!slot.item?'empty':'')+'" data-slot="'+i+'" title="'+escapeHTML(slot.item?itemName(slot.item):'Empty hotbar slot')+' · '+(i+1)+'"><span class="slot-number">'+(i+1)+'</span>'+(slot.item?itemIcon(slot.item)+'<span class="slot-count">'+slot.count+'</span>':'<span class="empty-hotbar">+</span>')+'<span class="slot-safe" aria-label="Kept on death">◆</span></button>').join('')+((me.homeIsland||me.island)?'<button class="hotbar-slot" data-slot="5" title="Build menu · 6"><span class="slot-number">6</span><span style="font-size:25px">⌂</span><span class="slot-count">BUILD</span></button>':'');
+    $('hotbar').innerHTML=slots.map((slot,i)=>'<button class="hotbar-slot '+(i===state.selectedSlot?'selected ':'')+(!slot.item?'empty':'')+'" data-slot="'+i+'" title="'+escapeHTML(slot.item?itemName(slot.item):'Empty hotbar slot')+' · '+(i+1)+'"><span class="slot-number">'+(i+1)+'</span>'+(slot.item?itemIcon(slot.item)+'<span class="slot-count">'+slot.count+'</span>':'<span class="empty-hotbar">+</span>')+'<span class="slot-safe" aria-label="Kept on death">◆</span></button>').join('')+((me.homeIsland||me.island||insideOwnBakery(state.snapshot))?'<button class="hotbar-slot" data-slot="5" title="Build menu · 6"><span class="slot-number">6</span><span style="font-size:25px">⌂</span><span class="slot-count">BUILD</span></button>':'');
   }
   const selected=slots[state.selectedSlot]||{item:'',count:0};
   $('selected-cookie-label').innerHTML=selected.item?escapeHTML(itemName(selected.item).toUpperCase())+' <span>'+escapeHTML(cookieNames[selected.item]?cookieNote(selected.item):'Ready in your hotbar')+'</span>':'EMPTY SLOT <span>Move an item here from your inventory</span>';
-  if(state.building)$('selected-cookie-label').textContent='PLACE '+pretty(state.building.item).toUpperCase()+' · R rotate · PgUp/PgDn height · click place · Esc cancel';
+  if(state.building)$('selected-cookie-label').textContent='PLACE '+pretty(state.building.item).toUpperCase()+' · R rotate'+(state.building.scope==='bakery'?' · F pack · T destroy':' · PgUp/PgDn height')+' · click place · Esc cancel';
+  if(me.fallen)$('selected-cookie-label').textContent=fallPrompt(me);
   $('buffs').innerHTML=Object.entries(me.buffs||{}).filter(([,seconds])=>seconds>0).map(([key,seconds])=>'<div class="buff"><span>✦</span><strong>'+escapeHTML(buffNames[key]||pretty(key).toUpperCase())+'</strong><span>'+Math.ceil(seconds)+'s</span></div>').join('');
+  $('buffs').insertAdjacentHTML('beforeend','<div class="buff" title="A fall roll every 50 metres walked or run. Each alcoholic drink adds 1 percentage point until respawn."><strong>FALL CHANCE</strong><span>'+(me.fallChance??.1).toFixed(1)+'% / 50m</span></div>');
   const need=Math.min(itemCount('wood'),2)+Math.min(itemCount('stick'),2)+Math.min(itemCount('stone'),3);
   if(me.inCave&&me.x<0){$('objective-title').textContent='Wildwood after dark';$('objective-text').textContent='Find your groove on the dance floor. Press E at the bar, fortune wheel, or a chair. L changes the flashing lights.';$('objective-progress').style.width='100%';}
+  else if(me.bakeryBuildMode){$('objective-title').textContent='Decorate your bakery';$('objective-text').textContent='6 opens furnishings. E selects, R rotates, T destroys, F packs, left click places. B exits build mode.';$('objective-progress').style.width='100%';}
   else if(me.buildMode){$('objective-title').textContent='Build mode';$('objective-text').textContent='6 opens the build catalog. Look at an object + E to edit. R rotates, T destroys, F packs, left click places, Esc cancels.';$('objective-progress').style.width='100%';}
   else if(me.island){$('objective-title').textContent='A place of your own';$('objective-text').textContent='Press 6 to build and decorate. Open Friends to invite visitors and choose who can help build.';$('objective-progress').style.width='100%';}
   else if(me.homeIsland){$('objective-title').textContent='Home across the water';$('objective-text').textContent='Press 6 to return home. Gather wood and stones, or find a wounded fish or turtle for your pond.';$('objective-progress').style.width='100%';}
   else if(me.coins>=200){$('objective-title').textContent='A sweet path home';$('objective-text').textContent='Find the cave near the middle of Sunbaked Sands. The pink lollipop offers your first island for 200 coins.';$('objective-progress').style.width='100%';}
-  else if(me.bakery){$('objective-title').textContent=me.bakeryPlot?'The next big batch':'Reopen your bakery';$('objective-text').textContent=me.bakeryPlot?'Mix dough, bake at your oven, and sell cookies at your display.':'Claim any available city bakery plot for free to restore your saved bakery.';$('objective-progress').style.width='100%';}
+  else if(me.bakery){$('objective-title').textContent=me.bakeryPlot?'The next big batch':'Reopen your bakery';$('objective-text').textContent=me.bakeryPlot?'Stock your display, serve visiting customers, or hire a chef and cashier.':'Claim any available city bakery plot for free to restore your saved bakery.';$('objective-progress').style.width='100%';}
   else if(Object.keys(inventory()).some((k)=>k!=='sugar'&&cookieNames[k]&&itemCount(k)>0)){$('objective-title').textContent='Cookies with benefits';$('objective-text').textContent='Explore the coast. Trade beach trash with Peace for 3 coins per kilogram.';$('objective-progress').style.width=Math.min(100,me.coins/250*100)+'%';}
   else{$('objective-title').textContent='Bake your own trouble';$('objective-text').textContent='Gather 2 wood, 2 sticks, and 3 stones. Press C to build your first campfire.';$('objective-progress').style.width=need/7*100+'%';}
 }
@@ -580,50 +597,61 @@ function toast(message,type=''){
   while($('toast-stack').children.length>3)$('toast-stack').firstElementChild.remove();
   setTimeout(()=>{el.classList.add('removing');setTimeout(()=>el.remove(),300);},4400);
 }
-function chooseCookie(key){const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot===5&&(state.snapshot?.me.homeIsland||state.snapshot?.me.island)){openModal('build');return;}if(slot<0||slot>4)return;cancelBuild();if(state.snapshot?.me.buildMode)action('build_mode',{enabled:false});state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
+function chooseCookie(key){const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot===5){if(insideOwnBakery(state.snapshot)){openModal('bakery_build');return;}if(state.snapshot?.me.homeIsland||state.snapshot?.me.island){openModal('build');return;}}if(slot<0||slot>4)return;cancelBuild();if(state.snapshot?.me.bakeryBuildMode)action('bakery_build_mode',{enabled:false});if(state.snapshot?.me.buildMode)action('build_mode',{enabled:false});state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
+function toggleBakeryBuild(){if(!insideOwnBakery(state.snapshot)&&!state.snapshot?.me.bakeryBuildMode){toast('Step inside your own bakery to redecorate.');return;}cancelBuild();action('bakery_build_mode',{enabled:!state.snapshot.me.bakeryBuildMode});}
 $('hotbar').addEventListener('click',(event)=>{const button=event.target.closest('[data-slot]');if(button)chooseCookie(Number(button.dataset.slot));});
 function toggleClubLighting(){setClubReducedFlashing(!clubReducedFlashing());updateHUD();if(state.modal)renderModal();}
 $('club-light-toggle').addEventListener('click',toggleClubLighting);
 function throwCookie(){
-  if(!state.locked||!state.snapshot||performance.now()-state.lastThrow<160)return;
+  if(document.pointerLockElement!==$('world')||state.modal||!state.snapshot||performance.now()-state.lastThrow<160)return;
+  if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}
   if(state.building){placeBuild();return;}
-  if(state.snapshot.me.buildMode){toast('Press 6 to choose a build, or look at an object and press E to edit.');return;}
+  if(state.snapshot.me.buildMode||state.snapshot.me.bakeryBuildMode){toast('Press 6 to choose a build, or look at an object and press E to edit.');return;}
   state.lastThrow=performance.now();send({type:'input',...movement(),yaw:state.yaw,pitch:state.pitch});action('throw',{item:state.selected});state.handSwing=1;
 }
-function eatCookie(){if(!state.snapshot||!state.selected)return;action(state.snapshot.clubDrinks?.some(d=>d.id===state.selected)?'drink':['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
+function eatCookie(){if(!state.snapshot||!state.selected)return;if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}action(state.snapshot.clubDrinks?.some(d=>d.id===state.selected)?'drink':['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
 function nearby(){
   const me=state.snapshot?.me;if(!me)return null;let found=null,best=5;
-  for(const node of state.snapshot.nodes||[]){if(!node.available||node.kind==='camel'&&(node.owner!==me.id||me.ridingCamel||Math.abs((node.y||0)-(me.y||0))>2))continue;if(node.kind==='item_drop'&&Math.abs((node.y||0)-(me.y||0))>2)continue;const underground=!!node.inCave||node.kind.endsWith('_lollipop');if(underground&&!me.inCave||!underground&&me.inCave)continue;const d=Math.hypot(node.x-me.x,node.z-me.z);if(node.kind==='club_seat'&&d>2.5||node.kind==='island_portal'&&d>3||['bakery_oven','bakery_mixer','bakery_display'].includes(node.kind)&&d>2.6)continue;if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
+  for(const node of state.snapshot.nodes||[]){if(!node.available||node.kind==='camel'&&(node.owner!==me.id||me.ridingCamel||Math.abs((node.y||0)-(me.y||0))>2))continue;if(node.kind==='item_drop'&&Math.abs((node.y||0)-(me.y||0))>2)continue;const underground=!!node.inCave||node.kind.endsWith('_lollipop');if(underground&&!me.inCave||!underground&&me.inCave)continue;const d=node.kind==='bakery_plot'?Math.min(Math.hypot(node.x-me.x,node.z-me.z),Math.hypot(node.x-2.7-me.x,node.z+8.6-me.z)):Math.hypot(node.x-me.x,node.z-me.z);if((node.kind==='club_seat'||node.kind==='bakery_chair')&&d>2.5||node.kind==='island_portal'&&d>3||['bakery_oven','bakery_mixer','bakery_cooling_table','bakery_display'].includes(node.kind)&&d>2.6)continue;if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
   for(const animal of state.snapshot.animals||[]){if(animal.health<=0&&!animal.egg)continue;const d=Math.hypot(animal.x-me.x,animal.z-me.z);if(d<best){best=d;found={...animal,distance:d,isAnimal:true};}}
   for(const object of state.snapshot.island?.objects||[]){const d=Math.hypot(object.x-me.x,object.z-me.z);if(d<best&&Math.abs((object.y||0)-(me.y||0))<3){best=d;found={...object,distance:d,isBuild:true};}}
   return found;
 }
 function updateInteraction(){
-  if(state.snapshot?.me.buildMode&&!state.building){const hit=islandScene?.pickObject(camera,12),object=state.snapshot.island?.objects?.find(o=>o.id===hit?.id);state.nearest=object?{...object,isBuild:true,distance:hit.distance}:null;}
+  if(state.snapshot?.me.fallen){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent=state.snapshot.me.standIn>0?'You fell over':'Stand up';$('interaction-detail').textContent=fallPrompt(state.snapshot.me);return;}
+  if(state.snapshot?.me.bakeryBuildMode&&!state.building){const hit=bakeryFurnishings?.pickObject(camera,state.snapshot.me.bakeryPlot,12);state.nearest=hit?{...hit,isBakeryFurniture:true}:null;}
+  else if(state.snapshot?.me.buildMode&&!state.building){const hit=islandScene?.pickObject(camera,12),object=state.snapshot.island?.objects?.find(o=>o.id===hit?.id);state.nearest=object?{...object,isBuild:true,distance:hit.distance}:null;}
   else state.nearest=nearby();const n=state.nearest;$('interaction-prompt').hidden=!n||!state.locked;
   if(!n)return;
+  if(n.isBakeryFurniture){$('interaction-label').textContent='Edit '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent='E selects - R rotates - T destroys - F packs';return;}
+  if(n.kind==='bakery_chair'){$('interaction-label').textContent=state.snapshot.me.bakerySeatId===n.id?'Stand up':'Sit in cafe chair';$('interaction-detail').textContent=n.occupiedBy&&n.occupiedBy!==state.snapshot.me.id?'This chair is occupied':'Relax in the cafe';return;}
   if(n.kind.startsWith('club_')){$('interaction-label').textContent=n.kind==='club_bar'?'Order a drink':n.kind==='club_casino'?'Play the fortune wheel':state.snapshot.me.posture==='sitting'?'Stand up':'Take a seat';$('interaction-detail').textContent=n.kind==='club_bar'?'Shakes, soft drinks, and bar favorites':n.kind==='club_casino'?'Choose your stake in game coins · View all seven outcomes':'Relax in the Wildwood underground';return;}
   if(n.kind==='item_drop'){$('interaction-label').textContent='Pick up '+itemName(n.item)+' ('+(n.amount||1)+')';$('interaction-detail').textContent='E to collect this item or bundle';return;}
   if(state.building){$('interaction-prompt').hidden=true;return;}
   if(state.snapshot?.me.buildMode&&n.isBuild){$('interaction-label').textContent='Edit '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent=n.editingBy&&n.editingBy!==state.snapshot.me.id?'Another builder is editing this object':'E takes control · R rotates · T destroys · F packs';return;}
   if(n.kind==='island_portal'){$('interaction-label').textContent='Teleport to the clay cave';$('interaction-detail').textContent='Return to the pink and blue lollipop chambers';return;}
   if(n.kind==='camel'){$('interaction-label').textContent='Mount your camel';$('interaction-detail').textContent='E to mount · Q to dismount · Rides with you when you teleport';return;}
+  if(n.kind==='ingredient_shop'){$('interaction-label').textContent='Buy baking ingredients';$('interaction-detail').textContent='Sugar, butter, flour, and eggs for your mixer';return;}
+  if(n.isBuild&&n.kind==='table'&&state.snapshot.me.production?.['home:'+n.id]){$('interaction-label').textContent='Collect cooled bakes';$('interaction-detail').textContent='Finished goods from your home oven';return;}
   if(n.isBuild&&['oven','mixer'].includes(n.kind)){$('interaction-label').textContent=n.kind==='oven'?'Bake cookies':'Mix cookie dough';$('interaction-detail').textContent='Prepare your next batch';return;}
-  if(['bakery_oven','bakery_mixer','bakery_display'].includes(n.kind)){$('interaction-label').textContent={bakery_oven:'Bake cookies',bakery_mixer:'Mix cookie dough',bakery_display:'Sell cookies'}[n.kind];$('interaction-detail').textContent=n.owner===state.snapshot?.me.id?'Your bakery station':'This station belongs to another baker';return;}
+  if(['bakery_oven','bakery_mixer','bakery_cooling_table','bakery_display'].includes(n.kind)){$('interaction-label').textContent={bakery_oven:'Bake cookies',bakery_mixer:'Mix dough & recipe ingredients',bakery_cooling_table:'Collect finished bakes',bakery_display:'Stock display & serve customers'}[n.kind];$('interaction-detail').textContent=n.owner===state.snapshot?.me.id?'Your bakery station':'This station belongs to another baker';return;}
   if(n.isBuild){$('interaction-label').textContent=n.kind==='storage_chest'?'Open personal storage':n.kind==='chest'?'Open shared materials chest':'Use '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent=n.kind==='storage_chest'?'Private storage for all your items':n.kind==='chest'?'Visitors may donate · Only the owner may withdraw':'Enter build mode to move, rotate, pack or destroy';return;}
   if(n.egg){$('interaction-label').textContent='A '+pretty(n.species).toLowerCase()+' egg';$('interaction-detail').textContent='Keep your distance · '+Math.ceil(n.hatchIn||120)+' seconds undisturbed to hatch';return;}
   if(['wood','cactus'].includes(n.kind)){$('interaction-label').textContent=(n.kind==='wood'?'Chop tree':'Chop cactus')+' · '+(n.chopRemaining||n.chopTotal||3)+' chops left';$('interaction-detail').textContent='Collect '+(n.amount||3)+' '+n.kind+' when it falls';return;}
-  const phrases={wood:['Gather wood','Campfires start with the little things'],stick:['Gather sticks','Every good batch starts somewhere'],stone:['Collect stones','For fire pits and fair trades'],dough:['Dig up cookie dough','Soft earth. Sweet discoveries.'],berry:['Pick wild berries','Try them in your next recipe'],nut:['Gather nuts','Something new for the cookbook'],cactus:['Harvest cactus','An ingredient from the sunbaked sands'],sea_salt:['Collect sea salt','A taste of the ocean'],shell:['Collect seashells','A little treasure from the tide'],trash:['Clean up the beach','Peace pays 3 coins per kilogram'],chest:['Open chest','Good things come in wooden boxes'],fire:['Bake at the campfire','Turn your finds into something delicious'],peace:['Trade with Peace','Good karma. Fair prices.'],desert_trader:['Visit Saffron','The desert has a few secret recipes'],gym:['Get a little stronger','Good cookies deserve a good throwing arm'],vending:['Use protein vending machine','Fuel your next workout or next batch'],land:['Buy bakery land','Build your little cookie empire'],bakery:['Manage your bakery','Fresh batches and brighter prospects'],dummy:['Practice your aim','Left click to throw a cookie']};
+  const phrases={wood:['Gather wood','Campfires start with the little things'],stick:['Gather sticks','Every good batch starts somewhere'],stone:['Collect stones','For fire pits and fair trades'],berry:['Pick wild berries','Try them in your next recipe'],nut:['Gather nuts','Something new for the cookbook'],cactus:['Harvest cactus','An ingredient from the sunbaked sands'],sea_salt:['Collect sea salt','A taste of the ocean'],shell:['Collect seashells','A little treasure from the tide'],trash:['Clean up the beach','Peace pays 3 coins per kilogram'],chest:['Open chest','Good things come in wooden boxes'],fire:['Bake at the campfire','Turn your finds into something delicious'],peace:['Trade with Peace','Good karma. Fair prices.'],desert_trader:['Visit Saffron','The desert has a few secret recipes'],gym:['Get a little stronger','Good cookies deserve a good throwing arm'],vending:['Use protein vending machine','Fuel your next workout or next batch'],land:['Buy bakery land','Build your little cookie empire'],bakery:['Manage your bakery','Fresh batches and brighter prospects'],dummy:['Practice your aim','Left click to throw a cookie']};
   if(n.isAnimal){const reputation=state.snapshot.me.reputation?.[n.species]||0;$('interaction-label').textContent=n.need==='trapped'?'Free the '+pretty(n.species).toLowerCase():n.need==='wounded'?'Help the wounded '+pretty(n.species).toLowerCase():reputation>0?'Greet the '+pretty(n.species).toLowerCase():pretty(n.species);$('interaction-detail').textContent=n.need==='wounded'?'Offer one '+itemName('sugar').toLowerCase()+' to help it heal':n.need==='trapped'?'Helping improves your reputation with this species':reputation<0?'This species distrusts you · Reputation '+reputation:reputation>0?'This species likes you · Reputation +'+reputation:'This species is neutral · Help animals in need to earn trust';}
   else{const p=phrases[n.kind]||[n.label,'Press E to interact'];$('interaction-label').textContent=p[0];$('interaction-detail').textContent=p[1];}
 }
 function interact(){
+  if(state.snapshot?.me.fallen){if(state.snapshot.me.standIn>0)toast(fallPrompt(state.snapshot.me));else action('stand');return;}
+  if(state.snapshot?.me.bakeryBuildMode){if(state.building){toast('Place or cancel this furnishing first.');return;}const hit=bakeryFurnishings?.pickObject(camera,state.snapshot.me.bakeryPlot,12);if(!hit){toast('Look at a bakery furnishing within 12 metres to edit it.');return;}state.pendingBakeryEdit=hit.id;action('bakery_edit',{target:hit.id});return;}
   if(state.snapshot?.me.buildMode){if(state.building){toast('Place or cancel the object you are holding first.');return;}const hit=islandScene?.pickObject(camera,12);if(!hit){toast('Look at an island object within 12 metres to edit it.');return;}state.pendingBuildEdit=hit.id;action('edit_build',{target:hit.id});return;}
   const n=state.nearest||nearby();if(!n){toast('Move closer to something you can gather or use.');return;}
   if(n.kind==='club_bar'||n.kind==='club_casino'){openModal('context',n);return;}
+  if(n.kind==='bakery_chair'){action('bakery_sit',{target:n.id});return;}
   if(n.kind==='club_seat'){action('club_sit',{target:n.id});return;}
   if(n.kind==='item_drop'){action('pickup_item',{target:n.id});return;}
-  if(n.isBuild){openModal(n.kind==='chest'?'chest':n.kind==='storage_chest'?'storage':['oven','mixer'].includes(n.kind)?'context':'build_object',n);return;}
+  if(n.isBuild){openModal(n.kind==='chest'?'chest':n.kind==='storage_chest'?'storage':['oven','mixer','table'].includes(n.kind)?'context':'build_object',n);return;}
   if(n.kind==='island_chest'){openModal('chest',n);return;}
   if(n.kind==='island_portal'){cancelBuild();action('teleport_cave');return;}
   if(n.kind==='camel'){action('camel_mount',{target:n.id});return;}
@@ -631,33 +659,35 @@ function interact(){
   if(n.isAnimal&&n.need==='wounded'&&['fish','turtle'].includes(n.species)){openModal('animal',n);return;}
   if(n.isAnimal){action('interact',{target:n.id});return;}
   if(n.kind==='fire'){openModal('recipes',n);return;}if(n.kind==='outfit_shop'){openModal('customize',n);return;}
-  if(['peace','desert_trader','gym','land','bakery','bakery_plot','bakery_oven','bakery_mixer','bakery_display','kitchen_shop','paint_shop','outfit_shop','pink_lollipop','blue_lollipop','abu_fanous'].includes(n.kind)){openModal('context',n);return;}
+  if(['peace','desert_trader','gym','land','bakery','bakery_plot','bakery_oven','bakery_mixer','bakery_cooling_table','bakery_display','ingredient_shop','kitchen_shop','paint_shop','outfit_shop','pink_lollipop','blue_lollipop','abu_fanous'].includes(n.kind)){openModal('context',n);return;}
   action('interact',{target:n.id});
 }
 function cancelBuild({notify=true}={}){
-  if(notify&&(state.building?.object||state.pendingBuildEdit))action('cancel_build');state.pendingBuildEdit=null;state.buildOperationPending=false;islandScene?.setEditing('');
+  if(notify&&(state.building?.object||state.pendingBuildEdit||state.pendingBakeryEdit))action(state.building?.scope==='bakery'||state.pendingBakeryEdit?'bakery_cancel_edit':'cancel_build');state.pendingBuildEdit=null;state.pendingBakeryEdit=null;state.buildOperationPending=false;islandScene?.setEditing('');bakeryFurnishings?.setEditing('');
   state.building=null;if(buildGhost){scene.remove(buildGhost);buildGhost.traverse(o=>{if(o.isMesh)o.material.dispose();});disposeObject(buildGhost);buildGhost=null;}
 }
-function beginBuild({item,object=null,packed='',acquired=false}){
-  if(!state.snapshot?.me.island||!state.snapshot.me.buildMode){toast('Enter build mode from the home island menu first.');return;}
-  cancelBuild({notify:!acquired});state.building={item:item||object?.kind,object,packed,rotation:object?.rotation||0,y:object?.y||0};
-  buildGhost=islandScene.objectView({...object,kind:state.building.item,color:object?.color||packed.split(':')[1]||'',lit:true},state.snapshot.buildCatalog);
-  islandScene.setEditing(object?.id||'');
-  buildGhost.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.48;o.material.depthWrite=false;o.castShadow=false;}});scene.add(buildGhost);
-  toast(object?'R rotates · T destroys · F packs · Left click places · Esc cancels.':'R rotates 45°. Page Up / Down changes height. Click to place; Escape cancels.');if(!state.locked&&!state.modal)setPlaying();
+function beginBuild({item,object=null,packed='',acquired=false,scope='island',silent=false}){
+  const bakery=scope==='bakery',me=state.snapshot?.me;if(bakery?!me?.bakeryBuildMode||!insideOwnBakery(state.snapshot):!me?.island||!me.buildMode){toast(bakery?'Enter bakery build mode first.':'Enter build mode from the home island menu first.');return;}
+  cancelBuild({notify:!acquired});state.building={scope,item:item||object?.kind,object,packed,rotation:object?.rotation||0,y:bakery?0:object?.y||0};
+  const definition={...object,kind:state.building.item,color:object?.color||packed.split(':')[1]||(bakery?me.paint?.[state.building.item]:'')||'',lit:true};state.building.color=definition.color;
+  buildGhost=bakery?bakeryFurnishings.objectView(definition,state.snapshot.bakeryFurnitureCatalog):islandScene.objectView(definition,state.snapshot.buildCatalog);
+  (bakery?bakeryFurnishings:islandScene).setEditing(object?.id||'');
+  buildGhost.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.userData.ghostColor=o.material.color.clone();o.material.transparent=true;o.material.opacity=.48;o.material.depthWrite=false;o.castShadow=false;}});scene.add(buildGhost);
+  if(!silent){toast('R rotates - T destroys - F packs - Left click places - Esc cancels.');if(!state.locked&&!state.modal)setPlaying();}
 }
 function updateBuildGhost(){
   if(!state.building||!buildGhost||!state.snapshot)return;
-  const b=state.building,me=state.snapshot.me,range=clamp((1.7+(me.y||0)-b.y)/Math.max(.2,Math.tan(-state.pitch)),2.5,7);
-  b.x=Math.round((me.x-Math.sin(state.yaw)*range)*2)/2;b.z=Math.round((me.z-Math.cos(state.yaw)*range)*2)/2;
-  buildGhost.position.set(b.x,b.y,b.z);buildGhost.rotation.y=b.rotation*Math.PI/180;
-  const valid=Math.hypot(b.x,b.z)<32;buildGhost.traverse(o=>{if(o.isMesh)o.material.color.set(valid?'#b3e8b7':'#ed9b8b');});
+  const b=state.building,me=state.snapshot.me,range=clamp((1.7+(me.y||0)-b.y)/Math.max(.2,Math.tan(-state.pitch)),2.5,7),plot=b.scope==='bakery'?ownedBakery(state.snapshot):null;
+  const wx=Math.round((me.x-Math.sin(state.yaw)*range)*2)/2,wz=Math.round((me.z-Math.cos(state.yaw)*range)*2)/2;b.x=wx-(plot?.x||0);b.z=wz-(plot?.z||0);
+  buildGhost.position.set(wx,b.y,wz);buildGhost.rotation.y=b.rotation*Math.PI/180;
+  const valid=plot?bakeryPlacementValid({id:b.object?.id,kind:b.item,x:b.x,z:b.z,rotation:b.rotation},state.snapshot.bakeryFurnitureCatalog,me.bakeryFurniture):Math.hypot(b.x,b.z)<32;b.valid=valid;buildGhost.traverse(o=>{if(o.isMesh)o.material.color.copy(o.userData.ghostColor).lerp(valid?buildGhostTints.valid:buildGhostTints.invalid,.4);});
   buildGhost.visible=state.locked&&!state.modal;
 }
 function placeBuild(){
   const b=state.building;if(!b||state.buildOperationPending)return;
+  if(b.scope==='bakery'&&!b.valid){toast('Keep furnishings inside the right room, away from doors and other furniture.');return;}
   state.buildOperationPending=!!b.object;
-  action(b.object?'move_build':'build',{item:b.item,from:b.packed||'',target:b.object?.id||'',x:b.x,y:b.y,z:b.z,rotation:b.rotation});state.lastThrow=performance.now();
+  action(b.scope==='bakery'?(b.object?'bakery_move':'bakery_place'):(b.object?'move_build':'build'),{item:b.item,from:b.packed||'',target:b.object?.id||'',x:b.x,y:b.y,z:b.z,rotation:b.rotation});state.lastThrow=performance.now();
   if(!b.object)cancelBuild({notify:false});
 }
 function capturePrompt(){if(state.player&&!state.modal&&!state.menuOpen&&state.hasPlayed)$('capture-prompt').hidden=false;}
@@ -691,19 +721,21 @@ document.addEventListener('pointerlockchange',()=>{
 });
 document.addEventListener('pointerlockerror',capturePrompt);
 document.addEventListener('mousemove',(event)=>{if(!state.locked)return;state.yaw-=event.movementX*.002;state.pitch=clamp(state.pitch-event.movementY*.002,-1.35,1.35);});
-document.addEventListener('mousedown',(event)=>{if(!state.locked)return;if(event.button===0)throwCookie();if(event.button===2)eatCookie();});
+document.addEventListener('mousedown',(event)=>{if(document.pointerLockElement!==$('world')||state.modal)return;if(event.button===0)throwCookie();if(event.button===2)eatCookie();});
 document.addEventListener('contextmenu',(event)=>{if(state.player)event.preventDefault();});
 const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight']);
 document.addEventListener('keydown',(event)=>{
+  const pointerLocked=document.pointerLockElement===$('world');
   if(event.code==='Escape'){if(event.repeat)return;event.preventDefault();escapeHandled=true;if(state.building){cancelBuild();return;}toggleMenu();return;}
   if(event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLSelectElement||event.ctrlKey||event.metaKey||event.altKey)return;
   if(!state.player)return;
   if(state.locked&&movementKeys.has(event.code)){event.preventDefault();state.keys.add(event.code);}
   if(event.repeat)return;
   if(state.locked&&movementKeys.has(event.code)){sendMovement();return;}
-  if(state.building&&state.locked){if(['KeyT','KeyF'].includes(event.code)&&state.building.object&&!state.buildOperationPending){event.preventDefault();state.buildOperationPending=true;action(event.code==='KeyT'?'destroy_build':'pack_build',{target:state.building.object.id});return;}if(event.code==='KeyR'){state.building.rotation=(state.building.rotation+45)%360;return;}if(event.code==='PageUp'||event.code==='PageDown'){event.preventDefault();state.building.y=clamp(state.building.y+(event.code==='PageUp'?.5:-.5),0,12);return;}}
+  if(state.building&&pointerLocked&&!state.modal){if(['KeyT','KeyF'].includes(event.code)&&state.building.object&&!state.buildOperationPending){event.preventDefault();state.buildOperationPending=true;action(state.building.scope==='bakery'?(event.code==='KeyT'?'bakery_destroy':'bakery_pack'):(event.code==='KeyT'?'destroy_build':'pack_build'),{target:state.building.object.id});return;}if(event.code==='KeyR'){state.building.rotation=(state.building.rotation+45)%360;return;}if(state.building.scope!=='bakery'&&(event.code==='PageUp'||event.code==='PageDown')){event.preventDefault();state.building.y=clamp(state.building.y+(event.code==='PageUp'?.5:-.5),0,12);return;}}
   if(event.code==='Enter'&&!state.locked&&!state.modal)setPlaying();
   if(state.menuOpen)return;
+  if(event.code==='KeyB'&&!state.modal){event.preventDefault();toggleBakeryBuild();return;}
   if(event.code==='KeyL'&&nearForestClub(state.snapshot?.me)){event.preventDefault();toggleClubLighting();return;}
   if(event.code==='KeyI')toggleModal('inventory');
   if(event.code==='KeyC')toggleModal('recipes');
@@ -731,19 +763,21 @@ function animate(now){
   const me=state.snapshot?.me;
   const underground=me?.inCave&&!me.island?clamp(-(me.y||0)/7,0,1):0;
   const inClub=!!me?.inCave&&!me.island&&me.x<0;
-  if(daylight){daylight.intensity=3.25*(1-underground)+.04*underground;skylight.intensity=2.15*(1-underground)+(inClub?.3:.13)*underground;scene.fog.color.set('#a9c1a5').lerp(new THREE.Color(inClub?'#101224':'#261307'),underground);scene.fog.near=75-63*underground;scene.fog.far=235-185*underground;scene.background.copy(new THREE.Color('#b7cbb8')).lerp(new THREE.Color(inClub?'#090c19':'#1b0c05'),underground);}
+  if(daylight){daylight.intensity=3.25*(1-underground)+.04*underground;skylight.intensity=2.15*(1-underground)+(inClub?1.05:.13)*underground;scene.fog.color.set('#a9c1a5').lerp(new THREE.Color(inClub?'#101224':'#261307'),underground);scene.fog.near=75-63*underground;scene.fog.far=235-185*underground;scene.background.copy(new THREE.Color('#b7cbb8')).lerp(new THREE.Color(inClub?'#090c19':'#1b0c05'),underground);}
   for(const light of caveScenery?.userData.lights||[])light.visible=!!me?.inCave&&!me.island&&!inClub;
   forestClub?.update(now/1000,inClub||nearForestClub(me),me?.clubResult);
+  bakeryScene?.update(now/1000,dt);
+  productionScene?.update(now/1000);
   if(state.player&&me){
     if(localMotion.sample(motionClock.time(now,LOCAL_MOTION_DELAY_MS),localPose))state.localPosition.set(localPose.x,localPose.y,localPose.z);
-    const moving=movement();const walking=Math.hypot(moving.x,moving.z)>.05;
+    const moving=movement();const walking=!me.fallen&&Math.hypot(moving.x,moving.z)>.05;
     const bob=walking&&state.locked&&me.grounded!==false?Math.sin(now*.012*(me.sprinting?1.45:1))*.027:0;
     camera.position.copy(state.localPosition);camera.position.y+=bob;camera.rotation.set(state.pitch,state.yaw,0);
     riddenCamel.visible=!!me.ridingCamel;if(riddenCamel.visible){riddenCamel.position.set(state.localPosition.x,state.localPosition.y-eyeHeight(me),state.localPosition.z);riddenCamel.rotation.y=state.yaw;}
     camera.fov=THREE.MathUtils.lerp(camera.fov,me.sprinting&&walking?73:68,dt*5);camera.updateProjectionMatrix();
     if(me.island)islandScene?.animate(now);
     updateBuildGhost();
-    hand.visible=true;hand.position.set(.48,-.43+bob*.55,-.82);
+    hand.visible=!me.fallen&&!state.building;hand.position.set(.48,-.43+bob*.55,-.82);
     if(state.handSwing>0){hand.position.z-=Math.sin((1-state.handSwing)*Math.PI)*.36;hand.rotation.x=.55-state.handSwing*.35;state.handSwing=Math.max(0,state.handSwing-dt*4);}
     else if(state.handSwing<0){hand.position.y+=Math.sin((1+state.handSwing)*Math.PI)*.33;hand.position.x-=Math.sin((1+state.handSwing)*Math.PI)*.3;state.handSwing=Math.min(0,state.handSwing+dt*2.5);}
     else hand.rotation.x=.55;
@@ -787,7 +821,7 @@ $('world').addEventListener('webglcontextlost',(event)=>{event.preventDefault();
 Object.assign(buffNames,{slowed:'SLOWED',weakened:'WEAKER THROWS',spawn_shield:'FRESHLY BAKED · PROTECTED'});
 initializeRenderer();
 if(scene){interactionRing=new THREE.Mesh(new THREE.TorusGeometry(.8,.022,5,40),new THREE.MeshBasicMaterial({color:'#f6d299',transparent:true,opacity:.45,depthWrite:false}));interactionRing.rotation.x=-Math.PI/2;interactionRing.visible=false;scene.add(interactionRing);}
-import('./panels.js').then(({createPanels})=>{panels=createPanels({$,state,action,toast,chooseCookie,itemCount,itemName,cookieName,cookieNote,isKnown,cookieIcon,itemIcon,materialEmoji,cookieNames,cookieNotes,escapeHTML,pretty,beginBuild,cancelBuild,resume:setPlaying});}).catch((error)=>{console.warn('Field guide unavailable',error);toast('The field guide could not load. Please reload the page.','error');});
+import('./panels.js').then(({createPanels})=>{panels=createPanels({$,state,action,toast,chooseCookie,itemCount,itemName,cookieName,cookieNote,isKnown,cookieIcon,itemIcon,materialEmoji:{...materialEmoji,...bakingIngredientIcons},bakingItemName,cookieNames,cookieNotes,escapeHTML,pretty,beginBuild,cancelBuild,toggleBakeryBuild,insideOwnBakery:()=>insideOwnBakery(state.snapshot),resume:setPlaying});}).catch((error)=>{console.warn('Field guide unavailable',error);toast('The field guide could not load. Please reload the page.','error');});
 api('/api/world').then(({layout})=>{if(layout&&scene&&state.layout?.version!==layout.version)createEnvironment(layout);}).catch(()=>{});
 api('/api/session').then((session)=>{if(session.authenticated&&session.player)enterGame(session.player);}).catch(()=>{$('server-status').textContent='CONNECTING TO THE WORLD';});
 if(matchMedia('(pointer: coarse)').matches){$('mobile-note').hidden=false;}

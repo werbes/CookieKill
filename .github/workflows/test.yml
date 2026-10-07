@@ -24,12 +24,27 @@ jobs:
       - run: node --check web/island-panels.js
       - run: node --check web/island-building-panels.js
       - run: node --check web/cave-scenery.js
+      - run: node --check web/club-scenery.js
+      - run: node --check web/club-panels.js
+      - run: node --check web/club-settings.js
+      - run: node --check web/club-odds.js
+      - run: node --check web/bakery-panels.js
+      - run: node --check web/bakery-scene.js
+      - run: node --check web/bakery-room.js
+      - run: node --check web/bakery-furnishings.js
+      - run: node --check web/production-panels.js
+      - run: node --check web/production-scenery.js
+      - run: node --check web/baking-items.js
+      - run: node --check web/roof-scenery.js
       - run: node --check web/flower-scenery.js
       - run: node --check web/trader-scenery.js
       - run: node --check web/motion.js
       - run: node --check web/scenery-batches.js
       - run: node --test scripts/state-sync.test.cjs
       - run: node --test scripts/cave-scenery.test.cjs
+      - run: node --test scripts/club.test.cjs
+      - run: node --test scripts/bakery-panels.test.cjs scripts/bakery-scene.test.cjs scripts/bakery-room.test.cjs scripts/bakery-furnishings.test.cjs
+      - run: node --test scripts/production-panels.test.cjs scripts/production-scenery.test.cjs scripts/roof-scenery.test.cjs
       - run: node --test scripts/motion.test.cjs scripts/scenery-batches.test.cjs
       - run: node scripts/island-panels.test.cjs
   windows:

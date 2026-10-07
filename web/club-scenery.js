@@ -1,4 +1,5 @@
 import {clubReducedFlashing} from './club-settings.js';
+import {CLUB_MULTIPLIERS,CLUB_CHANCES,CLUB_COLORS,CLUB_STARTS,clubSectorCenter} from './club-odds.js';
 
 export const CLUB_X=-202,CLUB_FLOOR=-12,CLUB_STEPS=48,CLUB_RUN=20/CLUB_STEPS;
 export const CLUB_OPENING={minX:-205,maxX:-199,minZ:-217,maxZ:-207};
@@ -30,7 +31,7 @@ export function buildForestClub({THREE,parent,flatLabel,makePerson}){
   const ball=(r,shade,x,y,z,sx=1,sy=1,sz=1)=>instance('ball',shade,x,y,z,r*sx,r*sy,r*sz);
   const post=(r,h,shade,x,y,z)=>instance('post',shade,x,y,z,r,h,r);
   const label=(text,shade,x,y,z,w,h,ry=0)=>{const o=flatLabel(text,shade,null,768,128);o.position.set(x,y,z);o.scale.set(w,h,1);o.rotation.y=ry;group.add(o);return o;};
-  const glow=(shade,x,y,z,intensity,range)=>{const l=new THREE.PointLight(shade,intensity,range,2);l.position.set(x,y,z);l.userData.clubIntensity=intensity;l.intensity=0;group.add(l);lights.push(l);return l;};
+  const glow=(shade,x,y,z,intensity,range)=>{const l=new THREE.PointLight(shade,intensity,range,2);l.position.set(x,y,z);l.userData.clubIntensity=intensity;l.intensity=0;l.visible=false;group.add(l);lights.push(l);return l;};
   function surface(vertices,shade,name){const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geometry.computeVertexNormals();const o=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:shade,roughness:1,side:THREE.DoubleSide}));o.name=name;group.add(o);return o;}
   const quad=(a,b,c,d)=>[...a,...b,...c,...a,...c,...d];
   // A moss-covered rock arch shelters the genuine underground staircase.
@@ -64,16 +65,16 @@ export function buildForestClub({THREE,parent,flatLabel,makePerson}){
   for(let row=0;row<3;row++)for(let i=0;i<12;i++){const x=-217.12,z=-235.3+i*.6,y=-10.45+row*.95;post(.085,.36,['#639c89','#c19762','#7c86b8','#cb7d8a'][i%4],x,y,z);post(.035,.16,'#c7cdb2',x,y+.25,z);box(.01,.12,.13,'#e8dab0',x+.09,y,z);}
   label('NIGHT CAPS & MILKSHAKES','#f1d5ab',-216.75,-7.92,-232,5.8,.48,Math.PI/2);
   if(makePerson){const bartender=makePerson('','#405c62');bartender.position.set(-217,-12,-231);bartender.rotation.y=Math.PI/2;group.add(bartender);}
-  glow('#e7ba84',-214.9,-8.8,-232,31,12);
-  // Equal sectors show the actual server odds, including both 2x sectors.
+  glow('#e7ba84',-214.9,-8.8,-232,74,15);
+  // Each sector has the same proportional width as its server probability.
   box(2,1.2,2,'#514650',-188.5,-11.4,-237);box(2.12,.12,2.12,'#b79464',-188.5,-10.75,-237);
   label('FORTUNE WHEEL','#efc794',-186.5,-7.12,-237,5,.55,-Math.PI/2);
   const wheel=new THREE.Group();wheel.name='club-fortune-wheel';wheel.position.set(-187.25,-8.85,-237);wheel.rotation.y=-Math.PI/2;group.add(wheel);
-  const sectors=[5,3,2,2,.5,.1,10],sectorColors=['#8b668d','#478a83','#b58b53','#8e735b','#766b8f','#466b83','#bd715f'];
-  for(let i=0;i<7;i++){const wedge=new THREE.Mesh(new THREE.CircleGeometry(1.35,12,i*Math.PI*2/7,Math.PI*2/7),new THREE.MeshBasicMaterial({color:sectorColors[i],side:THREE.DoubleSide}));wheel.add(wedge);const a=(i+.5)*Math.PI*2/7,t=flatLabel(sectors[i]+'x','#fff0c7',null,128,80);t.scale.set(.55,.32,1);t.position.set(Math.cos(a)*.89,Math.sin(a)*.89,.02);wheel.add(t);}
+  const sectors=CLUB_MULTIPLIERS,sectorColors=CLUB_COLORS;
+  for(let i=0;i<7;i++){const wedge=new THREE.Mesh(new THREE.CircleGeometry(1.35,12,CLUB_STARTS[i]*Math.PI*2/100,CLUB_CHANCES[i]*Math.PI*2/100),new THREE.MeshBasicMaterial({color:sectorColors[i],side:THREE.DoubleSide}));wheel.add(wedge);const a=clubSectorCenter(i)*Math.PI*2,t=flatLabel(sectors[i]+'x','#fff0c7',null,128,80);t.scale.set(.55,.32,1);t.position.set(Math.cos(a)*.89,Math.sin(a)*.89,.02);wheel.add(t);}
   const rim=new THREE.Mesh(new THREE.TorusGeometry(1.39,.07,6,56),new THREE.MeshStandardMaterial({color:'#cdaa73',metalness:.55,roughness:.35}));wheel.add(rim);
   const hub=new THREE.Mesh(new THREE.CircleGeometry(.23,24),new THREE.MeshBasicMaterial({color:'#ecd9a4',side:THREE.DoubleSide}));hub.position.z=.04;wheel.add(hub);
-  box(.35,.35,.35,'#e5bd78',-187.29,-7.2,-237,Math.PI/4,true);glow('#d9a2cd',-190,-8.5,-237,17,10);
+  box(.35,.35,.35,'#e5bd78',-187.29,-7.2,-237,Math.PI/4,true);glow('#d9a2cd',-190,-8.5,-237,46,13);
   // One instanced mesh for the entire disco floor; smooth color drift, no cuts.
   const floor=new THREE.InstancedMesh(new THREE.BoxGeometry(1.16,.045,1.16),new THREE.MeshBasicMaterial({color:0xffffff}),80);floor.name='club-disco-floor';
   for(let i=0;i<80;i++){pose.position.set(-208.625+(i%10)*1.25,-11.96,-240.375+Math.floor(i/10)*1.25);pose.rotation.set(0,0,0);pose.scale.set(1,1,1);pose.updateMatrix();floor.setMatrixAt(i,pose.matrix);color.setHSL((i*.137)%1,.45,.36);floor.setColorAt(i,color);}floor.computeBoundingSphere();group.add(floor);
@@ -82,18 +83,22 @@ export function buildForestClub({THREE,parent,flatLabel,makePerson}){
   for(let i=0;i<128;i++){const u=(i+.5)/128,y=1-2*u,a=i*2.399963;pose.position.set(Math.sqrt(1-y*y)*Math.cos(a)*.735,y*.735,Math.sqrt(1-y*y)*Math.sin(a)*.735);pose.lookAt(0,0,0);pose.scale.set(1,1,1);pose.updateMatrix();mirrorTiles.setMatrixAt(i,pose.matrix);}mirror.add(mirrorTiles);
   const fixtures=[];
   for(let i=0;i<4;i++){const x=-209+(i%2)*14,z=-229-Math.floor(i/2)*12;box(.55,.28,.55,'#17212b',x,-6.9,z);const disc=new THREE.Mesh(new THREE.CircleGeometry(.19,12),new THREE.MeshBasicMaterial({color:i%2?'#e9b2d4':'#a5ddd7'}));disc.position.set(x,-7.05,z);disc.rotation.x=-Math.PI/2;group.add(disc);fixtures.push(disc);}
-  glow('#7678c3',-203,-8.3,-236,20,19);glow('#c376ab',-207,-9,-244,12,12);
+  // Steady pools of light reveal the upholstery, tabletops and woodwork;
+  // only the small ceiling lenses pulse, never these room lights.
+  glow('#9398d9',-203,-8.3,-236,46,21);
+  glow('#d69cbd',-212,-8.8,-246,64,14);
+  glow('#a1c6d8',-201,-8.8,-246,64,15);
   // The many steps, bottles, chairs and trim become six draw calls at most.
   for(const [key,items] of batches){const shape=key.split('-')[0],geometry=shape==='box'?new THREE.BoxGeometry(1,1,1):shape==='ball'?new THREE.IcosahedronGeometry(1,1):new THREE.CylinderGeometry(1,1,1,10),material=key.endsWith('glow')?new THREE.MeshBasicMaterial({color:0xffffff}):new THREE.MeshStandardMaterial({color:0xffffff,roughness:.78});const batch=new THREE.InstancedMesh(geometry,material,items.length);batch.name='club-static-'+key;items.forEach((p,i)=>{pose.position.set(p.x,p.y,p.z);pose.rotation.set(0,p.ry,0);pose.scale.set(p.sx,p.sy,p.sz);pose.updateMatrix();batch.setMatrixAt(i,pose.matrix);batch.setColorAt(i,color.set(p.shade));});batch.computeBoundingSphere();batch.receiveShadow=true;group.add(batch);}
   let lastReduced=null,lastColorTime=-Infinity,lastResult=0,wheelFrom=0,wheelTo=0,wheelStart=0;
   function update(time,active=true,result=null){
-    const reduced=clubReducedFlashing();for(const l of lights)l.intensity=active?l.userData.clubIntensity:0;
+    const reduced=clubReducedFlashing();for(const l of lights){l.visible=active;l.intensity=active?l.userData.clubIntensity:0;}
     if(!active)return;
     if(lastReduced!==reduced||!reduced&&time-lastColorTime>.1){for(let i=0;i<80;i++){color.setHSL((i*.137+(reduced?0:time*.025))%1,.45,.36);floor.setColorAt(i,color);}floor.instanceColor.needsUpdate=true;lastColorTime=time;lastReduced=reduced;}
     mirror.rotation.y=reduced?0:time*.17;
     // Four tiny ceiling lenses breathe at 1.5Hz. Ambient light never flashes.
     for(let i=0;i<fixtures.length;i++)fixtures[i].material.color.setScalar(reduced?.65:.64+.12*Math.sin(time*Math.PI*3+i));
-    if(result?.id&&result.id!==lastResult){lastResult=result.id;wheelFrom=wheel.rotation.z;const target=Math.PI/2-(result.sector+.5)*Math.PI*2/7;wheelTo=target+Math.ceil((wheelFrom-target)/ (Math.PI*2))*Math.PI*2+(reduced?0:Math.PI*4);wheelStart=time;}
+    if(result?.id&&result.id!==lastResult){lastResult=result.id;wheelFrom=wheel.rotation.z;const target=Math.PI/2-clubSectorCenter(result.sector)*Math.PI*2;wheelTo=target+Math.ceil((wheelFrom-target)/ (Math.PI*2))*Math.PI*2+(reduced?0:Math.PI*4);wheelStart=time;}
     if(lastResult){const t=reduced?1:Math.min(1,(time-wheelStart)/2.6);wheel.rotation.z=wheelFrom+(wheelTo-wheelFrom)*(1-(1-t)**3);}
   }
   return {group,lights,update};

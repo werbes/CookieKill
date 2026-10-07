@@ -21,6 +21,7 @@ var recipes = []Recipe{
 
 var itemSet = map[string]bool{
 	"wood": true, "stick": true, "stone": true, "dough": true,
+	"baking_sugar": true, "butter": true, "flour": true, "egg": true,
 	"berry": true, "nut": true, "cactus": true, "sea_salt": true,
 	"shell": true, "trash": true, "pearl": true, "treasure": true,
 	"old_coin": true, "rare_item": true, "protein_powder": true, "protein_drink": true,
@@ -95,6 +96,8 @@ func sanitize(p Profile) Profile {
 	}
 	normalizeSpeciesReputation(&p)
 	normalizeInventory(&p)
+	normalizeBakeryBusiness(&p)
+	normalizeBakeryFurniture(&p)
 	normalizeIdentity(&p)
 	if name, err := objectName(p.BakeryName, 32); err == nil {
 		p.BakeryName = name
@@ -102,6 +105,7 @@ func sanitize(p Profile) Profile {
 		p.BakeryName = ""
 	}
 	normalizeIslandProfile(&p)
+	normalizeProduction(&p)
 	normalizeCamels(&p)
 	p.Kills = max(0, p.Kills)
 	p.Deaths = max(0, p.Deaths)
@@ -126,6 +130,11 @@ func cloneProfile(p Profile) Profile {
 	p.Hats = cloneMap(p.Hats)
 	p.Equipment = cloneMap(p.Equipment)
 	p.Paint = cloneMap(p.Paint)
+	p.BakeryDisplay = cloneMap(p.BakeryDisplay)
+	p.BakeryPantry = cloneMap(p.BakeryPantry)
+	p.BakeryStaff = cloneMap(p.BakeryStaff)
+	p.BakeryFurniture = append([]BakeryFurniture{}, p.BakeryFurniture...)
+	p.Production = cloneProduction(p.Production)
 	if p.Camels != nil {
 		p.Camels = append([]Camel{}, p.Camels...)
 	}
@@ -179,6 +188,8 @@ func (w *World) Leave(id string) {
 	w.ReleaseBakeryPlot(id)
 	if p, ok := w.players[id]; ok {
 		p.buildMode, p.editingBuildID = false, ""
+		p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
+		if p.bakerySeatID != "" { p.posture, p.bakerySeatID = "", "" }
 		if p.clubSeatID != "" {
 			p.posture, p.clubSeatID = "", ""
 		}
@@ -198,6 +209,8 @@ func (w *World) Leave(id string) {
 }
 
 func (w *World) spawn(p *player) {
+	p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
+	resetFall(p)
 	p.buildMode, p.editingBuildID = false, ""
 	if p.ridingCamel {
 		w.dismountCamel(p)
@@ -342,6 +355,10 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 			out.Me = Self{Profile: cloneProfile(p.profile), X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Stamina: p.stamina, MaxStamina: staminaCapacity(p), Grounded: grounded(p), Sprinting: p.sprinting, SprintExhausted: p.sprintExhausted, Area: area(p.x, p.z), Buffs: buffs}
 			out.Me.Zone = zoneAt(p.x, p.z)
 			out.Me.InCave = p.inCave
+			out.Me.Fallen = p.fallen
+			out.Me.StandIn = max(0, p.standAt-w.time)
+			out.Me.FallChance = float64(fallOdds(p)) / 10
+			out.Me.AlcoholDrinks = p.alcoholDrinks
 			if p.inCave {
 				out.Me.Zone = "Sunbaked clay caves"
 				if clubFootprint(p.x, p.z) {
@@ -364,7 +381,7 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		if viewer != nil && n.Island != viewer.island {
 			continue
 		}
-		cp := bakeryNodeView(*n, owners)
+		cp := w.bakeryNodeView(*n, owners)
 		if cp.Kind == "club_seat" {
 			for pid, p := range w.players {
 				if p.clubSeatID == cp.ID && p.posture == "sitting" {
@@ -426,5 +443,8 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		out.Recipes = append(out.Recipes, r)
 	}
 	w.decorateIslandSnapshot(id, &out)
+	w.bakeryBusinessSnapshot(viewer, &out)
+	w.bakeryFurnitureSnapshot(viewer, &out)
+	out.BakingIngredients = append([]BakingIngredient{}, bakingIngredients...)
 	return out
 }

@@ -288,6 +288,7 @@ func (w *World) saveIsland(h *Island) {
 	}
 }
 func (w *World) setIsland(p *player, id string) {
+	p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
 	p.buildMode, p.editingBuildID = false, ""
 	w.updateMountedCamel(p)
 	p.island = id
@@ -528,6 +529,8 @@ func (w *World) islandAction(p *player, a Action) error {
 			o.Color = a.Item
 			h.Objects[index] = o
 		} else {
+			ownerProfile := w.productionOwnerProfile(h.Owner)
+			if ownerProfile != nil && productionRemovalBlocked(ownerProfile,"home:"+o.ID) { return errors.New("Finish cooking and collect this appliance's output before removing it.") }
 			if buildHasContents(h, o) {
 				return errors.New("Empty this chest, harvest this garden, or rehome its animal before removing it.")
 			}
@@ -545,6 +548,7 @@ func (w *World) islandAction(p *player, a Action) error {
 				}
 			}
 			delete(h.Storage, o.ID)
+			if ownerProfile != nil { delete(ownerProfile.Production,"home:"+o.ID) }
 			h.Objects = append(h.Objects[:index], h.Objects[index+1:]...)
 		}
 		if a.Action != "paint_build" {
@@ -915,13 +919,7 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 			}
 			o.Lit = !o.Lit
 		case "mixer":
-			if p.cooldowns["dough"] > w.time {
-				return errors.New("The dough mixer is still working.")
-			}
-			if !gain(p, "dough", 2) {
-				return errors.New("Make room for fresh dough.")
-			}
-			p.cooldowns["dough"] = w.time + 8
+			w.eventActor("Open this mixer to load ingredients, mix dough, or collect a finished batch.", "notification", p.x, p.z, p.profile.ID)
 		case "oven":
 			w.eventActor("Open your cookbook to bake cookies and cakes in this oven.", "notification", p.x, p.z, p.profile.ID)
 		case "garden_bed":

@@ -95,7 +95,7 @@ export function createIslandPanels(deps) {
     if(kind==='island-buy-home'){action('buy_home');return true;}
     if(buildingPanels.handle(kind,data))return true;
     if(['teleport_home','teleport_main','visit_island','adopt_animal'].includes(kind)){action(kind,data);closeModal();return true;}
-    if(kind==='use_build'&&island()?.objects?.find(object=>object.id===data.target)?.kind==='oven'){const object=island().objects.find(object=>object.id===data.target);openModal('context',{...object,isBuild:true});return true;}
+    if(kind==='use_build'&&['oven','mixer','table'].includes(island()?.objects?.find(object=>object.id===data.target)?.kind)){const object=island().objects.find(object=>object.id===data.target);openModal('context',{...object,isBuild:true});return true;}
     return false;
   }
   function input(event){if(event.target.id==='friend-code-input')friendCodeDraft=event.target.value;if(event.target.dataset?.camelName)camelNameDrafts.set(event.target.dataset.camelName,event.target.value);}

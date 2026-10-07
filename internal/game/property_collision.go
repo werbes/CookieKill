@@ -1,21 +1,35 @@
 package game
 
+import "math"
+
 // Furnishings occupy a city plot only while its current baker is connected.
 // Rebuild on plot/equipment changes, rather than scanning accounts every step.
 func (w *World) rebuildPropertyColliders() {
 	w.propertyColliders = nil
-	for id, player := range w.players {
-		p := player.profile
-		if !p.Bakery || p.BakeryPlot == "" {
-			continue
-		}
-		for _, plot := range w.layout.Plots {
-			if plot.ID == p.BakeryPlot {
-				w.propertyColliders = append(w.propertyColliders, Collider{ID: "display_" + id, X: plot.X + 2.4, Z: plot.Z + 2, Width: 2.8, Depth: .8, Height: 1.65})
-				break
-			}
-		}
+	for _, player := range w.players {
+		w.propertyColliders = append(w.propertyColliders, w.bakeryFurnitureColliders(player)...)
 	}
+}
+func colliderLocal(c Collider, x, z float64) (float64, float64) {
+	a := c.Rotation * math.Pi / 180
+	dx, dz := x-c.X, z-c.Z
+	return dx*math.Cos(a) - dz*math.Sin(a), dx*math.Sin(a) + dz*math.Cos(a)
+}
+func colliderOverlaps(c Collider, x, z, r float64) bool {
+	if c.Radius > 0 {
+		return distance(x, z, c.X, c.Z) < r+c.Radius
+	}
+	lx, lz := colliderLocal(c, x, z)
+	return circleRect(lx, lz, r, 0, 0, c.Width, c.Depth)
+}
+func colliderSegmentHit(c Collider, x, y, z, nx, ny, nz float64) (float64, bool) {
+	lx, lz := colliderLocal(c, x, z)
+	lnx, lnz := colliderLocal(c, nx, nz)
+	width, depth := c.Width, c.Depth
+	if c.Radius > 0 {
+		width, depth = c.Radius*2, c.Radius*2
+	}
+	return slabHit(lx, y, lz, lnx, ny, lnz, -width/2, c.Y, -depth/2, width/2, c.Y+c.Height, depth/2)
 }
 func (w *World) solidBlocked(x, z, r float64) bool {
 	return w.solidBlockedAt(x, 0, z, r)
@@ -32,11 +46,7 @@ func (w *World) solidBlockedAt(x, y, z, r float64) bool {
 			if c.resource != nil && !c.resource.Available || y >= c.Y+c.Height-.001 || y+1.7 <= c.Y+.001 {
 				continue
 			}
-			if c.Radius > 0 {
-				if distance(x, z, c.X, c.Z) < r+c.Radius {
-					return true
-				}
-			} else if circleRect(x, z, r, c.X, c.Z, c.Width, c.Depth) {
+			if colliderOverlaps(c, x, z, r) {
 				return true
 			}
 		}
@@ -49,7 +59,7 @@ func (w *World) solidShotHit(x, y, z, nx, ny, nz float64) (float64, bool) {
 		nearest = 2
 	}
 	for _, c := range w.propertyColliders {
-		if t, ok := slabHit(x, y, z, nx, ny, nz, c.X-c.Width/2, 0, c.Z-c.Depth/2, c.X+c.Width/2, c.Height, c.Z+c.Depth/2); ok && t < nearest {
+		if t, ok := colliderSegmentHit(c, x, y, z, nx, ny, nz); ok && t < nearest {
 			nearest = t
 			hit = true
 		}

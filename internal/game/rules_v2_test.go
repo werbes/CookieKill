@@ -3,6 +3,7 @@ package game
 import (
 	"math"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -10,6 +11,14 @@ import (
 func nodePosition(w *World, p *player, id string) {
 	for _, n := range w.nodes {
 		if n.ID == id {
+			if n.PlotID != "" {
+				if owner := w.players[w.plotOwner(n.PlotID)]; owner != nil {
+					if point, ok := w.bakeryStationServicePoint(owner, strings.TrimPrefix(n.Kind, "bakery_"), false); ok {
+						p.x, p.z = point.X, point.Z
+						return
+					}
+				}
+			}
 			p.x, p.z = n.X, n.Z
 			return
 		}
@@ -139,7 +148,7 @@ func TestFullBagPurchaseCraftAndGatherAreAtomic(t *testing.T) {
 	w, p := testWorld()
 	keys := []string{}
 	for item := range itemSet {
-		if item != "dough" && item != "sugar" && item != "berry_cookie" {
+		if item != "dough" && item != "sugar" && item != "berry_cookie" && item != "berry" && item != "baking_sugar" {
 			keys = append(keys, item)
 		}
 	}
@@ -149,8 +158,8 @@ func TestFullBagPurchaseCraftAndGatherAreAtomic(t *testing.T) {
 	}
 	syncInventory(&p.profile)
 	p.profile.Coins = 100
-	nodePosition(w, p, "desert_trader")
-	if err := w.Act("one", Action{Action: "buy_ingredient", Target: "desert_trader", Item: "dough"}); err == nil {
+	nodePosition(w, p, "ingredient_shop")
+	if err := w.Act("one", Action{Action: "buy_ingredient", Target: "ingredient_shop", Item: "baking_sugar"}); err == nil {
 		t.Fatal("full bag purchase accepted")
 	}
 	if p.profile.Coins != 100 || len(p.profile.Recovery) > 0 {
@@ -158,10 +167,13 @@ func TestFullBagPurchaseCraftAndGatherAreAtomic(t *testing.T) {
 	}
 	var node *Node
 	for _, n := range w.nodes {
-		if n.Kind == "dough" && n.respawn > 0 {
+		if n.Kind == "berry" && n.respawn > 0 {
 			node = n
 			break
 		}
+	}
+	if node == nil {
+		t.Fatal("missing renewable berry fixture")
 	}
 	p.x, p.z = node.X, node.Z
 	if err := w.Act("one", Action{Action: "interact", Target: node.ID}); err == nil || !node.Available {
@@ -232,9 +244,10 @@ func TestBakeryPlotsPricesProgressionAndPaint(t *testing.T) {
 		}
 	}
 	nodePosition(w, p, "bakery_plot_0_mixer")
+	baseBakingIngredients(p, 1)
 	mustAct(t, w, Action{Action: "make_dough"})
-	if p.profile.Inventory["dough"] <= 2 || p.cooldowns["dough"]-w.time >= 8 {
-		t.Fatal("upgrades did not improve production")
+	if job := p.profile.Production["bakery_mixer"].Job; job == nil || job.Amount != 40 || job.Remaining != 40 || p.profile.Inventory["dough"] != 0 {
+		t.Fatal("upgrades changed the fixed mixing recipe or timer")
 	}
 	p.profile.BakeryLevel = 10000
 	if bakeryBoost(p) >= 1 {
@@ -471,25 +484,42 @@ func TestFirstBakeryUpgradeHasVisibleBoundedBenefits(t *testing.T) {
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
 	mustAct(t, w, Action{Action: "upgrade"})
 	nodePosition(w, p, "bakery_plot_0_mixer")
+	baseBakingIngredients(p, 1)
 	mustAct(t, w, Action{Action: "make_dough"})
-	if p.profile.Inventory["dough"] != 3 || math.Abs(p.cooldowns["dough"]-w.time-7.2) > .000001 {
-		t.Fatal("first upgrade should make three dough with a ten percent shorter cooldown")
+	if job := p.profile.Production["bakery_mixer"].Job; job == nil || job.Amount != 40 || job.Remaining != 40 || p.profile.Inventory["dough"] != 0 {
+		t.Fatal("first upgrade changed the fixed forty-dough, forty-second recipe")
 	}
-	setItem(p, "dough", 20)
+	advance(w, 40)
+	mustAct(t, w, Action{Action: "production_collect", Target: "bakery_plot_0_mixer", Item: "dough", Amount: 40})
+	holdTestItem(t, p, "dough")
 	nodePosition(w, p, "bakery_plot_0_oven")
 	mustAct(t, w, Action{Action: "craft", Item: "sugar", Amount: 20})
-	if p.profile.Inventory["sugar"] != 31 {
-		t.Fatal("first upgrade did not improve a large baking batch")
+	if p.profile.Production["bakery_oven"].Job.Remaining != 100 || p.profile.Inventory["sugar"] != 10 {
+		t.Fatal("upgraded oven skipped the five-second timer per unit")
+	}
+	advance(w, 100)
+	nodePosition(w, p, "bakery_plot_0_cooling_table")
+	mustAct(t, w, Action{Action: "production_collect", Target: "bakery_plot_0_cooling_table", Item: "sugar", Amount: 20})
+	if p.profile.Inventory["sugar"] != 30 {
+		t.Fatal("upgraded oven changed the one-cookie-per-dough yield")
 	}
 	nodePosition(w, p, "bakery_plot_0_display")
 	mustAct(t, w, Action{Action: "trade", Target: "bakery_plot_0_display", Item: "sugar", Amount: 20})
-	if p.profile.Coins != 745 {
-		t.Fatal("sugar sale bonus was rounded away per cookie instead of across the batch")
+	if p.profile.Coins != 700 || p.profile.BakeryDisplay["sugar"] != 20 {
+		t.Fatal("stocking a display must not pay coins before a customer purchases")
+	}
+	p.bakery.nextCustomer = w.time
+	advance(w, 6)
+	if len(p.bakery.customers) != 1 || p.bakery.customers[0].Phase != "waiting" {
+		t.Fatal("stocked bakery did not receive a waiting customer")
+	}
+	mustAct(t, w, Action{Action: "bakery_serve", Target: p.bakery.customers[0].ID})
+	if p.profile.Coins != 711 || p.profile.BakeryDisplay["sugar"] != 15 {
+		t.Fatal("customer batch sale did not include the bakery upgrade bonus")
 	}
 	p.profile.BakeryLevel = 1000000
-	b := bakeryBoost(p)
-	if b >= 1 || int(20*.35*b) > 7 || 8*(1-.4*b) < 4.8 {
-		t.Fatal("large upgrade counts escaped bounded benefits")
+	if price := bakerySalePrice(p, "sugar", 5); bakeryBoost(p) >= 1 || price <= 10 || price > 15 {
+		t.Fatal("large upgrade counts escaped the bounded customer sale bonus")
 	}
 }
 
@@ -513,7 +543,7 @@ func TestBakeryDisplayBlocksMovementAndShotsOnlyWhileClaimed(t *testing.T) {
 	w, p := testWorld()
 	p.profile.Coins = 1000
 	nodePosition(w, p, "bakery_plot_0")
-	x, z := p.x+2.4, p.z+2
+	x, z := p.x+5, p.z+3
 	if w.solidBlocked(x, z, .42) {
 		t.Fatal("unbought display has an invisible collision box")
 	}

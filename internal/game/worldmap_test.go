@@ -68,11 +68,13 @@ func TestMapHasCityBusinessesNoMainlandHousingAndCurvedCoast(t *testing.T) {
 			t.Fatal("duplicate plot")
 		}
 		seen[p.ID] = true
-		if w.staticBlocked(p.X, p.Z, .42) || w.staticBlocked(p.X, p.Z+p.Depth/2, .42) {
+		if w.solidBlockedAt(p.X, 0, p.Z, .42) || w.solidBlockedAt(p.X, 0, p.Z+p.Depth/2, .42) {
 			t.Fatalf("plot %s has no accessible interior/door", p.ID)
 		}
 		for _, road := range layout.Paths {
-			if circleRect(p.X, p.Z, 0.1, road.X, road.Z, road.Width+p.Width, road.Depth+p.Depth) {
+			// The wider cafe floor may meet the sidewalk edge without occupying
+			// its interior; touching boundaries are not an overlap.
+			if math.Abs(p.X-road.X) < (road.Width+p.Width)/2-.001 && math.Abs(p.Z-road.Z) < (road.Depth+p.Depth)/2-.001 {
 				t.Fatalf("plot %s occupies street %s", p.ID, road.ID)
 			}
 		}
@@ -136,8 +138,11 @@ func TestSceneryBlocksPlayersAndCookiesButDoorsStayOpen(t *testing.T) {
 		t.Fatalf("player crossed village wall: %.2f", p.z)
 	}
 	// Test the solid furniture supplied to the same renderer coordinates.
-	if !w.staticBlocked(42, 18, .42) || !w.staticBlocked(21.4, 69.5, .42) {
-		t.Fatal("gym treadmill or bakery oven is not solid")
+	if !w.staticBlocked(42, 18, .42) {
+		t.Fatal("gym treadmill is not solid")
+	}
+	if w.solidBlockedAt(19, 0, 66.5, .42) {
+		t.Fatal("unclaimed bakery contains a fixed oven instead of movable owner furniture")
 	}
 }
 

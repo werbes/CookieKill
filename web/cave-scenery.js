@@ -1,5 +1,6 @@
 ﻿export const CAVE_DEPTH=24, CAVE_STEPS=96, CAVE_RUN=37/CAVE_STEPS;
 export const CAVE_MOUTH_Z=-75, CAVE_STAIR_TOP_Z=-78;
+export const CAVE_SURFACE_COLORS=Object.freeze(['#b3865f','#ba8e66','#bf956e','#b78a63','#c09a76']);
 export const caveHeight=(x,z)=>x>=117&&x<=123&&z<=CAVE_MOUTH_Z&&z>=-115?(-Math.min(CAVE_STEPS,Math.ceil(Math.max(0,(CAVE_STAIR_TOP_Z-z)/CAVE_RUN-1e-8)))*.25||0):x>=107&&x<=133&&z<=-113&&z>=-129?-CAVE_DEPTH:0;
 
 // The opening lies entirely inside the sandstone outcrop. The visible entrance
@@ -42,9 +43,10 @@ export function buildCave({THREE,parent,layout,box,sphere,cylinder,mesh,mat,flat
   // A watertight layered rock shell: broad irregular crown, solid cheeks and
   // back, and an open arch at eye level. No painted doorway or exposed pit.
   const sides=24,rings=16;
+  const backingHeight=z=>5.05+2.75*Math.min(1,Math.max(0,(-74.5-z)/6));
   const outer=(i,z)=>{
     const a=i/sides*Math.PI,edge=Math.sin(a),bulge=1+.045*Math.sin((z+75)*.43);
-    return [120-14*Math.cos(a)*bulge,Math.pow(edge,.65)*(7.8+Math.sin(i*.8+z*.27)*.55),z];
+    return [120-14*Math.cos(a)*bulge,Math.pow(edge,.65)*(backingHeight(z)+Math.sin(i*.8+z*.27)*.3),z];
   };
   const inner=i=>{const a=i/sides*Math.PI;return [120-4.4*Math.cos(a),3.8*Math.pow(Math.sin(a),.55),-74.65+Math.sin(i*1.9)*.12];};
   for(let r=0;r<rings;r++)for(let i=0;i<sides;i++){
@@ -53,7 +55,7 @@ export function buildCave({THREE,parent,layout,box,sphere,cylinder,mesh,mat,flat
   }
   for(let band=0;band<5;band++)for(let i=0;i<sides;i++){
     const at=(j,t)=>{const a=inner(j),b=outer(j,-74.5),ridge=Math.sin(j*1.2+t*7)*.15;return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t+Math.sin(t*Math.PI)*ridge];};
-    surface(quad(at(i,band/5),at(i+1,band/5),at(i+1,(band+1)/5),at(i,(band+1)/5)),['#b3865f','#ba8e66','#bf956e','#b78a63','#c09a76'][band],'cave-outcrop-face');
+    surface(quad(at(i,band/5),at(i+1,band/5),at(i+1,(band+1)/5),at(i,(band+1)/5)),CAVE_SURFACE_COLORS[band],'cave-outcrop-face');
   }
   for(let i=0;i<sides;i++)surface([...outer(i,-92.5),...outer(i+1,-92.5),120,0,-92.5],'#ab7952','cave-outcrop-back');
   // Flat-bottomed, weathered chunks share a restrained sandstone palette. The
@@ -69,10 +71,10 @@ export function buildCave({THREE,parent,layout,box,sphere,cylinder,mesh,mat,flat
       positions.setXYZ(i,dx,dy,dz);
     }
     for(let i=0;i<positions.count;i++)positions.setY(i,(positions.getY(i)-bottom)/(top-bottom));
-    const colors=[],warm=new THREE.Color(['#c09b76','#c9a783','#b98b63','#d0b18b'][index%4]);
+    const colors=[],warm=new THREE.Color(CAVE_SURFACE_COLORS[index%CAVE_SURFACE_COLORS.length]);
     for(let i=0;i<positions.count;i+=3){
       const elevation=(positions.getY(i)+positions.getY(i+1)+positions.getY(i+2))/3;
-      const color=warm.clone().offsetHSL(0,0,(elevation-.45)*.07+Math.sin(i*.83+index)*.018);
+      const color=warm.clone().offsetHSL(0,0,(elevation-.45)*.035+Math.sin(i*.83+index)*.012);
       for(let j=0;j<3;j++)colors.push(color.r,color.g,color.b);
     }
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();
@@ -81,20 +83,24 @@ export function buildCave({THREE,parent,layout,box,sphere,cylinder,mesh,mat,flat
   }
   const crownHeight=(x,z)=>{
     const bulge=1+.045*Math.sin((z+75)*.43),angle=Math.acos(Math.max(-1,Math.min(1,(120-x)/(14*bulge))));
-    return Math.pow(Math.sin(angle),.65)*(7.8+Math.sin(angle/Math.PI*sides*.8+z*.27)*.55);
+    return Math.pow(Math.sin(angle),.65)*(backingHeight(z)+Math.sin(angle/Math.PI*sides*.8+z*.27)*.3);
   };
-  // These groups sit partly embedded in the inaccessible crown, rather than
-  // beneath it. Broken ledges and upright pieces make an uneven rock silhouette.
-  const crownClusters=[
-    [110.8,-78,2.45,2.2],[117,-75.8,2.6,1.55],[123.4,-78.7,2.8,2.1],
-    [129.1,-77.5,1.8,2.4],[114,-86.5,2.3,1.75],[123,-88.6,2,2.3],[131.2,-85,1.25,1.8],
-  ];
-  crownClusters.forEach(([x,z,r,h],i)=>{
-    sandstone(x,crownHeight(x,z)-h*.24,z,r,h,i,'cave-crown-rock',.78+(i%3)*.09);
-    const sx=x+(i%2?-1.65:1.55),sz=z+.55,sh=h*.57;
-    sandstone(sx,crownHeight(sx,sz)-sh*.3,sz,r*.62,sh,i+2,'cave-crown-rock',.9);
-    const tx=x-.7,tz=z-1.5,th=h*.4;
-    sandstone(tx,crownHeight(tx,tz)-th*.2,tz,r*.43,th,i+3,'cave-crown-rock',.85);
+  // Overlapping boulders form the visible crown. The old continuous shell is
+  // only a watertight backing beneath this pile, never an exposed smooth roof.
+  // All chunks stay above the inaccessible outcrop and inside its footprint.
+  const crownRows=[[-76.6,108.3,3.9,7],[-79.8,109.1,4.3,6],[-83.4,108.2,3.9,7],[-86.8,109.4,4.1,6],[-90.25,108.7,3.8,7]];
+  let crownIndex=0;
+  crownRows.forEach(([z,start,spacing,count],row)=>{
+    for(let column=0;column<count;column++){
+      const index=crownIndex++,x=start+column*spacing;
+      const radius=Math.min(3.25+Math.sin(index*1.8)*.2,x-106,134-x,-74.5-z,z+92.5);
+      const height=(row===0?3.9:2.5)+Math.sin(index*2.3)*.35,y=crownHeight(x,z)-height*.44;
+      sandstone(x,y,z,radius,height,index,'cave-crown-rock',.93+(index%2)*.04).userData.pileLayer=0;
+      if((row===1||row===3)&&column%2===0){
+        // Upper chunks overlap the broad midsection of a lower supporting rock.
+        sandstone(x+.35,y+height*.53,z-.25,radius*.66,1.65+(column%3)*.16,index+2,'cave-crown-rock',.88).userData.pileLayer=1;
+      }
+    }
   });
   // A few interlocking fracture shelves grow out of the cheeks. They are high
   // above the clear mouth and buried into the existing solid outcrop faces.

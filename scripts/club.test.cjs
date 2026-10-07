@@ -5,8 +5,25 @@ const {test}=require('node:test');
 const root=path.resolve(__dirname,'..');
 const url=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64');
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
-const settingsURL=url(read('web/club-settings.js'));
-const modules=Promise.all([import(url(read('web/vendor/three.core.js'))),import(url(read('web/club-scenery.js').replace('./club-settings.js',settingsURL))),import(url(read('web/club-panels.js').replace('./club-settings.js',settingsURL))),import(settingsURL)]);
+const settingsURL=url(read('web/club-settings.js')),oddsURL=url(read('web/club-odds.js'));
+const clubSource=file=>read(file).replace('./club-settings.js',settingsURL).replace('./club-odds.js',oddsURL);
+const modules=Promise.all([import(url(read('web/vendor/three.core.js'))),import(url(clubSource('web/club-scenery.js'))),import(url(clubSource('web/club-panels.js'))),import(settingsURL)]);
+
+test('wheel slice sizes, pointers and displayed odds match the requested probabilities',async()=>{
+  const {CLUB_MULTIPLIERS,CLUB_CHANCES,clubSectorCenter}=await import(oddsURL);
+  assert.deepEqual(CLUB_MULTIPLIERS,[5,3,2,1,.5,.1,10]);
+  assert.deepEqual(CLUB_CHANCES,[7,10,10,10,30,30,3]);
+  assert.equal(CLUB_CHANCES.reduce((sum,n)=>sum+n,0),100);
+  const [THREE,{buildForestClub}]=await modules,scene=buildForestClub({THREE,parent:new THREE.Group(),flatLabel:()=>new THREE.Group()});
+  const wheel=scene.group.getObjectByName('club-fortune-wheel'),wedges=wheel.children.filter(o=>o.geometry?.type==='CircleGeometry'&&o.geometry.parameters.radius===1.35);
+  assert.equal(wedges.length,7);
+  for(let sector=0;sector<7;sector++){
+    assert.ok(Math.abs(wedges[sector].geometry.parameters.thetaLength-Math.PI*2*CLUB_CHANCES[sector]/100)<1e-10);
+    scene.update(sector*5,true,{id:sector+1,sector});scene.update(sector*5+3,true,{id:sector+1,sector});
+    const center=wheel.rotation.z+clubSectorCenter(sector)*Math.PI*2;
+    assert.ok(Math.abs(Math.sin(center)-1)<1e-10,'winning sector should point upwards');
+  }
+});
 
 test('club entrance clips exactly its aperture after the desert cut, preserving terrain colors',async()=>{
   const [THREE,{cutClubOpening,CLUB_OPENING}]=await modules;
@@ -53,9 +70,9 @@ test('club panels use authoritative drink prices and serialize spins through res
   const [,,{createClubPanels,CLUB_MULTIPLIERS}]=await modules;
   const actions=[],state={connected:true,modal:'shop',context:{kind:'club_casino'},snapshot:{me:{coins:100,inventory:{chocolate_shake:2}},clubDrinks:[{id:'chocolate_shake',name:'Chocolate shake',price:7,heal:8,stamina:18}]}};
   let stake='10';const panel=createClubPanels({$:id=>id==='club-stake'?{value:stake}:null,state,action:(...args)=>actions.push(args),toast:()=>{},escapeHTML:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),button:(label,kind,data,disabled)=>`<button data-action="${kind}"${disabled?' disabled':''}>${label}:${JSON.stringify(data)}</button>`,shopRow:(_i,name,desc,buttons)=>name+desc+buttons,renderModal:()=>{}});
-  assert.deepEqual(CLUB_MULTIPLIERS,[5,3,2,2,.5,.1,10]);assert.match(panel.shop('club_bar'),/Chocolate shake/);assert.match(panel.shop('club_bar'),/7 coins/);assert.match(panel.shop('club_bar'),/2 in your inventory/);assert.equal(panel.drinkName('chocolate_shake'),'Chocolate shake');
+  assert.deepEqual(CLUB_MULTIPLIERS,[5,3,2,1,.5,.1,10]);assert.match(panel.shop('club_bar'),/Chocolate shake/);assert.match(panel.shop('club_bar'),/7 coins/);assert.match(panel.shop('club_bar'),/2 in your inventory/);assert.equal(panel.drinkName('chocolate_shake'),'Chocolate shake');
   const event={target:{id:'club-spin-form'},preventDefault(){}};
-  assert.match(panel.shop('club_casino'),/Two separate sectors pay 2×/);stake='1.5';panel.submit(event);assert.equal(actions.length,0);
+  assert.match(panel.shop('club_casino'),/Jackpot chance: 3%/);assert.doesNotMatch(panel.shop('club_casino'),/2 in 7|equally likely/);stake='1.5';panel.submit(event);assert.equal(actions.length,0);
   stake='10';panel.submit(event);panel.submit(event);assert.equal(actions.length,1);assert.deepEqual(actions[0],['club_gamble',{amount:10,target:'club_casino'}]);assert.match(panel.shop('club_casino'),/Spinning/);
   state.snapshot.me.clubResult={id:1,stake:10,sector:5,multiplier:.1,payout:1};assert.match(panel.shop('club_casino'),/Net loss: 9 coins/);assert.doesNotMatch(panel.shop('club_casino'),/Waiting for your result/);
   await new Promise(resolve=>setTimeout(resolve,1110));panel.submit(event);assert.equal(actions.length,2);panel.actionFailed('Move closer to the wheel.');assert.match(panel.shop('club_casino'),/Move closer to the wheel/);assert.doesNotMatch(panel.shop('club_casino'),/Waiting for your result/);

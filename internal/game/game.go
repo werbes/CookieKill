@@ -14,6 +14,12 @@ func (w *World) Act(id string, a Action) (err error) {
 	if !ok {
 		return errors.New("Join the game before taking an action.")
 	}
+	if a.Action == "stand" {
+		return w.stand(p)
+	}
+	if p.fallen {
+		return errors.New("Stand up before taking another action. Press E, Space, or move after resting for two seconds.")
+	}
 	before := cloneProfile(p.profile)
 	defer func() {
 		if err != nil {
@@ -32,6 +38,7 @@ func (w *World) Act(id string, a Action) (err error) {
 	if a.Action == "club_gamble" {
 		return w.gambleClub(p, a)
 	}
+	if validChoice(a.Action,"production_mix","production_bake","production_collect") { return w.productionAction(p,a) }
 	if a.Amount == 0 {
 		a.Amount = 1
 	}
@@ -39,6 +46,12 @@ func (w *World) Act(id string, a Action) (err error) {
 		return errors.New("Choose an amount between 1 and 20.")
 	}
 	switch a.Action {
+	case "bakery_build_mode", "bakery_edit", "bakery_cancel_edit", "bakery_place", "bakery_move", "bakery_pack", "bakery_destroy", "bakery_paint":
+		return w.bakeryFurnitureAction(p, a)
+	case "bakery_sit":
+		return w.sitBakery(p, a.Target)
+	case "bakery_stock", "bakery_unstock", "bakery_pantry_deposit", "bakery_pantry_withdraw", "bakery_hire", "bakery_chef_recipe", "bakery_serve":
+		return w.bakeryBusinessAction(p, a)
 	case "buy_drink":
 		return w.buyClubDrink(p, a)
 	case "drink":
@@ -106,22 +119,7 @@ func (w *World) Act(id string, a Action) (err error) {
 	case "upgrade":
 		return w.upgradeBakery(p)
 	case "make_dough":
-		if err := w.requireBakeryStation(p, "mixer", a.Target); err != nil {
-			return err
-		}
-		if p.cooldowns["dough"] > w.time {
-			return errors.New("Your dough mixer is still working.")
-		}
-		if !gain(p, "dough", 2+int(4*bakeryBoost(p))) {
-			return errors.New("Your inventory is full. Move or use a stack first.")
-		}
-		rest := 8 * (1 - .4*bakeryBoost(p))
-		if p.profile.Equipment["mixer"] {
-			rest *= .85
-		}
-		p.cooldowns["dough"] = w.time + rest
-		w.event("Fresh dough is ready.", "craft", p.x, p.z)
-		return nil
+		return w.productionAction(p,Action{Action:"production_mix",Target:a.Target,Item:"dough",Amount:1})
 	case "order_dough":
 		return errors.New("Buy ingredients inside a desert village house, or prepare dough at your bakery mixer.")
 	case "consume_protein":
@@ -153,6 +151,12 @@ func addCoins(p *player, count int) {
 func (w *World) near(p *player, id string, radius float64) bool {
 	for _, n := range w.nodes {
 		if n.ID == id && sameNodeLayer(p, n) {
+			if n.PlotID != "" {
+				owner := w.players[w.plotOwner(n.PlotID)]
+				if owner == nil { return false }
+				position, _, ok := w.bakeryStationPosition(owner, strings.TrimPrefix(n.Kind, "bakery_"))
+				return ok && distance(p.x,p.z,position.X,position.Z) <= radius
+			}
 			return n.Available && distance(p.x, p.z, n.X, n.Z) <= radius
 		}
 	}
@@ -288,26 +292,27 @@ func (w *World) interact(p *player, target string) error {
 		if n.ID != target || n.Island != p.island || !sameNodeLayer(p, n) {
 			continue
 		}
+		if n.PlotID != "" {
+			station := strings.TrimPrefix(n.Kind, "bakery_")
+			if err := w.requireBakeryStation(p, station, n.ID); err != nil { return err }
+			messages := map[string]string{"oven":"Load held dough into this oven, then collect the baked goods from its cooling table.","mixer":"Load ingredients to mix dough, and collect each finished batch from this mixer.","cooling_table":"Collect the oven's finished cookies and cakes from this table.","display":"Stock this display before serving customers."}
+			w.event(messages[station],"hint",p.x,p.z)
+			return nil
+		}
 		if distance(p.x, p.z, n.X, n.Z) > 5 {
 			return errors.New("Move closer to interact (within 5 metres).")
 		}
 		if !n.Available {
 			return errors.New("This resource is regrowing. Come back shortly.")
 		}
-		if n.PlotID != "" {
-			station := strings.TrimPrefix(n.Kind, "bakery_")
-			if err := w.requireBakeryStation(p, station, n.ID); err != nil {
-				return err
-			}
-			messages := map[string]string{"oven": "Bake your cookie and cake recipes at this oven.", "mixer": "Prepare fresh dough at this mixer.", "display": "Sell your baked cookies and cakes at this display."}
-			w.event(messages[station], "hint", p.x, p.z)
-			return nil
-		}
 		if n.Kind == "wood" {
 			return w.chopTree(p, n)
 		}
 		if n.Kind == "cactus" {
 			return w.chopCactus(p, n)
+		}
+		if n.Kind == "dough" {
+			return errors.New("Dough is no longer dug from the ground. Find it in chests or mix it at your bakery.")
 		}
 		if n.respawn <= 0 {
 			switch n.Kind {
@@ -406,6 +411,14 @@ func (w *World) craft(p *player, item string, amount int) error {
 	}
 	atBakery := w.requireBakeryStation(p, "oven", "") == nil
 	atHomeOven := w.nearIslandAppliance(p, "oven")
+	if plot,owned := w.bakeryPlot(p); owned && p.island == "" && !p.inCave && math.Abs(p.x-plot.X) < 10 && math.Abs(p.z-plot.Z) < 8 && !atBakery {
+		return errors.New("Load held dough into your bakery oven to start a timed batch.")
+	}
+	if atBakery || atHomeOven {
+		input := "prepared_"+item
+		if item == "sugar" { input = "dough" }
+		return w.productionAction(p,Action{Action:"production_bake",Item:input,Amount:amount})
+	}
 	if item == "cake" && !atBakery && !atHomeOven {
 		return errors.New("This recipe needs the oven in your own bakery.")
 	}
@@ -556,32 +569,9 @@ func (w *World) trade(p *player, target, item string, amount int) error {
 		w.event("Saffron shared a box of special desert cookies.", "trade", p.x, p.z)
 		return nil
 	case "bakery_display":
-		if err := w.requireBakeryStation(p, "display", target); err != nil {
-			return err
-		}
-		if _, ok := recipeFor(item); !ok {
-			return errors.New("Your bakery sells cookies and cakes.")
-		}
-		if p.profile.Inventory[item] < amount {
-			return errors.New("You do not have enough baked goods to sell.")
-		}
-		price := 2
-		if item != "sugar" {
-			price = 4
-		}
-		if item == "cake" {
-			price = 12
-		}
-		// Round once for the whole sale, so upgrades also benefit inexpensive
-		// sugar cookies when customers buy a batch.
-		total := price*amount + int(float64(price*amount)*.5*bakeryBoost(p))
-		if p.profile.Equipment["display"] {
-			total += amount
-		}
-		take(p, item, amount)
-		addCoins(p, total)
-		w.event(fmt.Sprintf("Bakery customers paid %d coins.", total), "trade", p.x, p.z)
-		return nil
+		// Older clients may still send trade, but goods must enter the display
+		// before a real customer can purchase them. Stocking never pays coins.
+		return w.bakeryBusinessAction(p, Action{Action: "bakery_stock", Target: target, Item: item, Amount: amount})
 	default:
 		return errors.New("This place does not offer trades.")
 	}
