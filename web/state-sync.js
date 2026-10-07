@@ -45,7 +45,7 @@ export function createSnapshotDecoder() {
         }
         next = {...frame, me:{...frame.me}};
         for (const [name, key] of Object.entries(entityKeys)) next[name] = entities(frame[name], key, name);
-        for (const name of ['recipes','events','friends','buildCatalog']) next[name] = array(frame[name], name);
+        for (const name of ['recipes','events','friends','buildCatalog','clubDrinks']) next[name] = array(frame[name], name);
       } else {
         if (!current || !sequence(current.seq) || !sequence(frame.seq) || frame.base !== current.seq || frame.seq !== current.seq + 1) {
           throw new Error('Game update sequence mismatch');
@@ -59,7 +59,7 @@ export function createSnapshotDecoder() {
         for (const [name, key] of Object.entries(entityKeys)) {
           if (has(frame, name)) next[name] = updateEntities(current[name], frame[name], key, name);
         }
-        for (const name of ['recipes', 'events', 'friends', 'buildCatalog']) {
+        for (const name of ['recipes', 'events', 'friends', 'buildCatalog', 'clubDrinks']) {
           if (has(frame, name)) next[name] = array(frame[name], name);
         }
       }

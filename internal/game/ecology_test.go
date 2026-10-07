@@ -58,7 +58,7 @@ func TestOldAgeReplacementEggNeedsTwoUndisturbedMinutes(t *testing.T) {
 	w.animals = []*Animal{a}
 	a.Need = ""
 	a.Age, a.lifespan = 9.9, 10
-	p.profile.Reputation[a.ID] = 5
+	p.profile.Reputation[a.Species] = 5
 	w.time = .2
 	w.moveAnimals(.2)
 	if a.Health > 0 || len(w.Snapshot("caretaker").Animals) != 0 {
@@ -66,8 +66,8 @@ func TestOldAgeReplacementEggNeedsTwoUndisturbedMinutes(t *testing.T) {
 	}
 	w.time = a.respawnAt
 	w.moveAnimals(.05)
-	if !a.Egg || a.HatchIn != 120 || p.profile.Reputation[a.ID] != 0 {
-		t.Fatal("replacement did not start as a new egg")
+	if !a.Egg || a.HatchIn != 120 || p.profile.Reputation[a.Species] != 5 {
+		t.Fatal("replacement must start as an egg without resetting species reputation")
 	}
 	w.time += 119
 	w.moveAnimals(.05)

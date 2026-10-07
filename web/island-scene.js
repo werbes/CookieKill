@@ -28,11 +28,13 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
   }
   const arrow=mesh(new THREE.ConeGeometry(.23,.5,3),portalMaterial,0,.8,0,portal);arrow.rotation.z=Math.PI;arrow.name='return-beacon';
   const portalLabel=textSprite('RETURN TO THE CLAY CAVE','#dbf6e8','#375d5bcc',768,100);portalLabel.position.set(0,3.2,0);portalLabel.scale.set(3.6,.47,1);portal.add(portalLabel);
-  const objects = new Map();
+  const objects = new Map(), raycaster=new THREE.Raycaster();
+  let editingID='';
   function objectView(object, catalog=[]) {
     const g=new THREE.Group(), recipe=catalog.find(r=>r.id===object.kind)||{};
     const w=recipe.width||2,d=recipe.depth||1,h=recipe.height||1;
-    const wood='#b78c61', dark='#775a42', cream='#eee1c2';
+    const palette={teal:'#478b82',blue:'#607fa8',red:'#b75e50',purple:'#9177a7',sand:'#c9b88b',black:'#39403d',white:'#ece7d5'};
+    const wood=palette[object.color]||'#b78c61', dark='#775a42', cream='#eee1c2';
     const legs=(width,depth,height)=>{for(const x of [-1,1])for(const z of [-1,1])box(.12,height,.12,dark,x*(width/2-.15),height/2,z*(depth/2-.15),g);};
     switch(object.kind) {
       case 'wall': box(w,h,d,cream,0,h/2,0,g);box(w,.12,d+.04,wood,0,.08,0,g);box(w,.13,d+.04,wood,0,h-.08,0,g);break;
@@ -57,7 +59,12 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
         cylinder(w*.28,w*.22,h*.35,'#c58562',0,h*.175,0,g);
         for(let i=0;i<5;i++){const leaf=sphere(w*.35,['#799b60','#5b8055','#94ae69'][i%3],Math.sin(i*2.4)*w*.2,h*.5+i*h*.07,Math.cos(i*2.4)*d*.2,g);leaf.scale.set(.65,1.1,.6);}break;
       case 'lantern': cylinder(.22,.3,h*.75,dark,0,h*.375,0,g);sphere(.23,'#ffdb85',0,h*.8,0,g);break;
-      case 'chest': box(w,h*.7,d,wood,0,h*.35,0,g);box(w+.04,h*.2,d+.04,dark,0,h*.8,0,g);for(const x of [-1,1])box(.1,h,d+.05,'#cdb477',x*w*.32,h/2,0,g);box(.15,.2,.05,'#edd398',0,h*.55,d/2+.04,g);break;
+      case 'chest': case 'storage_chest': box(w,h*.7,d,wood,0,h*.35,0,g);box(w+.04,h*.2,d+.04,object.color?wood:dark,0,h*.8,0,g);for(const x of [-1,1])box(.1,h,d+.05,'#cdb477',x*w*.32,h/2,0,g);box(.15,.2,.05,'#edd398',0,h*.55,d/2+.04,g);if(object.kind==='storage_chest'){const lock=mesh(new THREE.TorusGeometry(.11,.028,4,12),'#edd398',0,h*.71,d/2+.06,g);box(.19,.15,.06,'#d9b96e',0,h*.59,d/2+.06,g);}break;
+      case 'tree':
+        cylinder(.18,.3,2.8,'#957247',0,1.4,0,g,8);sphere(1.15,'#6e9258',0,3,0,g,1).scale.set(1,.95,1);sphere(.75,'#87a263',-.45,3.3,.25,g,1);sphere(.7,'#789957',.5,2.9,-.25,g,1);break;
+      case 'flowers':
+        for(let i=0;i<7;i++){const x=((i*3)%7-3)*.23,z=(i%3-1)*.35,y=.25+(i%2)*.15;cylinder(.018,.025,y,'#648851',x,y/2,z,g,4);for(let petal=0;petal<5;petal++){const a=petal*Math.PI*2/5;sphere(.095,['#da94a5','#e4c272','#baa0cc'][i%3],x+Math.sin(a)*.105,y,z+Math.cos(a)*.105,g,1).scale.y=.38;}sphere(.045,'#e9d788',x,y+.02,z,g);}
+        break;
       case 'mixer': box(w*.8,h*.1,d*.8,'#b0bab1',0,h*.05,0,g);cylinder(w*.3,w*.2,h*.35,'#d5d8c9',0,h*.25,0,g,16);box(w*.28,h,d*.45,'#739b99',-w*.3,h/2,-d*.2,g);box(w*.8,h*.2,d*.5,'#8eafaa',0,h*.88,-d*.1,g);break;
       case 'oven': box(w,h,d,'#938773',0,h/2,0,g);box(w*.72,h*.48,.05,'#394d48',0,h*.42,d/2+.03,g);box(w*.62,.06,.09,'#d1c49c',0,h*.7,d/2+.08,g);for(const x of [-1,1])cylinder(.15,.15,.05,'#3c4d43',x*w*.23,h+.025,0,g,10);break;
       case 'garden_bed':
@@ -83,8 +90,16 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
       if(old?.userData.signature===signature)continue;
       if(old){buildings.remove(old);disposeObject(old);}
       const view=objectView(object,snapshot.buildCatalog);view.userData.signature=signature;objects.set(object.id,view);buildings.add(view);
+      view.userData.buildObjectID=object.id;view.visible=object.id!==editingID;
     }
     for(const [id,view] of objects)if(!present.has(id)){buildings.remove(view);disposeObject(view);objects.delete(id);}
+  }
+  function setEditing(id=''){editingID=id;for(const [key,view]of objects)view.visible=key!==editingID;}
+  function pickObject(camera,range=12){
+    raycaster.setFromCamera({x:0,y:0},camera);raycaster.far=range;
+    const hits=raycaster.intersectObjects([...objects.values()].filter(view=>view.visible),true);
+    for(const hit of hits){let view=hit.object;while(view&&!view.userData.buildObjectID)view=view.parent;if(view)return {id:view.userData.buildObjectID,distance:hit.distance};}
+    return null;
   }
   function camel() {
     const g=new THREE.Group();sphere(.85,'#caa370',0,1.5,0,g,1).scale.set(.6,.8,1.3);sphere(.5,'#b78e5c',0,2.12,.15,g);
@@ -93,5 +108,5 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
     box(.9,.12,.75,'#997374',0,2.27,.35,g);return g;
   }
   function animate(now){arrow.position.y=.8+Math.sin(now*.002)*.12;arrow.rotation.y=now*.0004;portalMaterial.emissiveIntensity=.5+Math.sin(now*.0015)*.12;}
-  return {sync,objectView,camel,animate};
+  return {sync,objectView,camel,animate,setEditing,pickObject};
 }

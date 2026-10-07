@@ -2,31 +2,34 @@ package game
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 type Island struct {
-	Owner    string          `json:"owner"`
-	Visitors bool            `json:"visitors"`
-	Builders map[string]bool `json:"builders"`
-	Chest    map[string]int  `json:"chest"`
-	Objects  []BuildObject   `json:"objects"`
+	Owner    string                    `json:"owner"`
+	Visitors bool                      `json:"visitors"`
+	Builders map[string]bool           `json:"builders"`
+	Chest    map[string]int            `json:"chest"`
+	Objects  []BuildObject             `json:"objects"`
+	Storage  map[string]map[string]int `json:"storage,omitempty"`
 }
 
 type BuildObject struct {
-	ID       string  `json:"id"`
-	Kind     string  `json:"kind"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Z        float64 `json:"z"`
-	Rotation float64 `json:"rotation"`
-	Open     bool    `json:"open"`
-	Lit      bool    `json:"lit"`
-	Planted  string  `json:"planted,omitempty"`
-	ReadyAt  float64 `json:"readyAt,omitempty"`
-	Adopted  string  `json:"adopted,omitempty"`
+	ID        string  `json:"id"`
+	Kind      string  `json:"kind"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Z         float64 `json:"z"`
+	Rotation  float64 `json:"rotation"`
+	Open      bool    `json:"open"`
+	Lit       bool    `json:"lit"`
+	Planted   string  `json:"planted,omitempty"`
+	ReadyAt   float64 `json:"readyAt,omitempty"`
+	Adopted   string  `json:"adopted,omitempty"`
+	Color     string  `json:"color,omitempty"`
+	EditingBy string  `json:"editingBy,omitempty"`
 }
 
 type BuildRecipe struct {
@@ -58,6 +61,9 @@ var buildRecipes = []BuildRecipe{
 	{"plant", "Potted plant", "decor", map[string]int{"stone": 2, "berry": 1}, .7, .7, 1.1},
 	{"lantern", "Lantern", "decor", map[string]int{"stone": 2, "stick": 2}, .5, .5, .8},
 	{"chest", "Shared materials chest", "decor", map[string]int{"wood": 5, "stone": 1}, 1.7, 1, 1},
+	{"storage_chest", "Personal storage chest", "decor", map[string]int{"wood": 6, "stone": 2}, 1.8, 1.1, 1},
+	{"tree", "Garden tree", "garden", map[string]int{"wood": 2, "nut": 1}, 2.4, 2.4, 4},
+	{"flowers", "Flower bed", "garden", map[string]int{"berry": 2, "stick": 1}, 1.8, 1.2, .6},
 	{"mixer", "Mixer", "appliances", map[string]int{"stone": 8, "wood": 4}, 1.5, 1.2, 1.6},
 	{"oven", "Oven", "appliances", map[string]int{"stone": 12, "wood": 4}, 2, 1.7, 2},
 	{"garden_bed", "Nut and berry garden", "appliances", map[string]int{"wood": 4, "stone": 3}, 3, 2, .6},
@@ -82,6 +88,10 @@ func cloneIsland(h *Island) *Island {
 	cp.Builders = cloneMap(h.Builders)
 	cp.Chest = cloneMap(h.Chest)
 	cp.Objects = append([]BuildObject{}, h.Objects...)
+	cp.Storage = make(map[string]map[string]int, len(h.Storage))
+	for id, contents := range h.Storage {
+		cp.Storage[id] = cloneMap(contents)
+	}
 	return &cp
 }
 
@@ -138,6 +148,10 @@ func normalizeIslandProfile(p *Profile) {
 				continue
 			}
 			o.Rotation = normalizeRotation(o.Rotation)
+			o.EditingBy = ""
+			if !validColor(o.Color) {
+				o.Color = ""
+			}
 			seen[o.ID] = true
 			kept = append(kept, o)
 			if len(kept) >= 500 {
@@ -145,6 +159,20 @@ func normalizeIslandProfile(p *Profile) {
 			}
 		}
 		h.Objects = kept
+		storage := map[string]map[string]int{}
+		for _, o := range kept {
+			if o.Kind != "storage_chest" {
+				continue
+			}
+			contents := map[string]int{}
+			for item, count := range h.Storage[o.ID] {
+				if isInventoryItem(item) && count > 0 {
+					contents[item] = min(count, inventoryLimit)
+				}
+			}
+			storage[o.ID] = contents
+		}
+		h.Storage = storage
 		clearIslandPortal(h)
 	}
 }
@@ -222,7 +250,24 @@ func validBuildPosition(x, y, z, r float64) bool {
 	return finite(x) && finite(y) && finite(z) && finite(r) && math.Hypot(x, z) <= 32 && y >= 0 && y <= 12
 }
 func buildingMaterial(item string) bool {
-	return validChoice(item, "wood", "stick", "stone", "berry", "nut", "cactus", "shell", "pearl", "sea_salt")
+	return validChoice(item, "wood", "stick", "stone", "berry", "nut", "cactus", "shell", "pearl", "sea_salt") || strings.HasPrefix(item, "paint_") && validColor(strings.TrimPrefix(item, "paint_"))
+}
+
+func packedBuildItem(item string) (kind, color string, ok bool) {
+	if !strings.HasPrefix(item, "build_") {
+		return "", "", false
+	}
+	kind, color, painted := strings.Cut(strings.TrimPrefix(item, "build_"), ":")
+	_, exists := buildRecipeFor(kind)
+	return kind, color, exists && (!painted || validChoice(kind, "chest", "storage_chest") && validColor(color))
+}
+
+func packedBuildName(o BuildObject) string {
+	item := "build_" + o.Kind
+	if o.Color != "" && validChoice(o.Kind, "chest", "storage_chest") {
+		item += ":" + o.Color
+	}
+	return item
 }
 
 func (w *World) currentIsland(p *player) (*Island, bool) {
@@ -243,17 +288,20 @@ func (w *World) saveIsland(h *Island) {
 	}
 }
 func (w *World) setIsland(p *player, id string) {
+	p.buildMode, p.editingBuildID = false, ""
+	w.updateMountedCamel(p)
 	p.island = id
+	p.inCave = false
 	p.posture = ""
-	p.ridingCamel = false
 	p.y = 0
 	if id == "" {
 		// Arrive outside the rock arch, with room to see and enter the cave.
-		p.x, p.z = 120, -93
+		p.x, p.z = 120, -70
 	} else {
 		p.x, p.z = 0, 20
 	}
 	resetMovement(p)
+	syncMountedCamel(p)
 	// A teleport cannot leave an old projectile behind that hits a new instance.
 	shots := w.projectiles[:0]
 	for _, shot := range w.projectiles {
@@ -266,6 +314,14 @@ func (w *World) setIsland(p *player, id string) {
 
 func (w *World) islandAction(p *player, a Action) error {
 	switch a.Action {
+	case "cancel_build":
+		p.editingBuildID = ""
+		return nil
+	case "build_mode":
+		if !a.Enabled {
+			p.buildMode, p.editingBuildID = false, ""
+			return nil
+		}
 	case "eat_lollipop":
 		if p.island != "" {
 			return errors.New("Visit the clay cave in Sunbaked Sands.")
@@ -279,7 +335,7 @@ func (w *World) islandAction(p *player, a Action) error {
 		if distance(p.x, p.z, x, -124) > 4 {
 			return errors.New("Walk to the lollipop at the end of the clay cave.")
 		}
-		if groundY(p) > -2 {
+		if !p.inCave || groundY(p) > -2 {
 			return errors.New("Enter the underground clay cave to reach this lollipop.")
 		}
 		if a.Item == "pink" {
@@ -325,6 +381,8 @@ func (w *World) islandAction(p *player, a Action) error {
 		}
 		w.setIsland(p, "")
 		p.x, p.z = 120, -117
+		p.inCave = true
+		syncMountedCamel(p)
 		w.eventActor("The return platform brought you to the Sunbaked clay cave.", "notification", p.x, p.z, p.profile.ID)
 		return nil
 	case "visit_island":
@@ -381,15 +439,28 @@ func (w *World) islandAction(p *player, a Action) error {
 	if a.Action == "chest_deposit" || a.Action == "chest_withdraw" {
 		return w.chestAction(p, h, a)
 	}
+	if a.Action == "storage_deposit" || a.Action == "storage_withdraw" {
+		return w.storageAction(p, h, a)
+	}
 	if a.Action == "use_build" {
 		return w.useBuild(p, h, a)
 	}
 	if !w.canBuildIsland(p, h) {
 		return errors.New("The owner must specifically allow you to build on this island.")
 	}
+	if a.Action == "build_mode" {
+		p.buildMode = true
+		return nil
+	}
+	if !p.buildMode {
+		return errors.New("Enter build mode before placing or editing island objects.")
+	}
 	h = cloneIsland(h)
 	switch a.Action {
 	case "build":
+		if p.editingBuildID != "" {
+			return errors.New("Place or cancel the object you are editing first.")
+		}
 		r, ok := buildRecipeFor(a.Item)
 		if !ok {
 			return errors.New("Choose something from the build menu.")
@@ -400,14 +471,20 @@ func (w *World) islandAction(p *player, a Action) error {
 		if err := w.validatePlacement(p, h, a.Item, "", a); err != nil {
 			return err
 		}
-		if !afford(p, r.Cost, 1) {
-			return errors.New("Collect the listed materials, or withdraw them from the island chest.")
+		color := ""
+		if a.From != "" {
+			kind, packedColor, valid := packedBuildItem(a.From)
+			if h.Owner != p.profile.ID || !valid || kind != a.Item || !take(p, a.From, 1) {
+				return errors.New("Place a packed furnishing from your own inventory on your own island.")
+			}
+			color = packedColor
+		} else if err := spendBuildMaterials(p, h, r.Cost); err != nil {
+			return err
 		}
-		spend(p, r.Cost, 1)
 		w.sequence++
 		id := "build_" + strconv.FormatInt(w.now().UnixNano(), 36) + "_" + strconv.FormatUint(w.sequence, 36)
-		h.Objects = append(h.Objects, BuildObject{ID: id, Kind: a.Item, X: a.X, Y: a.Y, Z: a.Z, Rotation: normalizeRotation(a.Rotation), Lit: a.Item == "fire"})
-	case "move_build", "destroy_build":
+		h.Objects = append(h.Objects, BuildObject{ID: id, Kind: a.Item, X: a.X, Y: a.Y, Z: a.Z, Rotation: normalizeRotation(a.Rotation), Lit: a.Item == "fire", Color: color})
+	case "edit_build", "move_build", "destroy_build", "pack_build", "paint_build":
 		index := -1
 		for i, o := range h.Objects {
 			if o.ID == a.Target {
@@ -422,26 +499,134 @@ func (w *World) islandAction(p *player, a Action) error {
 		if distance(p.x, p.z, o.X, o.Z) > 12 {
 			return errors.New("Move within 12 metres of the furnishing.")
 		}
+		if editor := w.buildEditor(h, o.ID); editor != "" && editor != p.profile.ID {
+			return errors.New("Another builder is editing this object. Wait until they finish.")
+		}
+		if a.Action == "edit_build" {
+			p.editingBuildID = o.ID
+			return nil
+		}
+		if p.editingBuildID != o.ID {
+			return errors.New("Look at this object and press E to take edit control first.")
+		}
 		if a.Action == "move_build" {
 			if err := w.validatePlacement(p, h, o.Kind, o.ID, a); err != nil {
 				return err
 			}
 			o.X, o.Y, o.Z, o.Rotation = a.X, a.Y, a.Z, normalizeRotation(a.Rotation)
 			h.Objects[index] = o
+		} else if a.Action == "paint_build" {
+			if !validChoice(o.Kind, "chest", "storage_chest") || !validColor(a.Item) {
+				return errors.New("Choose a chest and one of the available paint colors.")
+			}
+			if o.Color == a.Item {
+				return nil
+			}
+			if err := spendBuildMaterials(p, h, map[string]int{"paint_" + a.Item: 1}); err != nil {
+				return err
+			}
+			o.Color = a.Item
+			h.Objects[index] = o
 		} else {
-			r, _ := buildRecipeFor(o.Kind)
-			for item, n := range r.Cost {
-				if n/2 > 0 && !gain(p, item, n/2) {
-					return errors.New("Make space in your bag for the half-material refund.")
+			if buildHasContents(h, o) {
+				return errors.New("Empty this chest, harvest this garden, or rehome its animal before removing it.")
+			}
+			if a.Action == "pack_build" {
+				if h.Owner != p.profile.ID {
+					return errors.New("Only the island owner may pack objects into their inventory.")
+				}
+				if !gain(p, packedBuildName(o), 1) {
+					return errors.New("Make room in your bag for this furnishing.")
+				}
+			} else {
+				r, _ := buildRecipeFor(o.Kind)
+				if err := refundBuildMaterials(p, h, r.Cost); err != nil {
+					return err
 				}
 			}
+			delete(h.Storage, o.ID)
 			h.Objects = append(h.Objects[:index], h.Objects[index+1:]...)
+		}
+		if a.Action != "paint_build" {
+			p.editingBuildID = ""
 		}
 	default:
 		return errors.New("Unknown island action.")
 	}
 	w.saveIsland(h)
 	return nil
+}
+
+func spendBuildMaterials(p *player, h *Island, cost map[string]int) error {
+	if h.Owner == p.profile.ID {
+		if !afford(p, cost, 1) {
+			return errors.New("Collect the listed materials or withdraw them from your shared chest.")
+		}
+		spend(p, cost, 1)
+		return nil
+	}
+	for item, count := range cost {
+		if h.Chest[item] < count {
+			return errors.New("The shared materials chest needs the listed supplies before a guest can build.")
+		}
+	}
+	for item, count := range cost {
+		h.Chest[item] -= count
+		if h.Chest[item] == 0 {
+			delete(h.Chest, item)
+		}
+	}
+	return nil
+}
+
+func refundBuildMaterials(p *player, h *Island, cost map[string]int) error {
+	if h.Owner != p.profile.ID {
+		for item, n := range cost {
+			if h.Chest[item] > inventoryLimit-n/2 {
+				return errors.New("Make room in the shared materials chest for the refund.")
+			}
+		}
+		for item, n := range cost {
+			if n/2 > 0 {
+				h.Chest[item] += n / 2
+			}
+		}
+		return nil
+	}
+	// Validate the complete multi-material refund before changing live inventory.
+	draft := *p
+	draft.profile = cloneProfile(p.profile)
+	for item, n := range cost {
+		if n/2 > 0 && !gain(&draft, item, n/2) {
+			return errors.New("Make space in your bag for the half-material refund.")
+		}
+	}
+	p.profile = draft.profile
+	return nil
+}
+
+func (w *World) buildEditor(h *Island, target string) string {
+	for id, editor := range w.players {
+		if editor.island == h.Owner && editor.buildMode && editor.editingBuildID == target && w.canBuildIsland(editor, h) {
+			return id
+		}
+	}
+	return ""
+}
+
+func buildHasContents(h *Island, o BuildObject) bool {
+	if len(h.Storage[o.ID]) > 0 || o.Planted != "" || o.Adopted != "" {
+		return true
+	}
+	if o.Kind == "chest" && len(h.Chest) > 0 {
+		for _, other := range h.Objects {
+			if other.Kind == "chest" && other.ID != o.ID {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func (w *World) validatePlacement(p *player, h *Island, kind, skip string, a Action) error {
@@ -500,6 +685,12 @@ func objectLocal(o BuildObject, x, z float64) (float64, float64) {
 	return dx*math.Cos(a) - dz*math.Sin(a), dx*math.Sin(a) + dz*math.Cos(a)
 }
 func objectBlocks(o BuildObject, r BuildRecipe, x, y, z, radius float64) bool {
+	if o.Kind == "flowers" {
+		return false
+	}
+	if o.Kind == "tree" {
+		return y < o.Y+3 && y+1.7 > o.Y && distance(x, z, o.X, o.Z) < radius+.3
+	}
 	if o.Kind == "door" && o.Open {
 		return false
 	}
@@ -569,9 +760,12 @@ func (w *World) islandGround(p *player) float64 {
 }
 
 func (w *World) chestAction(p *player, h *Island, a Action) error {
+	if h.Owner != p.profile.ID && (!h.Visitors || !p.profile.Friends[h.Owner]) {
+		return errors.New("Only the owner and invited visitors may use this island's shared chest.")
+	}
 	near := false
 	for _, o := range h.Objects {
-		if o.Kind == "chest" && distance(p.x, p.z, o.X, o.Z) <= 5 {
+		if o.Kind == "chest" && distance(p.x, p.z, o.X, o.Z) <= 5 && math.Abs(playerY(p)-o.Y) <= 3 && w.buildEditor(h, o.ID) == "" {
 			near = true
 			break
 		}
@@ -582,8 +776,8 @@ func (w *World) chestAction(p *player, h *Island, a Action) error {
 	if !buildingMaterial(a.Item) {
 		return errors.New("The island chest stores building and garden materials.")
 	}
-	if a.Action == "chest_withdraw" && !w.canBuildIsland(p, h) {
-		return errors.New("Only the owner and specifically permitted builders may withdraw materials.")
+	if a.Action == "chest_withdraw" && h.Owner != p.profile.ID {
+		return errors.New("Only the island owner may withdraw materials. Guest builders use shared materials directly when building.")
 	}
 	h = cloneIsland(h)
 	if a.Action == "chest_deposit" {
@@ -604,6 +798,55 @@ func (w *World) chestAction(p *player, h *Island, a Action) error {
 		h.Chest[a.Item] -= a.Amount
 		if h.Chest[a.Item] == 0 {
 			delete(h.Chest, a.Item)
+		}
+	}
+	w.saveIsland(h)
+	return nil
+}
+
+func (w *World) storageAction(p *player, h *Island, a Action) error {
+	if h.Owner != p.profile.ID {
+		return errors.New("This personal storage chest belongs to the island owner.")
+	}
+	if !isInventoryItem(a.Item) {
+		return errors.New("Choose an inventory item to store.")
+	}
+	found := false
+	for _, o := range h.Objects {
+		if o.ID == a.Target && o.Kind == "storage_chest" && distance(p.x, p.z, o.X, o.Z) <= 5 && math.Abs(playerY(p)-o.Y) <= 3 && w.buildEditor(h, o.ID) == "" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.New("Stand near your personal storage chest and finish editing it first.")
+	}
+	h = cloneIsland(h)
+	if h.Storage == nil {
+		h.Storage = map[string]map[string]int{}
+	}
+	if h.Storage[a.Target] == nil {
+		h.Storage[a.Target] = map[string]int{}
+	}
+	contents := h.Storage[a.Target]
+	if a.Action == "storage_deposit" {
+		if contents[a.Item] > inventoryLimit-a.Amount {
+			return errors.New("This chest cannot hold more of that item.")
+		}
+		if !take(p, a.Item, a.Amount) {
+			return errors.New("You do not have those items.")
+		}
+		contents[a.Item] += a.Amount
+	} else {
+		if contents[a.Item] < a.Amount {
+			return errors.New("This chest does not contain that many items.")
+		}
+		if !gain(p, a.Item, a.Amount) {
+			return errors.New("Make room in your bag first.")
+		}
+		contents[a.Item] -= a.Amount
+		if contents[a.Item] == 0 {
+			delete(contents, a.Item)
 		}
 	}
 	w.saveIsland(h)
@@ -633,8 +876,14 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 		if distance(p.x, p.z, o.X, o.Z) > 5 {
 			return errors.New("Move within 5 metres to use this furnishing.")
 		}
+		if w.buildEditor(h, o.ID) != "" {
+			return errors.New("Finish editing this object before using it.")
+		}
 		switch o.Kind {
 		case "chair", "bed":
+			if p.ridingCamel {
+				return errors.New("Press Q to dismount before sitting or lying down.")
+			}
 			if p.posture != "" {
 				p.posture = ""
 			} else {
@@ -683,8 +932,8 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 				if !validChoice(a.Item, "berry", "nut") {
 					return errors.New("Choose one berry or nut to plant.")
 				}
-				if !take(p, a.Item, 1) {
-					return errors.New("You need one berry or nut to plant.")
+				if err := spendBuildMaterials(p, h, map[string]int{a.Item: 1}); err != nil {
+					return err
 				}
 				o.Planted = a.Item
 				o.ReadyAt = float64(w.now().Unix() + 120)
@@ -692,7 +941,12 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 				if float64(w.now().Unix()) < o.ReadyAt {
 					return errors.New("Your garden is still growing (2 minutes).")
 				}
-				if !gain(p, o.Planted, 4) {
+				if h.Owner != p.profile.ID {
+					if h.Chest[o.Planted] > inventoryLimit-4 {
+						return errors.New("Make room in the shared chest for this harvest.")
+					}
+					h.Chest[o.Planted] += 4
+				} else if !gain(p, o.Planted, 4) {
 					return errors.New("Make room for the harvest.")
 				}
 				o.Planted = ""
@@ -704,7 +958,7 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 			} else {
 				w.eventActor("Find a wounded fish or turtle in the ocean and choose Adopt to bring it to this pond.", "notification", p.x, p.z, p.profile.ID)
 			}
-		case "chest":
+		case "chest", "storage_chest":
 			return nil
 		default:
 			return errors.New("This decoration can be moved or rebuilt with the build menu.")
@@ -743,6 +997,7 @@ func (w *World) adoptAnimal(p *player, target string) error {
 		a.Health = 0
 		a.respawnAt = w.time + 120
 		p.profile.Rescues++
+		changeSpeciesReputation(p, a.Species, 3)
 		awardHats(&p.profile)
 		w.eventActor("Your rescued "+a.Species+" is safe in your home pond.", "notification", p.x, p.z, p.profile.ID)
 		return nil
@@ -758,6 +1013,11 @@ func (w *World) decorateIslandSnapshot(id string, out *Snapshot) {
 	out.Me.Island = p.island
 	out.Me.Posture = p.posture
 	out.Me.RidingCamel = p.ridingCamel
+	out.Me.MountedCamelID = p.mountedCamelID
+	if h, ok := w.currentIsland(p); !ok || !w.canBuildIsland(p, h) {
+		p.buildMode, p.editingBuildID = false, ""
+	}
+	out.Me.BuildMode, out.Me.EditingBuildID = p.buildMode, p.editingBuildID
 	out.Me.HomeOffer = p.homeOffer
 	out.Me.FriendsTeleport = p.friendsTeleport
 	out.Me.CanBuildHome = false
@@ -794,6 +1054,8 @@ func (w *World) decorateIslandSnapshot(id string, out *Snapshot) {
 		}
 	}
 	out.Nodes = nodes
+	out.Nodes = append(out.Nodes, w.camelNodes(p)...)
+	out.Nodes = append(out.Nodes, w.dropNodes(p)...)
 	if p.island != "" {
 		out.Nodes = append(out.Nodes, Node{ID: "island_portal", Kind: "island_portal", Label: "Return platform · Sunbaked clay cave", X: islandPortalX, Z: islandPortalZ, Available: true, Island: p.island})
 		out.Me.Area = "home"
@@ -802,6 +1064,12 @@ func (w *World) decorateIslandSnapshot(id string, out *Snapshot) {
 		out.Projectiles = []Projectile{}
 		if h, ok := w.currentIsland(p); ok {
 			out.Island = cloneIsland(h)
+			for i := range out.Island.Objects {
+				out.Island.Objects[i].EditingBy = w.buildEditor(h, out.Island.Objects[i].ID)
+			}
+			if h.Owner != p.profile.ID {
+				out.Island.Storage = nil
+			}
 			if !w.canBuildIsland(p, h) {
 				out.Island.Chest = map[string]int{}
 				out.Island.Builders = map[string]bool{}
@@ -819,67 +1087,4 @@ func (w *World) decorateIslandSnapshot(id string, out *Snapshot) {
 		events = append(events, e)
 	}
 	out.Events = events
-}
-
-func (w *World) camelAction(p *player, a Action) error {
-	if a.Action == "camel_ride" {
-		if !p.profile.CamelOwned && p.profile.CamelRentalUntil <= w.now().Unix() {
-			return errors.New("Rent or buy a camel from Abu Fanous first.")
-		}
-		if inWater(p) {
-			return errors.New("Camels need dry land.")
-		}
-		p.ridingCamel = !p.ridingCamel
-		return nil
-	}
-	if !w.near(p, "abu_fanous", 7) {
-		return errors.New("Visit Abu Fanous on the far eastern edge of Sunbaked Sands.")
-	}
-	switch a.Action {
-	case "camel_gift":
-		if p.profile.CamelDiscount {
-			return errors.New("Abu Fanous has already given you his permanent discount.")
-		}
-		for _, r := range recipes {
-			if p.profile.Inventory[r.ID] < 1 {
-				return errors.New("Abu Fanous would love one of every kind of cookie and cake.")
-			}
-		}
-		for _, r := range recipes {
-			take(p, r.ID, 1)
-		}
-		p.profile.CamelDiscount = true
-		return nil
-	case "camel_rent":
-		if p.profile.CamelOwned {
-			return errors.New("You already own a camel.")
-		}
-		if p.profile.CamelRentalUntil > w.now().Unix() {
-			return errors.New("Your current camel rental is still active.")
-		}
-		if p.profile.Coins < 50 {
-			return errors.New("A 20-minute camel rental costs 50 coins.")
-		}
-		p.profile.Coins -= 50
-		p.profile.CamelRentalUntil = w.now().Unix() + 1200
-		p.ridingCamel = true
-		return nil
-	case "camel_buy":
-		if p.profile.CamelOwned {
-			return errors.New("You already own a camel.")
-		}
-		cost := 350
-		if p.profile.CamelDiscount {
-			cost = 175
-		}
-		if p.profile.Coins < cost {
-			return fmt.Errorf("A permanent camel costs %d coins.", cost)
-		}
-		p.profile.Coins -= cost
-		p.profile.CamelOwned = true
-		p.profile.CamelRentalUntil = 0
-		p.ridingCamel = true
-		return nil
-	}
-	return errors.New("Choose a camel rental, purchase, or gift.")
 }

@@ -23,7 +23,7 @@ func TestLegacySaveUpgradesWithoutLosingInventory(t *testing.T) {
 	w.Join("alice", "Alice")
 	profiles := w.Profiles()
 	p := profiles["alice"]
-	if p.Coins != 321 || p.Inventory["sugar"] != 10 || p.Inventory["salt_cookie"] != 2 || p.Inventory["dough"] != 7 || p.BakeryPlot == "" || p.BakeryLevel != 2 {
+	if p.Coins != 321 || p.Inventory["sugar"] != 10 || p.Inventory["salt_cookie"] != 2 || p.Inventory["dough"] != 7 || !p.Bakery || p.BakeryPlot != "" || p.BakeryLevel != 2 {
 		t.Fatal("legacy progress lost")
 	}
 	if err := db.Save(profiles); err != nil {
@@ -37,15 +37,49 @@ func TestLegacySaveUpgradesWithoutLosingInventory(t *testing.T) {
 	if err := json.Unmarshal(raw, &d); err != nil {
 		t.Fatal(err)
 	}
-	if d.Version != 2 {
+	if d.Version != 3 {
 		t.Fatal("slot save not versioned")
 	}
 	restored, err := db.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored["alice"].SafeSlots != p.SafeSlots || restored["alice"].BagSlots != p.BagSlots || restored["alice"].Hotbar != p.Hotbar {
+	if len(restored["alice"].SafeSlots) != 0 || restored["alice"].BagSlots != p.BagSlots || restored["alice"].Hotbar != p.Hotbar {
 		t.Fatal("canonical slot layout changed on reload")
+	}
+}
+
+func TestVersionTwoSafeSlotsMigrateBeforeVersionThreeSave(t *testing.T) {
+	db, _ := New(t.TempDir())
+	bag := make([]game.Stack, 15)
+	for i := range bag {
+		bag[i] = game.Stack{Item: "wood", Count: 100}
+	}
+	legacy := map[string]any{"version": 2, "profiles": map[string]any{"alice": map[string]any{
+		"id": "alice", "inventoryVersion": 2, "bagSlots": bag,
+		"safeSlots": []game.Stack{{Item: "cake", Count: 12}, {Item: "pearl", Count: 7}, {Item: "wood", Count: 40}},
+		"hotbar":    []game.Stack{{Item: "sugar", Count: 10}},
+	}}}
+	data, _ := json.Marshal(legacy)
+	if err := os.WriteFile(db.path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := db.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := game.New(loaded)
+	profiles := w.Profiles()
+	p := profiles["alice"]
+	if p.InventoryVersion != 3 || len(p.BagSlots) != 20 || len(p.SafeSlots) != 0 || p.Inventory["wood"] != 1540 || p.Inventory["cake"] != 12 || p.Inventory["pearl"] != 7 || p.Inventory["sugar"] != 10 {
+		t.Fatal("version-two inventory lost protected items during migration")
+	}
+	if err := db.Save(profiles); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = db.Load()
+	if err != nil || loaded["alice"].BagSlots != p.BagSlots || loaded["alice"].Hotbar != p.Hotbar || len(loaded["alice"].SafeSlots) != 0 {
+		t.Fatal("version-three save did not preserve migrated slots")
 	}
 }
 

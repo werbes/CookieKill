@@ -36,6 +36,7 @@
             <form id="code-form"><label for="login-code">YOUR LOGIN CODE</label><input id="login-code" class="code-input" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="000000"><p id="development-code" class="dev-note" hidden></p><button class="button primary" id="code-submit" type="submit">Enter the wild <span>→</span></button></form>
             <button id="change-email" class="text-button" type="button">← Use another email</button>
           </div>
+          <div class="remember-device"><label for="keep-signed-in"><input id="keep-signed-in" type="checkbox" aria-describedby="keep-signed-in-help"><span>Keep me signed in on this device</span></label><p id="keep-signed-in-help">Stay signed in for 30 days. Only on devices you own.</p></div>
           <p id="auth-message" class="form-message" role="status" hidden></p>
         </div>
         <div class="landing-perks"><span><i>✦</i> 10 cookies to your name</span><span><i>◇</i> A whole world to explore</span></div>
@@ -48,12 +49,13 @@
       <div class="player-summary"><div class="coin-counter"><span class="coin-icon">¢</span><strong id="coin-count">0</strong><span>COINS</span></div><button id="menu-button" class="avatar-button" title="Open inventory (I)" aria-label="Open inventory">▦</button></div>
       <div class="objective-card"><span class="eyebrow">A LITTLE SOMETHING TO DO</span><h3 id="objective-title">Bake your own trouble</h3><p id="objective-text">Gather wood, sticks, and stones to build your first campfire.</p><div class="objective-progress"><span id="objective-progress"></span></div><button class="text-button light" id="objective-help">Your field guide <span>↗</span></button></div>
       <div id="buffs" class="buffs"></div>
+      <button id="club-light-toggle" class="club-light-toggle" aria-pressed="false" hidden>L · Flashing lights: on</button>
       <div id="crosshair"><i></i><i></i><i></i><i></i></div>
       <div id="hit-marker" hidden>×</div>
       <div id="interaction-prompt" hidden><kbd>E</kbd><div><span id="interaction-label">Gather berries</span><small id="interaction-detail">A little sweetness goes a long way</small></div></div>
       <div id="activity-feed" class="activity-feed" aria-live="polite"></div>
-      <div class="vitals"><div class="vital-label"><span>♥ &nbsp;HEALTH</span><strong><span id="health-value">100</span><small>/ 100</small></strong></div><div class="meter health"><span id="health-bar"></span></div><div class="vital-label stamina-label"><span>ϟ &nbsp;STAMINA</span><strong id="stamina-value">100</strong></div><div class="meter stamina"><span id="stamina-bar"></span></div><div class="vital-caption"><span id="player-name">Wanderer</span><span id="connection-state"><i></i> CONNECTED</span></div></div>
-      <div class="hotbar-wrap"><div id="selected-cookie-label">UNIDENTIFIED COOKIE <span>A recipe waiting to be discovered</span></div><div id="hotbar" class="hotbar"></div><div class="hotbar-hints"><span><kbd>1-5</kbd> select</span><span><kbd>6</kbd> build</span><span><b>LEFT CLICK</b> throw</span><span><b>Q / RIGHT CLICK</b> eat</span><span><kbd>I</kbd> inventory</span><span><kbd>SPACE</kbd> jump</span></div></div>
+      <div class="vitals"><div class="vital-label"><span>♥ &nbsp;HEALTH</span><strong><span id="health-value">100</span><small>/ 100</small></strong></div><div class="meter health"><span id="health-bar"></span></div><div class="vital-label stamina-label"><span>ϟ &nbsp;STAMINA</span><strong id="stamina-value">125</strong></div><div class="meter stamina"><span id="stamina-bar"></span></div><div class="vital-caption"><span id="player-name">Wanderer</span><span id="connection-state"><i></i> CONNECTED</span></div></div>
+      <div class="hotbar-wrap"><div id="selected-cookie-label">UNIDENTIFIED COOKIE <span>A recipe waiting to be discovered</span></div><div id="hotbar" class="hotbar"></div><div class="hotbar-hints"><span><kbd>1-5</kbd> select</span><span><kbd>6</kbd> build</span><span><b>LEFT CLICK</b> throw</span><span><kbd>Q</kbd> eat / dismount</span><span><b>RIGHT CLICK</b> eat</span><span><kbd>E</kbd> interact / mount</span><span><kbd>I</kbd> inventory</span><span><kbd>SPACE</kbd> jump</span></div></div>
       <button id="minimap-button" class="minimap-wrap" title="Open world map"><canvas id="minimap" width="180" height="180"></canvas><span class="minimap-north">N</span><span class="minimap-title">THE WORLD IS YOUR OVEN <kbd>M</kbd></span></button>
       <div id="damage-overlay"></div>
       <div id="disconnect-banner" hidden>Reconnecting to your world… <span>Your progress is saved.</span></div>

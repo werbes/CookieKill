@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"cookiekill/internal/auth"
@@ -24,9 +23,10 @@ import (
 const maxPlayers = 64
 
 type peer struct {
-	conn   *websocket.Conn
-	out    chan outbound
-	cancel context.CancelFunc
+	conn          *websocket.Conn
+	out           chan outbound
+	cancel        context.CancelFunc
+	baselineReady chan struct{} // Writer closes after the first successful snapshot.
 }
 
 // Queue complete, independent snapshots. Only the connection writer computes
@@ -37,18 +37,21 @@ type outbound struct {
 }
 
 type Server struct {
-	mu       sync.Mutex
-	world    *game.World
-	auth     *auth.Service
-	store    *store.Store
-	peers    map[string]*peer
-	departed map[string]time.Time
-	closing  bool
-	logger   *slog.Logger
+	auth         *auth.Service
+	store        *store.Store
+	logger       *slog.Logger
+	commands     chan ownerCommand
+	done         chan struct{}
+	closeStarted chan struct{}
+	saveSlots    chan struct{}
+	saves        chan saveJob
+	finalSaved   chan error
+	saveDone     chan struct{}
+	closeErr     error // Published by closing done; read only after done closes.
 }
 
 func New(a *auth.Service, db *store.Store, profiles map[string]game.Profile, logger *slog.Logger) *Server {
-	return &Server{auth: a, store: db, world: game.New(profiles), peers: make(map[string]*peer), departed: make(map[string]time.Time), logger: logger}
+	return newServer(a, db, profiles, logger, db.Save, serverTiming{50 * time.Millisecond, 100 * time.Millisecond, 5 * time.Second})
 }
 
 func (s *Server) Handler(assets fs.FS, secure bool) http.Handler {
@@ -56,9 +59,11 @@ func (s *Server) Handler(assets fs.FS, secure bool) http.Handler {
 	s.auth.Register(mux)
 	mux.HandleFunc("GET /ws", s.connect)
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) {
-		s.mu.Lock()
-		layout := s.world.StaticLayout()
-		s.mu.Unlock()
+		layout, err := s.layout(r.Context())
+		if err != nil {
+			http.Error(w, "World is shutting down", http.StatusServiceUnavailable)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"layout": layout})
 	})
@@ -118,58 +123,37 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.mu.Lock()
-	if s.closing || (len(s.peers) >= maxPlayers && s.peers[p.ID] == nil) {
-		s.mu.Unlock()
+	if !s.capacity(r.Context(), p.ID) {
 		http.Error(w, "World full; try again shortly", http.StatusServiceUnavailable)
 		return
 	}
-	s.mu.Unlock()
-	// The network handshake must not hold the simulation mutex.
+	// Handshakes are network work; neither admission check blocks the world.
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionNoContextTakeover})
 	if err != nil {
-		return
-	}
-	s.mu.Lock()
-	// Capacity may have changed while the network handshake was in progress.
-	if s.closing || (len(s.peers) >= maxPlayers && s.peers[p.ID] == nil) {
-		s.mu.Unlock()
-		c.CloseNow()
 		return
 	}
 	// net/http clears its deadlines on hijack. These loops own the connection's
 	// lifetime and set their own deadlines independently of the HTTP request.
 	ctx, cancel := context.WithCancel(context.Background())
-	client := &peer{conn: c, out: make(chan outbound, 2), cancel: cancel}
-	if old := s.peers[p.ID]; old != nil {
-		go func() {
-			old.conn.Close(websocket.StatusCode(4001), "This account was opened in another tab")
-			old.cancel()
-		}()
+	client := &peer{conn: c, out: make(chan outbound, 2), cancel: cancel, baselineReady: make(chan struct{})}
+	// Capacity may have changed while the network handshake was in progress.
+	if !s.attach(ctx, p.ID, p.Name, client) {
+		cancel()
+		c.CloseNow()
+		return
 	}
-	s.peers[p.ID] = client
-	delete(s.departed, p.ID)
-	s.world.Join(p.ID, p.Name)
-	s.enqueueSnapshot(p.ID, client)
-	s.mu.Unlock()
 	c.SetReadLimit(2048)
 	defer func() {
 		cancel()
 		c.CloseNow()
-		s.mu.Lock()
-		if s.peers[p.ID] == client {
-			delete(s.peers, p.ID)
-			s.world.Input(p.ID, game.Input{})
-			// Keep the player in the world briefly so disconnecting cannot evade a hit.
-			s.departed[p.ID] = time.Now().Add(10 * time.Second)
-		}
-		s.mu.Unlock()
+		s.submit(context.Background(), detachCommand{id: p.ID, peer: client})
 	}()
 	go func() {
 		defer cancel()
 		// Old tabs keep receiving full snapshots until reloaded. Each new
 		// connection starts with a full baseline, including the world layout.
 		encoder := stateEncoder{delta: r.URL.Query().Get("updates") == "delta-v1"}
+		baselineWritten := false
 		for {
 			select {
 			case <-ctx.Done():
@@ -192,6 +176,10 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 				}
 				if next.snapshot != nil {
 					encoder.commit(*next.snapshot)
+					if !baselineWritten {
+						baselineWritten = true
+						close(client.baselineReady)
+					}
 				}
 			}
 		}
@@ -231,22 +219,13 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 			c.Close(websocket.StatusPolicyViolation, "Your session ended; sign in again")
 			return
 		}
-		s.mu.Lock()
-		if s.peers[p.ID] != client {
-			s.mu.Unlock()
-			c.Close(websocket.StatusCode(4001), "This account was opened in another tab")
-			return
-		}
-		if s.closing {
-			s.mu.Unlock()
-			return
-		}
+		command := playerCommand{id: p.ID, peer: client, reply: make(chan error, 1)}
 		switch envelope.Type {
 		case "input":
 			var input game.Input
 			if err = json.Unmarshal(b, &input); err == nil {
 				if finite(input.X, input.Z, input.Yaw, input.Pitch) {
-					s.world.Input(p.ID, input)
+					command.input = &input
 				} else {
 					err = errors.New("Invalid movement")
 				}
@@ -259,13 +238,24 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 			actionTokens--
 			var action game.Action
 			if err = json.Unmarshal(b, &action); err == nil {
-				err = s.world.Act(p.ID, action)
+				command.action = &action
 			}
 		case "ping":
 		default:
 			err = errors.New("Unknown message type")
 		}
-		s.mu.Unlock()
+		if err == nil {
+			// Await each command before reading the next packet: bounded pressure
+			// preserves press/release edges and action ordering for every player.
+			err = s.apply(ctx, command)
+		}
+		if errors.Is(err, errReplaced) {
+			c.Close(websocket.StatusCode(4001), "This account was opened in another tab")
+			return
+		}
+		if errors.Is(err, errClosed) || ctx.Err() != nil {
+			return
+		}
 		if err != nil {
 			s.sendError(client, err.Error())
 		}
@@ -303,9 +293,8 @@ func (s *Server) sendError(p *peer, message string) {
 	}
 }
 
-// Called with mu held; queues are bounded and never stall the simulation.
-func (s *Server) enqueueSnapshot(id string, p *peer) {
-	snapshot := s.world.Snapshot(id)
+// Only complete independent snapshots enter the bounded connection queue.
+func queueSnapshot(p *peer, snapshot game.Snapshot) {
 	next := outbound{snapshot: &snapshot}
 	select {
 	case p.out <- next:
@@ -319,56 +308,4 @@ func (s *Server) enqueueSnapshot(id string, p *peer) {
 		default:
 		}
 	}
-}
-
-func (s *Server) Run(ctx context.Context) {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-	saver := time.NewTicker(5 * time.Second)
-	defer saver.Stop()
-	ticks := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case now := <-ticker.C:
-			s.mu.Lock()
-			s.world.Tick(.05)
-			for id, deadline := range s.departed {
-				if !now.Before(deadline) {
-					s.world.Leave(id)
-					delete(s.departed, id)
-				}
-			}
-			ticks++
-			if ticks%2 == 0 {
-				for id, p := range s.peers {
-					s.enqueueSnapshot(id, p)
-				}
-			}
-			s.mu.Unlock()
-		case <-saver.C:
-			if err := s.Save(); err != nil {
-				s.logger.Error("save progress", "error", err)
-			}
-		}
-	}
-}
-
-func (s *Server) Save() error {
-	s.mu.Lock()
-	profiles := s.world.Profiles()
-	s.mu.Unlock()
-	return s.store.Save(profiles)
-}
-
-func (s *Server) Close() error {
-	s.mu.Lock()
-	s.closing = true
-	for _, p := range s.peers {
-		p.cancel()
-		go p.conn.CloseNow()
-	}
-	s.mu.Unlock()
-	return s.Save()
 }

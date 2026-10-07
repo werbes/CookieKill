@@ -106,7 +106,7 @@ func runServer(ctx context.Context, cfg appConfig, ready func(), logger *slog.Lo
 	a, err := auth.New(auth.Config{
 		DevMode: cfg.Dev, SecureCookies: !cfg.Dev, SMTPHost: cfg.SMTP.Host, SMTPPort: cfg.SMTP.Port,
 		SMTPUser: cfg.SMTP.User, SMTPPass: cfg.SMTP.Password, SMTPFrom: cfg.SMTP.From,
-		SessionTTL: 7 * 24 * time.Hour,
+		SessionTTL: 7 * 24 * time.Hour, SessionFile: filepath.Join(cfg.DataDir, "sessions.json"),
 	})
 	if err != nil {
 		return err
@@ -124,6 +124,9 @@ func runServer(ctx context.Context, cfg appConfig, ready func(), logger *slog.Lo
 		return err
 	}
 	hub := server.New(a, db, profiles, logger)
+	// New owns background coordination even before Run, including early listen
+	// failures and cancellation during startup. Close is safe to call twice.
+	defer hub.Close()
 	app := &http.Server{Addr: cfg.Addr, Handler: hub.Handler(assets, !cfg.Dev), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	var challenge *http.Server
 	if !cfg.Dev {

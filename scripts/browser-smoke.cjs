@@ -9,7 +9,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
   const {createSnapshotDecoder}=await import(`data:text/javascript;base64,${Buffer.from(syncSource).toString('base64')}`);
   const baseURL=process.env.CK_TEST_URL||'http://127.0.0.1:8080';
   const executablePath=process.env.CK_CHROME||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined);
-  const browser=await chromium.launch({executablePath,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-webgl']});
+  const browser=await chromium.launch({executablePath,headless:true,args:process.env.CK_SMOKE_HARDWARE==='1'?[]:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-webgl']});
   const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
   // Tour input remains ordinary movement, validated against server collisions.
   await page.addInitScript(()=>{const send=WebSocket.prototype.send;WebSocket.prototype.send=function(payload){window.__smokeSocket=this;try{const m=JSON.parse(payload);if(m.type==='input'&&window.__smokeInput)payload=JSON.stringify({...m,...window.__smokeInput});}catch{}return send.call(this,payload);};});
@@ -42,27 +42,35 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     await page.goto(baseURL,{waitUntil:'networkidle'});await page.locator('#email').waitFor({state:'visible'});
     assert.equal(await page.locator('#render-error').isVisible(),false,'WebGL failed');
     const publicLayout=await page.evaluate(async()=>await(await fetch('/api/world')).json());
-    assert.equal(publicLayout.layout.version,4);assert.equal(publicLayout.layout.plots.length,12);assert.equal(publicLayout.layout.zones.length,0);assert.ok(new Set(publicLayout.layout.coast.map(p=>p.z.toFixed(1))).size>10,'coast is not curved');
+    assert.equal(publicLayout.layout.version,7);assert.equal(publicLayout.layout.plots.length,12);assert.equal(publicLayout.layout.zones.length,0);assert.ok(new Set(publicLayout.layout.coast.map(p=>p.z.toFixed(1))).size>10,'coast is not curved');
     await screenshot('landing');
     await page.locator('#email').fill(`smoke${Date.now()}@example.com`);await page.locator('#email-submit').click();await page.locator('#code-stage').waitFor({state:'visible'});
     if(!await page.locator('#login-code').inputValue()){const code=(await page.locator('#development-code').innerText()).match(/\b\d{6}\b/);assert.ok(code,'local code missing');await page.locator('#login-code').fill(code[0]);}
     await page.locator('#code-submit').click();await page.locator('#start-button').waitFor({state:'visible'});await until(()=>latest?.me,'missing snapshot');
-    assert.equal(latest.me.inventory.sugar,10);assert.equal(latest.me.safeSlots.length,3);assert.equal(latest.me.bagSlots.length,15);assert.equal(latest.me.hotbar.length,5);assert.equal(latest.me.discovered?.sugar||false,false);
+    assert.equal(latest.me.inventory.sugar,10);assert.equal(latest.me.safeSlots,undefined);assert.equal(latest.me.bagSlots.length,20);assert.equal(latest.me.hotbar.length,5);assert.equal(latest.me.discovered?.sugar||false,false);
     await until(()=>deltaCount>0&&retainedRecipes&&retainedNodes,'delta stream did not retain unchanged recipes and nodes');
     assert.equal(await page.locator('#play-overlay').isVisible(),false,'Escape menu shown before Escape');
     if(!process.argv.includes('--tour-only')){
     await page.locator('#start-button').click();await page.waitForFunction(()=>!!document.pointerLockElement);
     assert.equal(await page.locator('#hotbar .hotbar-slot').count(),5);assert.match(await page.locator('#selected-cookie-label').innerText(),/UNIDENTIFIED COOKIE/);
-    const initial={x:latest.me.x,z:latest.me.z};await page.keyboard.down('w');await page.waitForTimeout(900);await page.keyboard.up('w');await page.waitForTimeout(200);
-    assert.ok(Math.hypot(latest.me.x-initial.x,latest.me.z-initial.z)>.5,'movement did not reach server');
+    // A random forest spawn may face a solid tree. Try ordinary directional
+    // keys and wait for confirmed movement instead of assuming a clear route.
+    const initial={x:latest.me.x,z:latest.me.z};
+    for(const key of ['w','a','s','d']){
+      await page.keyboard.down(key);const started=Date.now();
+      while(Math.hypot(latest.me.x-initial.x,latest.me.z-initial.z)<=.5&&Date.now()-started<2200)await page.waitForTimeout(100);
+      await page.keyboard.up(key);await page.waitForTimeout(250);
+      if(Math.hypot(latest.me.x-initial.x,latest.me.z-initial.z)>.5)break;
+    }
+    assert.ok(Math.hypot(latest.me.x-initial.x,latest.me.z-initial.z)>.5,`movement did not reach server: ${JSON.stringify({initial,final:{x:latest.me.x,z:latest.me.z}})}`);
     await page.mouse.click(720,500);await until(()=>latest.me.inventory.sugar===9,'throw did not consume cookie');await screenshot('first-person');
     await page.keyboard.press('2');await until(()=>latest.me.selectedSlot===1,'hotbar key 2 ignored');await page.waitForFunction(()=>document.getElementById('selected-cookie-label').textContent.startsWith('EMPTY SLOT'));assert.match(await page.locator('#selected-cookie-label').innerText(),/EMPTY SLOT/);
     await page.keyboard.press('1');await until(()=>latest.me.selectedSlot===0,'hotbar key 1 ignored');
     await page.keyboard.press('i');await page.locator('#modal').waitFor({state:'visible'});
-    assert.equal(await page.locator('.storage-safe .storage-slot').count(),3);assert.equal(await page.locator('.storage-bag .storage-slot').count(),15);assert.equal(await page.locator('.storage-hotbar .storage-slot').count(),5);
-    await page.locator('.storage-hotbar .storage-slot').nth(0).click();await page.locator('.storage-safe .storage-slot').nth(0).click();await until(()=>latest.me.safeSlots[0]?.count===9,'hotbar to safe move failed');
-    await page.locator('.storage-safe .storage-slot').nth(0).click();await page.locator('.storage-bag .storage-slot').nth(0).click();await until(()=>latest.me.bagSlots[0]?.count===9,'safe to bag move failed');
-    await page.locator('.storage-bag .storage-slot').nth(0).click();await page.locator('.storage-hotbar .storage-slot').nth(2).click();await until(()=>latest.me.hotbar[2]?.count===9,'bag to hotbar move failed');await screenshot('inventory');
+    assert.equal(await page.locator('.storage-safe .storage-slot').count(),0);assert.equal(await page.locator('.storage-bag .storage-slot').count(),20);assert.equal(await page.locator('.storage-hotbar .storage-slot').count(),5);
+    await page.locator('.storage-hotbar .storage-slot').nth(0).click();await page.locator('.storage-bag .storage-slot').nth(0).click();await until(()=>latest.me.bagSlots[0]?.count===9,'hotbar to inventory move failed');
+    await page.locator('.storage-bag .storage-slot').nth(0).click();await page.locator('.storage-bag .storage-slot').nth(19).click();await until(()=>latest.me.bagSlots[19]?.count===9,'expanded inventory move failed');
+    await page.locator('.storage-bag .storage-slot').nth(19).click();await page.locator('.storage-hotbar .storage-slot').nth(2).click();await until(()=>latest.me.hotbar[2]?.count===9,'bag to hotbar move failed');await screenshot('inventory');
     await resume();await page.keyboard.press('3');await until(()=>latest.me.selectedSlot===2,'hotbar key 3 ignored');await page.keyboard.press('q');await until(()=>latest.me.inventory.sugar===8,'hotbar eat failed');
     await page.keyboard.press('c');await page.locator('#modal').waitFor({state:'visible'});assert.equal(await page.locator('.recipe-mystery').count(),8);assert.equal(await page.locator('.recipe-stats').count(),0,'undiscovered effects leaked');assert.doesNotMatch(await page.locator('#modal-content').innerText(),/10 seconds of power|Slow your rivals|Berry cookie|Sugar cookie/i);await screenshot('cookbook');await resume();
     await page.evaluate(()=>document.exitPointerLock());await page.waitForFunction(()=>!document.pointerLockElement);await page.waitForTimeout(200);assert.equal(await page.locator('#play-overlay').isVisible(),false,'unexpected pointer unlock opened Escape menu');assert.equal(await page.locator('#capture-prompt').isVisible(),true,'unexpected unlock needs small capture prompt');await page.locator('#capture-prompt').click();await page.waitForFunction(()=>!!document.pointerLockElement);

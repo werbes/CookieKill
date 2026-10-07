@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"reflect"
 	"sort"
@@ -24,6 +22,25 @@ import (
 type testDeltaReceiver struct {
 	state map[string]json.RawMessage
 	seq   uint64
+}
+
+func TestClubCatalogAndPersonalSpinResultSurviveDeltaReconstruction(t *testing.T) {
+	encoder := &stateEncoder{delta: true}
+	receiver := &testDeltaReceiver{}
+	first := game.Snapshot{ClubDrinks: []game.ClubDrink{{ID: "chocolate_shake", Name: "Chocolate shake", Price: 7}}}
+	first.Me.ClubResult = &game.ClubResult{ID: 1, Stake: 20, Sector: 0, Multiplier: 5, Payout: 100}
+	receiver.apply(t, encodeDeltaTest(t, encoder, first))
+	encoder.commit(first)
+	second := first
+	second.Me.ClubResult = &game.ClubResult{ID: 2, Stake: 30, Sector: 4, Multiplier: .5, Payout: 15}
+	got := receiver.apply(t, encodeDeltaTest(t, encoder, second))
+	assertDeltaSnapshot(t, got, second)
+	encoder.commit(second)
+	third := second
+	third.ClubDrinks = []game.ClubDrink{}
+	third.Me.ClubResult = nil
+	got = receiver.apply(t, encodeDeltaTest(t, encoder, third))
+	assertDeltaSnapshot(t, got, third)
 }
 
 func TestIslandDeltaReplacesPermissionsAndClearsOnMain(t *testing.T) {
@@ -299,24 +316,23 @@ func TestDeltaRecipientsHaveIndependentBaselines(t *testing.T) {
 func TestDeltaQueueDropsKeepLastWrittenBaseline(t *testing.T) {
 	w := game.New(nil)
 	w.Join("alice", "Alice")
-	s := &Server{world: w, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	p := &peer{out: make(chan outbound, 2)}
 	encoder := stateEncoder{delta: true}
 	receiver := testDeltaReceiver{}
-	s.enqueueSnapshot("alice", p)
+	queueSnapshot(p, w.Snapshot("alice"))
 	initial := <-p.out
 	if initial.snapshot == nil {
 		t.Fatal("snapshot was encoded before reaching the writer")
 	}
 	receiver.apply(t, encodeDeltaTest(t, &encoder, *initial.snapshot))
 	encoder.commit(*initial.snapshot)
-	if err := w.Act("alice", game.Action{Action: "move_item", From: "hotbar", FromSlot: 0, To: "safe", ToSlot: 0}); err != nil {
+	if err := w.Act("alice", game.Action{Action: "move_item", From: "hotbar", FromSlot: 0, To: "bag", ToSlot: 0}); err != nil {
 		t.Fatal(err)
 	}
 	w.Input("alice", game.Input{X: 1})
 	for n := 0; n < 5; n++ {
 		w.Tick(.1)
-		s.enqueueSnapshot("alice", p)
+		queueSnapshot(p, w.Snapshot("alice"))
 	}
 	if len(p.out) != cap(p.out) {
 		t.Fatal("queue did not remain bounded")
@@ -325,12 +341,12 @@ func TestDeltaQueueDropsKeepLastWrittenBaseline(t *testing.T) {
 	// backlog. Neither queued nor discarded frames can become delta baselines.
 	<-p.out
 	latest := <-p.out
-	if initial.snapshot.Me.SafeSlots[0].Count != 0 || initial.snapshot.Me.Hotbar[0].Count != 10 {
+	if initial.snapshot.Me.BagSlots[0].Count != 0 || initial.snapshot.Me.Hotbar[0].Count != 10 {
 		t.Fatal("queued snapshot changed when the authoritative world changed")
 	}
 	got := receiver.apply(t, encodeDeltaTest(t, &encoder, *latest.snapshot))
 	assertDeltaSnapshot(t, got, w.Snapshot("alice"))
-	if got.Me.SafeSlots[0].Count != 10 || receiver.seq != 2 {
+	if got.Me.BagSlots[0].Count != 10 || receiver.seq != 2 {
 		t.Fatal("discarded queued state corrupted the delivered update")
 	}
 }
@@ -395,11 +411,11 @@ func TestDeltaWebsocketNegotiationAndReconnect(t *testing.T) {
 			if first.Layout == nil || len(first.Nodes) == 0 || len(first.Animals) == 0 {
 				t.Fatal("opt-in client missing initial world state")
 			}
-			send(t, c, map[string]any{"type": "action", "action": "move_item", "from": "hotbar", "fromSlot": 0, "to": "safe", "toSlot": 0})
+			send(t, c, map[string]any{"type": "action", "action": "move_item", "from": "hotbar", "fromSlot": 0, "to": "bag", "toSlot": 0})
 			deadline := time.Now().Add(3 * time.Second)
 			for {
 				next := receiver.apply(t, readDeltaFrame(t, c))
-				if next.Me.SafeSlots[0].Count == 10 {
+				if next.Me.BagSlots[0].Count == 10 {
 					break
 				}
 				if time.Now().After(deadline) {
@@ -428,7 +444,7 @@ func TestDeltaWebsocketNegotiationAndReconnect(t *testing.T) {
 			reconnected := connect()
 			fresh := testDeltaReceiver{}
 			restored := fresh.apply(t, readDeltaFrame(t, reconnected))
-			if restored.Layout == nil || restored.Me.ID != first.Me.ID || restored.Me.SafeSlots[0].Count != 10 {
+			if restored.Layout == nil || restored.Me.ID != first.Me.ID || restored.Me.BagSlots[0].Count != 10 {
 				t.Fatal("reconnection did not reset the transport baseline and preserve progress")
 			}
 		})

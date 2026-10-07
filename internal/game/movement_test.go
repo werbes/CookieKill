@@ -12,6 +12,50 @@ func movementWorld() (*World, *player) {
 	return w, p
 }
 
+func TestStaminaCapacityAllowsLongerSprintsAndRestoresOnRespawn(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		level       int
+		capacity    float64
+		minDuration float64
+		maxDuration float64
+	}{
+		{"new player", 0, 125, 6.8, 7},
+		{"trained player", 5, 175, 9.6, 9.8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, p := movementWorld()
+			p.profile.Levels["stamina"] = tc.level
+			w.spawn(p)
+			p.x, p.z = 10, -20
+			if me := w.Snapshot("one").Me; me.Stamina != tc.capacity || me.MaxStamina != tc.capacity {
+				t.Fatalf("spawn stamina=%v maximum=%v; want %v", me.Stamina, me.MaxStamina, tc.capacity)
+			}
+			elapsed := 0.0
+			for !p.sprintExhausted && elapsed < 15 {
+				w.Input("one", Input{X: 1, Sprint: true})
+				w.Tick(.05)
+				elapsed += .05
+			}
+			if !p.sprintExhausted || elapsed < tc.minDuration || elapsed > tc.maxDuration {
+				t.Fatalf("sprint duration=%v; want %v to %v seconds", elapsed, tc.minDuration, tc.maxDuration)
+			}
+			w.Input("one", Input{})
+			for i := 0; i < 20; i++ {
+				w.Tick(1)
+			}
+			if p.stamina != tc.capacity || p.sprintExhausted {
+				t.Fatalf("recovery stamina=%v exhausted=%v; want full %v", p.stamina, p.sprintExhausted, tc.capacity)
+			}
+			p.stamina, p.sprintExhausted = 0, true
+			w.spawn(p)
+			if p.stamina != tc.capacity || p.sprintExhausted {
+				t.Fatalf("respawn stamina=%v exhausted=%v; want full %v", p.stamina, p.sprintExhausted, tc.capacity)
+			}
+		})
+	}
+}
+
 func TestExhaustedSprintStaysAtWalkingSpeedUntilReleaseAndRecovery(t *testing.T) {
 	w, p := movementWorld()
 	p.stamina = .1
@@ -52,7 +96,7 @@ func TestExhaustionRequiresMeaningfulStaminaRecovery(t *testing.T) {
 	if p.sprinting || !p.sprintExhausted {
 		t.Fatal("a brief Shift release bypassed exhausted stamina recovery")
 	}
-	p.stamina = 29
+	p.stamina = staminaCapacity(p)*.2 - 1
 	w.Input("one", Input{})
 	w.Tick(.05)
 	if !p.sprintExhausted {
@@ -113,9 +157,10 @@ func TestJumpCannotRestartInMidairOrDuringLandingCooldown(t *testing.T) {
 	}
 }
 
-func TestJumpFollowsWorldHeightOnCaveRampAndLands(t *testing.T) {
+func TestJumpFollowsWorldHeightOnCaveStairsAndLands(t *testing.T) {
 	w, p := movementWorld()
 	p.x, p.z = 120, -105
+	p.inCave = true
 	start := playerY(p)
 	w.Input("one", Input{Z: -1, Jump: true})
 	w.Tick(.3)

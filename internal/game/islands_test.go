@@ -12,6 +12,7 @@ func buyTestIsland(t *testing.T, w *World, p *player) {
 	t.Helper()
 	p.profile.Coins = 1000
 	p.x, p.z = 111, -124
+	p.inCave = true
 	if err := w.Act(p.profile.ID, Action{Action: "eat_lollipop", Item: "pink"}); err != nil {
 		t.Fatal(err)
 	}
@@ -27,6 +28,7 @@ func TestIslandPurchaseSeparateTeleportAndMigration(t *testing.T) {
 		t.Fatal("purchase bypassed lollipop")
 	}
 	p.x, p.z = 111, -124
+	p.inCave = true
 	mustAct(t, w, Action{Action: "eat_lollipop", Item: "pink"})
 	p.profile.Coins = 199
 	if err := w.Act("one", Action{Action: "buy_home"}); err == nil || p.profile.Coins != 199 {
@@ -38,6 +40,7 @@ func TestIslandPurchaseSeparateTeleportAndMigration(t *testing.T) {
 		t.Fatal("purchase should grant island without teleporting")
 	}
 	mustAct(t, w, Action{Action: "teleport_home"})
+	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	mustAct(t, w, Action{Action: "select", Slot: 5})
 	if p.island != "one" || p.profile.Selected != "build_menu" {
 		t.Fatal("home teleport / sixth hotbar slot missing")
@@ -147,7 +150,13 @@ func TestIslandVisitorBuilderChestIsolationAndRevocation(t *testing.T) {
 		t.Fatal("island leaked main entities or private chest")
 	}
 	mustAct(t, w, Action{Action: "island_builder", Target: "two", Enabled: true})
-	if err := w.Act("two", Action{Action: "chest_withdraw", Item: "wood", Amount: 2}); err != nil {
+	if err := w.Act("two", Action{Action: "chest_withdraw", Item: "wood", Amount: 2}); err == nil {
+		t.Fatal("builder withdrew owner materials")
+	}
+	if err := w.Act("two", Action{Action: "chest_deposit", Item: "stone", Amount: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Act("two", Action{Action: "build_mode", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Act("two", Action{Action: "build", Item: "wall", X: 4, Z: 24, Rotation: 45}); err != nil {
@@ -178,6 +187,7 @@ func TestIslandReturnPlatformForOwnersVisitorsAndExistingSaves(t *testing.T) {
 	w, p := testWorld()
 	buyTestIsland(t, w, p)
 	mustAct(t, w, Action{Action: "teleport_home"})
+	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	if err := w.Act("one", Action{Action: "teleport_cave"}); err == nil {
 		t.Fatal("platform can be used remotely")
 	}
@@ -200,7 +210,7 @@ func TestIslandReturnPlatformForOwnersVisitorsAndExistingSaves(t *testing.T) {
 	}
 	p.x, p.z = 0, 28
 	mustAct(t, w, Action{Action: "interact", Target: "island_portal"})
-	if p.island != "" || p.x != 120 || p.z != -117 || groundY(p) != -10 || w.staticBlocked(p.x, p.z, .42) {
+	if p.island != "" || !p.inCave || p.x != 120 || p.z != -117 || groundY(p) != CaveFloorY || w.solidBlockedAt(p.x, playerY(p), p.z, .42) {
 		t.Fatal("platform did not return to an accessible underground cave fork")
 	}
 	if err := w.Act("one", Action{Action: "teleport_cave"}); err == nil {
@@ -279,6 +289,7 @@ func TestConstructionRotationOverlapMoveRefundCollisionAndUse(t *testing.T) {
 	w, p := testWorld()
 	buyTestIsland(t, w, p)
 	mustAct(t, w, Action{Action: "teleport_home"})
+	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	p.x, p.z = 0, 0
 	for _, i := range []string{"wood", "stone", "stick", "berry"} {
 		setItem(p, i, 100)
@@ -298,10 +309,12 @@ func TestConstructionRotationOverlapMoveRefundCollisionAndUse(t *testing.T) {
 	}
 	wood := p.profile.Inventory["wood"]
 	stone := p.profile.Inventory["stone"]
+	mustAct(t, w, Action{Action: "edit_build", Target: oven.ID})
 	mustAct(t, w, Action{Action: "move_build", Target: oven.ID, X: 6, Z: 0, Rotation: 90})
 	if p.profile.Inventory["wood"] != wood {
 		t.Fatal("moving charged materials")
 	}
+	mustAct(t, w, Action{Action: "edit_build", Target: oven.ID})
 	mustAct(t, w, Action{Action: "destroy_build", Target: oven.ID})
 	if p.profile.Inventory["wood"] != wood+2 || p.profile.Inventory["stone"] != stone+6 {
 		t.Fatal("destroy should refund half")
@@ -338,6 +351,7 @@ func TestIslandGardenOvenPondAndPermanentFire(t *testing.T) {
 	w.now = func() time.Time { return now }
 	buyTestIsland(t, w, p)
 	mustAct(t, w, Action{Action: "teleport_home"})
+	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	p.x, p.z = 0, 0
 	for _, i := range []string{"wood", "stone", "stick", "berry", "nut", "dough"} {
 		setItem(p, i, 100)
@@ -426,6 +440,7 @@ func TestIslandStairsAndFloorsAreWalkable(t *testing.T) {
 	w, p := testWorld()
 	buyTestIsland(t, w, p)
 	mustAct(t, w, Action{Action: "teleport_home"})
+	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	p.x, p.y, p.z = 0, 0, -2.2
 	p.profile.HomeIsland.Objects = []BuildObject{{ID: "s", Kind: "stairs"}, {ID: "f", Kind: "floor", X: 0, Y: 3, Z: 4}}
 	for i := 0; i < 32; i++ {
@@ -455,6 +470,7 @@ func TestConstructionRefundIsAtomicWhenBagFull(t *testing.T) {
 	w, p := testWorld()
 	buyTestIsland(t, w, p)
 	mustAct(t, w, Action{Action: "teleport_home"})
+	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	p.x, p.z = 0, 0
 	p.profile.HomeIsland.Objects = []BuildObject{{ID: "oven", Kind: "oven", X: 4}}
 	for i := range p.profile.BagSlots {
@@ -468,6 +484,7 @@ func TestConstructionRefundIsAtomicWhenBagFull(t *testing.T) {
 	}
 	syncInventory(&p.profile)
 	before := p.profile.Inventory["sugar"]
+	mustAct(t, w, Action{Action: "edit_build", Target: "oven"})
 	if err := w.Act("one", Action{Action: "destroy_build", Target: "oven"}); err == nil {
 		t.Fatal("refund overflow silently discarded")
 	}

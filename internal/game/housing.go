@@ -12,23 +12,10 @@ func (w *World) restoreProperties() {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	claimed := map[string]bool{}
 	for _, id := range ids {
 		p := w.profiles[id]
-		if p.Bakery {
-			if !w.isPlot(p.BakeryPlot) || claimed[p.BakeryPlot] {
-				p.BakeryPlot = ""
-				for _, n := range w.nodes {
-					if n.Kind == "bakery_plot" && !claimed[n.ID] {
-						p.BakeryPlot = n.ID
-						break
-					}
-				}
-			}
-			if p.BakeryPlot != "" {
-				claimed[p.BakeryPlot] = true
-			}
-		}
+		// Saved bakery progress survives a restart; city occupancy does not.
+		p.BakeryPlot = ""
 		if p.Home != nil {
 			h := p.Home
 			if !finite(h.X) || !finite(h.Z) || buildZone(h.X, h.Z) == "" || !validChoice(h.Kind, "tent", "cabin") || h.Health <= 0 {
@@ -57,8 +44,8 @@ func (w *World) plotOwner(id string) string {
 	if id == "" {
 		return ""
 	}
-	for owner, p := range w.profileViews() {
-		if p.Bakery && p.BakeryPlot == id {
+	for owner, p := range w.players {
+		if p.profile.Bakery && p.profile.BakeryPlot == id {
 			return owner
 		}
 	}

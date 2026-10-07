@@ -157,10 +157,11 @@ func (w *World) socialAction(p *player, a Action) error {
 }
 
 func (w *World) friendViews(p *player) []FriendView {
-	result := []FriendView{}
-	for id, other := range w.profileViews() {
-		if !p.profile.Friends[id] && !p.profile.FriendRequests[id] {
-			continue
+	result := make([]FriendView, 0, len(p.profile.Friends)+len(p.profile.FriendRequests))
+	appendFriend := func(id string) {
+		other, ok := w.profileByID(id)
+		if !ok {
+			return
 		}
 		f := FriendView{ID: id, CallName: other.CallName, Username: other.Username, Online: w.players[id] != nil, Request: p.profile.FriendRequests[id]}
 		if other.PublicFriendCode {
@@ -172,6 +173,16 @@ func (w *World) friendViews(p *player) []FriendView {
 			f.CanBuild = h.Builders[p.profile.ID]
 		}
 		result = append(result, f)
+	}
+	for id, friend := range p.profile.Friends {
+		if friend {
+			appendFriend(id)
+		}
+	}
+	for id, requested := range p.profile.FriendRequests {
+		if requested && !p.profile.Friends[id] {
+			appendFriend(id)
+		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result

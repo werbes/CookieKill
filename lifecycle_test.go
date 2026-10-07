@@ -78,7 +78,7 @@ func TestRunServerCancellationSavesAndReleasesListener(t *testing.T) {
 		Version  int                        `json:"version"`
 		Profiles map[string]json.RawMessage `json:"profiles"`
 	}
-	if err := json.Unmarshal(contents, &save); err != nil || save.Version != 2 || save.Profiles == nil {
+	if err := json.Unmarshal(contents, &save); err != nil || save.Version != 3 || save.Profiles == nil {
 		t.Fatalf("invalid shutdown save: %s (decode error: %v)", contents, err)
 	}
 	listener, err := net.Listen("tcp", strings.TrimPrefix(url, "http://"))

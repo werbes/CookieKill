@@ -43,7 +43,7 @@ func (s *Store) Load() (map[string]game.Profile, error) {
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return nil, fmt.Errorf("invalid save file %s (preserved): %w", s.path, err)
 	}
-	if doc.Version != 1 && doc.Version != 2 {
+	if doc.Version != 1 && doc.Version != 2 && doc.Version != 3 {
 		return nil, fmt.Errorf("unsupported save version %d", doc.Version)
 	}
 	if doc.Profiles == nil {
@@ -57,9 +57,9 @@ func (s *Store) Load() (map[string]game.Profile, error) {
 func (s *Store) Save(profiles map[string]game.Profile) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Version 2 preserves the separate permanent, bag and hotbar containers.
-	// Older servers must reject these saves rather than flattening the slots.
-	b, err := json.Marshal(document{Version: 2, Profiles: profiles})
+	// Version 3 has twenty protected bag slots and five hotbar slots. Older
+	// servers must reject it rather than truncate the expanded inventory.
+	b, err := json.Marshal(document{Version: 3, Profiles: profiles})
 	if err != nil {
 		return err
 	}

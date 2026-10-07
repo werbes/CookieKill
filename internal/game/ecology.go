@@ -53,7 +53,7 @@ func (w *World) seedAnimals() {
 				offset := float64(j) * 2 * math.Pi / float64(count)
 				x, z := cx+math.Sin(phase)*radius+.4*math.Sin(offset), cz+math.Cos(phase)*radius+.4*math.Cos(offset)
 				hp := math.Round(spec.health * scale * scale)
-				w.animals = append(w.animals, &Animal{ID: id, Species: spec.species, X: x, Z: z, Y: .02, Scale: scale, Health: hp, MaxHealth: hp, Disposition: "calm", Group: groupID, GroupID: groupID, Speed: speed, Heading: phase + math.Pi/2, Yaw: phase + math.Pi/2, groupX: cx, groupZ: cz, orbitRadius: radius, baseSpeed: speed, injuryRate: spec.injury, homeX: x, homeZ: z, phase: phase, wanderPhase: rng.Float64() * math.Pi * 2, jumpPhase: float64(index) * 18 / float64(spec.count), Age: rng.Float64() * 600, lifespan: 1200 + rng.Float64()*1200, needAt: 45 + rng.Float64()*140, rewardAt: map[string]float64{}})
+				w.animals = append(w.animals, &Animal{ID: id, Species: spec.species, X: x, Z: z, Y: .02, Scale: scale, Health: hp, MaxHealth: hp, Disposition: "calm", Group: groupID, GroupID: groupID, Speed: speed, Heading: phase + math.Pi/2, Yaw: phase + math.Pi/2, groupX: cx, groupZ: cz, orbitRadius: radius, baseSpeed: speed, injuryRate: spec.injury, homeX: x, homeZ: z, phase: phase, wanderPhase: rng.Float64() * math.Pi * 2, jumpPhase: float64(index) * 18 / float64(spec.count), Age: rng.Float64() * 600, lifespan: 1200 + rng.Float64()*1200, needAt: 45 + rng.Float64()*140})
 				index++
 			}
 		}
@@ -117,18 +117,7 @@ func (w *World) beginEgg(a *Animal) {
 	a.Egg, a.Health, a.Need, a.Age = true, 1, "", 0
 	a.Speed, a.Y, a.Disposition = 0, .02, "nesting"
 	a.eggSince, a.HatchIn, a.sickUntil = w.time, eggHatchSeconds, 0
-	a.rewardAt = map[string]float64{}
-	// A replacement is a new animal: trust and grudges are not inherited.
-	for _, p := range w.players {
-		delete(p.profile.Reputation, a.ID)
-	}
-	for _, p := range w.offline {
-		delete(p.profile.Reputation, a.ID)
-	}
-	for id, p := range w.profiles {
-		delete(p.Reputation, a.ID)
-		w.profiles[id] = p
-	}
+	// Reputation belongs to the species and survives individual lifecycles.
 }
 
 func (w *World) hatchEgg(a *Animal) {
@@ -201,12 +190,15 @@ func (w *World) moveAnimals(dt float64) {
 					a.Speed = speed * .75
 				}
 			}
-			var threat *player
-			closest := 35.0
+			var threat, friend *player
+			closest, friendDistance := 35.0, 25.0
 			for _, p := range w.players {
 				d := distance(p.x, p.z, a.X, a.Z)
-				if p.island == "" && inWater(p) && p.profile.Reputation[a.ID] < 0 && d < closest {
+				if p.island == "" && !p.inCave && inWater(p) && p.profile.Reputation[a.Species] < 0 && d < closest {
 					threat, closest = p, d
+				}
+				if p.island == "" && !p.inCave && inWater(p) && p.profile.Reputation[a.Species] > 0 && d < friendDistance {
+					friend, friendDistance = p, d
 				}
 			}
 			if a.Need == "trapped" {
@@ -232,6 +224,15 @@ func (w *World) moveAnimals(dt float64) {
 					a.Disposition = "fleeing"
 				}
 				tx, tz = a.X+dx*direction, a.Z+dz*direction
+			} else if friend != nil {
+				a.Disposition = "friendly"
+				tx, tz = friend.x, friend.z
+				if friendDistance < 3.5 {
+					w.greetAnimal(friend, a)
+				}
+				if friendDistance < 2 {
+					tx, tz = a.X, a.Z
+				}
 			}
 			dx, dz := tx-a.X, tz-a.Z
 			length := math.Hypot(dx, dz)
@@ -241,7 +242,11 @@ func (w *World) moveAnimals(dt float64) {
 				a.Z += dz / length * step
 			}
 			a.X = math.Max(MinX+8, math.Min(-9, a.X))
-			a.Z = math.Max(coastZ(a.X)+17, math.Min(MaxZ-7, a.Z))
+			shoreDistance := 17.0
+			if friend != nil && threat == nil {
+				shoreDistance = 3 // Friendly species can greet swimmers in the shallows.
+			}
+			a.Z = math.Max(coastZ(a.X)+shoreDistance, math.Min(MaxZ-7, a.Z))
 		}
 		// A connected chain keeps each member within one metre of a peer without
 		// assigning rigid rows, a common speed, or synchronized headings.

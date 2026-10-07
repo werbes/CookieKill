@@ -48,6 +48,7 @@ func New(saved map[string]Profile) *World {
 		w.profiles[id] = sanitize(profile)
 	}
 	w.seedMap()
+	w.seedBakeryStations()
 	w.seedAnimals()
 	w.restoreProperties()
 	w.restoreSocial()
@@ -68,13 +69,13 @@ func sanitize(p Profile) Profile {
 		p.Inventory = map[string]int{}
 	}
 	for key, count := range p.Inventory {
-		if !itemSet[key] || count < 0 {
+		if !isInventoryItem(key) || count < 0 {
 			delete(p.Inventory, key)
 		} else {
 			p.Inventory[key] = min(count, inventoryLimit)
 		}
 	}
-	p.Coins = max(0, min(p.Coins, inventoryLimit))
+	p.Coins = max(0, min(p.Coins, coinLimit))
 	if p.Levels == nil {
 		p.Levels = map[string]int{}
 	}
@@ -88,19 +89,20 @@ func sanitize(p Profile) Profile {
 	}
 	// Every attainable upgrade is preserved; the wallet cap only bounds corrupt
 	// saves whose next purchase could never have been afforded.
-	p.BakeryLevel = max(0, min((inventoryLimit-50)/25+1, p.BakeryLevel))
+	p.BakeryLevel = max(0, min((coinLimit-50)/25+1, p.BakeryLevel))
 	if !p.Bakery {
 		p.BakeryLevel = 0
 	}
-	if p.Reputation == nil {
-		p.Reputation = map[string]int{}
-	}
-	for key, value := range p.Reputation {
-		p.Reputation[key] = max(-10, min(10, value))
-	}
+	normalizeSpeciesReputation(&p)
 	normalizeInventory(&p)
 	normalizeIdentity(&p)
+	if name, err := objectName(p.BakeryName, 32); err == nil {
+		p.BakeryName = name
+	} else {
+		p.BakeryName = ""
+	}
 	normalizeIslandProfile(&p)
+	normalizeCamels(&p)
 	p.Kills = max(0, p.Kills)
 	p.Deaths = max(0, p.Deaths)
 	return p
@@ -118,11 +120,15 @@ func cloneProfile(p Profile) Profile {
 	p.Levels = cloneMap(p.Levels)
 	p.Reputation = cloneMap(p.Reputation)
 	p.Protected = append([]string{}, p.Protected...)
+	p.SafeSlots = append([]Stack(nil), p.SafeSlots...)
 	p.Recovery = cloneMap(p.Recovery)
 	p.Discovered = cloneMap(p.Discovered)
 	p.Hats = cloneMap(p.Hats)
 	p.Equipment = cloneMap(p.Equipment)
 	p.Paint = cloneMap(p.Paint)
+	if p.Camels != nil {
+		p.Camels = append([]Camel{}, p.Camels...)
+	}
 	if p.Home != nil {
 		h := *p.Home
 		p.Home = &h
@@ -163,14 +169,19 @@ func (w *World) Join(id, name string) {
 	}
 	profile.Name = profile.CallName
 	profile.ID = id
-	p := &player{profile: profile, health: 100, stamina: 100 + float64(profile.Levels["stamina"])*10, buffs: map[string]float64{}, cooldowns: map[string]float64{}}
+	p := &player{profile: profile, health: 100, buffs: map[string]float64{}, cooldowns: map[string]float64{}}
 	w.spawn(p)
 	w.players[id] = p
 	w.event(profile.CallName+" arrived in the forest.", "join", p.x, p.z)
 }
 
 func (w *World) Leave(id string) {
+	w.ReleaseBakeryPlot(id)
 	if p, ok := w.players[id]; ok {
+		p.buildMode, p.editingBuildID = false, ""
+		if p.clubSeatID != "" {
+			p.posture, p.clubSeatID = "", ""
+		}
 		w.profiles[id] = cloneProfile(p.profile)
 		p.input = Input{}
 		p.jumpQueued, p.sprinting = false, false
@@ -187,7 +198,12 @@ func (w *World) Leave(id string) {
 }
 
 func (w *World) spawn(p *player) {
+	p.buildMode, p.editingBuildID = false, ""
+	if p.ridingCamel {
+		w.dismountCamel(p)
+	}
 	p.island, p.posture = "", ""
+	p.inCave = false
 	p.y = 0
 	p.x, p.z = -35, -35
 	for attempt := 0; attempt < 24; attempt++ {
@@ -198,7 +214,7 @@ func (w *World) spawn(p *player) {
 		}
 	}
 	p.health = 100
-	p.stamina = 100 + float64(p.profile.Levels["stamina"])*10
+	p.stamina = staminaCapacity(p)
 	p.sprintExhausted = false
 	resetMovement(p)
 	p.buffs = map[string]float64{"spawn_shield": w.time + 3}
@@ -253,6 +269,9 @@ func (w *World) Profiles() map[string]Profile {
 	for id, p := range w.profiles {
 		out[id] = cloneProfile(p)
 	}
+	for id, p := range w.offline {
+		out[id] = cloneProfile(p.profile)
+	}
 	for id, p := range w.players {
 		out[id] = cloneProfile(p.profile)
 	}
@@ -270,35 +289,86 @@ func (w *World) remainingBuffs(p *player) map[string]float64 {
 }
 
 func (w *World) Snapshot(id string) Snapshot {
-	out := Snapshot{Time: w.time, Players: []PlayerView{}, Projectiles: []Projectile{}, Nodes: []Node{}, Animals: []Animal{}, Events: []Event{}, Recipes: []Recipe{}}
-	layout := w.StaticLayout()
-	out.Layout = &layout
-	out.Homes = w.homes()
-	out.ServerTime = w.now().Unix()
-	profiles := w.profileViews()
+	return w.snapshot(id, true)
+}
+
+// SnapshotUpdate omits the immutable map already sent at connection time.
+// All included fields remain detached from the World and other snapshots.
+func (w *World) SnapshotUpdate(id string) Snapshot {
+	return w.snapshot(id, false)
+}
+
+func (w *World) snapshot(id string, includeLayout bool) Snapshot {
+	viewer := w.players[id]
+	mainland := viewer == nil || viewer.island == ""
+	playerCount, nodeCount := 0, 0
+	owners := make(map[string]*player, len(w.layout.Plots))
 	for pid, p := range w.players {
-		buffs := w.remainingBuffs(p)
-		if pid == id {
-			out.Me = Self{Profile: cloneProfile(p.profile), X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Stamina: p.stamina, MaxStamina: 100 + float64(p.profile.Levels["stamina"])*10, Grounded: grounded(p), Sprinting: p.sprinting, SprintExhausted: p.sprintExhausted, Area: area(p.x, p.z), Buffs: buffs}
-			out.Me.Zone = zoneAt(p.x, p.z)
-			out.Me.CanBuildHome = buildZone(p.x, p.z+3.5) != "" && p.profile.Home == nil
-			out.Me.HomeSafeReason = w.homeSafeReason(p)
+		if p.profile.Bakery && p.profile.BakeryPlot != "" {
+			owners[p.profile.BakeryPlot] = p
+		}
+		if pid != id && (viewer == nil || p.island == viewer.island) {
+			playerCount++
+		}
+	}
+	for _, n := range w.nodes {
+		if viewer == nil || n.Island == viewer.island {
+			nodeCount++
+		}
+	}
+	if !mainland {
+		nodeCount++ // The home island's generated return platform.
+	}
+	animalCount, projectileCount := 0, 0
+	if mainland {
+		animalCount, projectileCount = len(w.animals), len(w.projectiles)
+	}
+	out := Snapshot{Time: w.time, Players: make([]PlayerView, 0, playerCount), Projectiles: make([]Projectile, 0, projectileCount), Nodes: make([]Node, 0, nodeCount), Animals: make([]Animal, 0, animalCount), Events: make([]Event, 0, len(w.events)), Recipes: make([]Recipe, 0, len(recipes)), Homes: []Home{}}
+	if includeLayout {
+		layout := w.StaticLayout()
+		out.Layout = &layout
+	}
+	if viewer == nil {
+		out.Homes = w.homes()
+	}
+	out.ServerTime = w.now().Unix()
+	out.ClubDrinks = append([]ClubDrink{}, clubDrinks...)
+	for pid, p := range w.players {
+		if viewer != nil && p.island != viewer.island {
 			continue
 		}
-		out.Players = append(out.Players, PlayerView{ID: pid, Name: p.profile.Name, X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Area: area(p.x, p.z), Buffs: buffs, Username: p.profile.Username, CallName: p.profile.CallName, Avatar: p.profile.Avatar})
+		buffs := w.remainingBuffs(p)
+		if pid == id {
+			out.Me = Self{Profile: cloneProfile(p.profile), X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Stamina: p.stamina, MaxStamina: staminaCapacity(p), Grounded: grounded(p), Sprinting: p.sprinting, SprintExhausted: p.sprintExhausted, Area: area(p.x, p.z), Buffs: buffs}
+			out.Me.Zone = zoneAt(p.x, p.z)
+			out.Me.InCave = p.inCave
+			if p.inCave {
+				out.Me.Zone = "Sunbaked clay caves"
+				if clubFootprint(p.x, p.z) {
+					out.Me.Zone = "The Root Room club"
+				}
+			}
+			if p.clubResult != nil {
+				result := *p.clubResult
+				out.Me.ClubResult = &result
+			}
+			if p.posture == "sitting" {
+				out.Me.ClubSeatID = p.clubSeatID
+			}
+			continue
+		}
+		out.Players = append(out.Players, PlayerView{ID: pid, Name: p.profile.Name, X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Area: area(p.x, p.z), Buffs: buffs, Username: p.profile.Username, CallName: p.profile.CallName, Avatar: p.profile.Avatar, InCave: p.inCave})
 	}
 	sort.Slice(out.Players, func(i, j int) bool { return out.Players[i].ID < out.Players[j].ID })
 	for _, n := range w.nodes {
-		cp := *n
-		if n.Kind == "bakery_plot" {
-			for owner, p := range profiles {
-				if p.BakeryPlot == n.ID {
-					cp.Owner = owner
-					cp.CallName = p.CallName
-					cp.Username = p.Username
-					cp.Paint = cloneMap(p.Paint)
-					cp.Equipment = cloneMap(p.Equipment)
-					cp.BakeryLevel = p.BakeryLevel
+		if viewer != nil && n.Island != viewer.island {
+			continue
+		}
+		cp := bakeryNodeView(*n, owners)
+		if cp.Kind == "club_seat" {
+			for pid, p := range w.players {
+				if p.clubSeatID == cp.ID && p.posture == "sitting" {
+					cp.Owner = pid
 					break
 				}
 			}
@@ -306,17 +376,25 @@ func (w *World) Snapshot(id string) Snapshot {
 		out.Nodes = append(out.Nodes, cp)
 	}
 	for _, shot := range w.projectiles {
+		if !mainland {
+			break
+		}
 		out.Projectiles = append(out.Projectiles, *shot)
 	}
 	for _, a := range w.animals {
+		if !mainland {
+			break
+		}
 		if a.Health <= 0 {
 			continue
 		}
 		cp := *a
-		cp.rewardAt = nil
 		if p, ok := w.players[id]; ok {
-			rep := p.profile.Reputation[a.ID]
-			if rep >= 2 {
+			rep := p.profile.Reputation[a.Species]
+			cp.Disposition = "calm"
+			if a.Egg {
+				cp.Disposition = "nesting"
+			} else if rep > 0 {
 				cp.Disposition = "friendly"
 			} else if rep < 0 {
 				if a.Species == "shark" || a.Species == "sea_lion" {
@@ -329,7 +407,7 @@ func (w *World) Snapshot(id string) Snapshot {
 		out.Animals = append(out.Animals, cp)
 	}
 	for _, e := range w.events {
-		if e.Kind == "craft" && e.Actor != "" && e.Actor != id {
+		if (e.Kind == "craft" || e.Kind == "animal") && e.Actor != "" && e.Actor != id {
 			continue
 		}
 		if w.time-e.Time < 12 {

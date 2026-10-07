@@ -1,6 +1,7 @@
 // Package game contains the authoritative, in-memory CookieKill simulation.
-// A World must be protected by its caller's mutex. Snapshot and Profiles return
-// independent values so callers may encode them after releasing that mutex.
+// A World belongs to one goroutine (or must otherwise be externally serialized).
+// Snapshot and Profiles return independent values for encoding and persistence
+// outside that owner while simulation continues.
 package game
 
 import "time"
@@ -16,6 +17,7 @@ type Input struct {
 
 type Action struct {
 	Action   string  `json:"action"`
+	Name     string  `json:"name"`
 	Item     string  `json:"item"`
 	Target   string  `json:"target"`
 	Amount   int     `json:"amount"`
@@ -57,23 +59,24 @@ type Home struct {
 	MaxHealth float64 `json:"maxHealth"`
 }
 
-// Inventory is a derived compatibility view; the three slot arrays own items.
+// Inventory is a derived compatibility view; bag and hotbar slots own items.
 type Profile struct {
 	ID                string            `json:"id"`
 	Name              string            `json:"name"`
 	Coins             int               `json:"coins"`
 	Inventory         map[string]int    `json:"inventory"`
-	Protected         []string          `json:"protected"`
+	Protected         []string          `json:"protected,omitempty"` // Legacy migration input.
 	Levels            map[string]int    `json:"levels"`
 	Bakery            bool              `json:"bakery"`
+	BakeryName        string            `json:"bakeryName,omitempty"`
 	BakeryLevel       int               `json:"bakeryLevel"`
 	Reputation        map[string]int    `json:"reputation"`
 	Kills             int               `json:"kills"`
 	Deaths            int               `json:"deaths"`
 	Selected          string            `json:"selected"`
 	InventoryVersion  int               `json:"inventoryVersion"`
-	SafeSlots         [3]Stack          `json:"safeSlots"`
-	BagSlots          [15]Stack         `json:"bagSlots"`
+	SafeSlots         []Stack           `json:"safeSlots,omitempty"` // Legacy migration input; cleared on load.
+	BagSlots          [20]Stack         `json:"bagSlots"`
 	Hotbar            [5]Stack          `json:"hotbar"`
 	SelectedSlot      int               `json:"selectedSlot"`
 	Recovery          map[string]int    `json:"recovery"`
@@ -95,6 +98,7 @@ type Profile struct {
 	Friends           map[string]bool   `json:"friends"`
 	FriendRequests    map[string]bool   `json:"friendRequests"`
 	CamelOwned        bool              `json:"camelOwned"`
+	Camels            []Camel           `json:"camels"`
 	CamelRentalUntil  int64             `json:"camelRentalUntil"`
 	CamelDiscount     bool              `json:"camelDiscount"`
 }
@@ -115,6 +119,7 @@ type PlayerView struct {
 	CallName    string             `json:"callName"`
 	Avatar      Avatar             `json:"avatar"`
 	Island      string             `json:"island"`
+	InCave      bool               `json:"inCave"`
 	FriendCode  string             `json:"friendCode,omitempty"`
 	Posture     string             `json:"posture"`
 	RidingCamel bool               `json:"ridingCamel"`
@@ -140,21 +145,32 @@ type Self struct {
 	CanBuildHome    bool               `json:"canBuildHome"`
 	HomeSafeReason  string             `json:"homeSafeReason"`
 	Island          string             `json:"island"`
+	InCave          bool               `json:"inCave"`
 	HomeOffer       bool               `json:"homeOffer"`
 	FriendsTeleport bool               `json:"friendsTeleport"`
 	Posture         string             `json:"posture"`
 	RidingCamel     bool               `json:"ridingCamel"`
+	MountedCamelID  string             `json:"mountedCamelId,omitempty"`
+	BuildMode       bool               `json:"buildMode"`
+	EditingBuildID  string             `json:"editingBuildId,omitempty"`
+	ClubResult      *ClubResult        `json:"clubResult,omitempty"`
+	ClubSeatID      string             `json:"clubSeatId,omitempty"`
 }
 
 type Node struct {
 	ID            string            `json:"id"`
 	Kind          string            `json:"kind"`
+	Item          string            `json:"item,omitempty"`
 	Label         string            `json:"label"`
 	X             float64           `json:"x"`
+	Y             float64           `json:"y,omitempty"`
 	Z             float64           `json:"z"`
+	Yaw           float64           `json:"yaw,omitempty"`
+	InCave        bool              `json:"inCave,omitempty"`
 	Available     bool              `json:"available"`
 	Amount        int               `json:"amount"`
 	Owner         string            `json:"owner,omitempty"`
+	PlotID        string            `json:"plotId,omitempty"`
 	CallName      string            `json:"callName,omitempty"`
 	Username      string            `json:"username,omitempty"`
 	Paint         map[string]string `json:"paint,omitempty"`
@@ -198,7 +214,6 @@ type Animal struct {
 	attackAt                                              float64
 	respawnAt                                             float64
 	needAt                                                float64
-	rewardAt                                              map[string]float64
 }
 
 type Projectile struct {
@@ -253,6 +268,7 @@ type Snapshot struct {
 	Island       *Island       `json:"island,omitempty"`
 	BuildCatalog []BuildRecipe `json:"buildCatalog"`
 	Friends      []FriendView  `json:"friends"`
+	ClubDrinks   []ClubDrink   `json:"clubDrinks"`
 }
 
 type player struct {
@@ -262,7 +278,13 @@ type player struct {
 	jumpOffset, jumpVelocity                float64
 	jumpQueued, sprinting, sprintExhausted  bool
 	jumpHeld, sprintHeld                    bool
+	inCave                                  bool
 	homeOffer, friendsTeleport, ridingCamel bool
+	mountedCamelID                          string
+	buildMode                               bool
+	editingBuildID                          string
+	clubResult                              *ClubResult
+	clubSeatID                              string
 	x, z, yaw, pitch                        float64
 	health, stamina                         float64
 	input                                   Input
@@ -277,6 +299,8 @@ type World struct {
 	offline           map[string]*player
 	profiles          map[string]Profile
 	nodes             []*Node
+	drops             map[string]groundDrop
+	dropSequence      uint64
 	animals           []*Animal
 	projectiles       []*Projectile
 	events            []Event
@@ -284,4 +308,5 @@ type World struct {
 	colliders         []Collider
 	propertyColliders []Collider
 	now               func() time.Time
+	clubRandom        func() (int, error)
 }

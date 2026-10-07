@@ -3,20 +3,24 @@ package game
 import (
 	"fmt"
 	"math"
-	"math/rand/v2"
 )
 
 const (
 	jumpSpeed   = 6.6
 	jumpGravity = 18.0
+	baseStamina = 125.0
 )
 
 func grounded(p *player) bool   { return p.jumpOffset == 0 && p.jumpVelocity == 0 }
 func playerY(p *player) float64 { return groundY(p) + p.jumpOffset }
+func staminaCapacity(p *player) float64 {
+	return baseStamina + float64(p.profile.Levels["stamina"])*10
+}
 
 // Teleports, respawns and sitting discard pending movement from the old position.
 func resetMovement(p *player) {
 	p.input = Input{}
+	p.clubSeatID = ""
 	p.jumpOffset, p.jumpVelocity = 0, 0
 	p.jumpQueued, p.sprinting = false, false
 	// Preserve physical key holds: arriving at a destination is not a new Space
@@ -30,6 +34,7 @@ func (w *World) Tick(dt float64) {
 	if !finite(dt) || dt <= 0 {
 		return
 	}
+	w.pruneDrops()
 	dt = min(dt, 1)
 	for dt > 0 {
 		step := min(dt, .05)
@@ -59,9 +64,10 @@ func (w *World) step(dt float64) {
 		if moving {
 			p.posture = ""
 		}
-		if p.ridingCamel && (!p.profile.CamelOwned && p.profile.CamelRentalUntil <= w.now().Unix() || inWater(p)) {
-			p.ridingCamel = false
+		if p.posture != "sitting" {
+			p.clubSeatID = ""
 		}
+		w.updateMountedCamel(p)
 		speed := 6 * (1 + float64(p.profile.Levels["legs"])*.04)
 		if p.ridingCamel {
 			speed *= 1.8
@@ -72,7 +78,7 @@ func (w *World) step(dt float64) {
 				speed *= 1.6
 			}
 		}
-		maxStamina := 100 + float64(p.profile.Levels["stamina"])*10
+		maxStamina := staminaCapacity(p)
 		if p.stamina <= 0 {
 			p.sprintExhausted = true
 		}
@@ -102,10 +108,10 @@ func (w *World) step(dt float64) {
 		steps := max(1, int(math.Ceil(math.Max(math.Abs(nx-p.x), math.Abs(nz-p.z))/.25)))
 		dx, dz := (nx-p.x)/float64(steps), (nz-p.z)/float64(steps)
 		for i := 0; i < steps; i++ {
-			if p.island != "" && !w.islandBlocked(p, p.x+dx, p.z) || p.island == "" && !w.solidBlocked(p.x+dx, p.z, .42) && !w.homeBlocked(p, p.x+dx, p.z) {
+			if p.island != "" && !w.islandBlocked(p, p.x+dx, p.z) || p.island == "" && w.moveMainland(p, p.x+dx, p.z, previousY) {
 				p.x += dx
 			}
-			if p.island != "" && !w.islandBlocked(p, p.x, p.z+dz) || p.island == "" && !w.solidBlocked(p.x, p.z+dz, .42) && !w.homeBlocked(p, p.x, p.z+dz) {
+			if p.island != "" && !w.islandBlocked(p, p.x, p.z+dz) || p.island == "" && w.moveMainland(p, p.x, p.z+dz, previousY) {
 				p.z += dz
 			}
 		}
@@ -113,6 +119,7 @@ func (w *World) step(dt float64) {
 			p.y = w.islandGround(p)
 		}
 		w.moveJump(p, dt, previousGround, previousY)
+		w.updateMountedCamel(p)
 		for key, until := range p.buffs {
 			if until <= w.time {
 				delete(p.buffs, key)
@@ -126,12 +133,12 @@ func (w *World) step(dt float64) {
 		}
 		nodes = append(nodes, n)
 		if !n.Available && n.readyAt <= w.time {
-			if n.Kind == "wood" && w.treeRegrowthBlocked(n) {
+			if (n.Kind == "wood" || n.Kind == "cactus") && w.treeRegrowthBlocked(n) {
 				n.readyAt = w.time + 1
 				continue
 			}
 			n.Available = true
-			if n.Kind == "wood" {
+			if n.Kind == "wood" || n.Kind == "cactus" {
 				n.ChopRemaining = n.ChopTotal
 			}
 		}
@@ -139,6 +146,42 @@ func (w *World) step(dt float64) {
 	w.nodes = nodes
 	w.moveAnimals(dt)
 	w.moveProjectiles(dt)
+}
+
+// Change cave layers only through the open stair mouth. A surface player above
+// the covered tunnel stays on sand, while an underground player stays inside
+// the cave until climbing back out of the same entrance.
+func (w *World) moveMainland(p *player, x, z, airborneY float64) bool {
+	candidate := *p
+	candidate.x, candidate.z = x, z
+	if p.inCave && !grounded(p) && airborneY >= 0 && !caveMouth(x, z) {
+		// A jump out of the exposed opening can land on the desert roof instead
+		// of falling through that roof into the covered tunnel.
+		candidate.inCave = false
+	} else if p.inCave {
+		if !caveFootprint(x, z) {
+			atTop := caveExitAtTop(p, x, z)
+			jumpedOut := caveMouth(p.x, p.z) && airborneY >= 0
+			if !atTop && !jumpedOut {
+				return false
+			}
+			candidate.inCave = false
+		}
+	} else if caveMouth(x, z) {
+		candidate.inCave = true
+	}
+	feet := groundY(&candidate)
+	if !grounded(p) {
+		feet = airborneY
+		if groundY(&candidate) > feet+.4 {
+			return false
+		}
+	}
+	if w.solidBlockedAt(x, feet, z, .42) || w.homeBlocked(p, x, z) {
+		return false
+	}
+	p.inCave = candidate.inCave
+	return true
 }
 
 func (w *World) moveJump(p *player, dt, previousGround, previousY float64) {
@@ -204,8 +247,11 @@ func (w *World) jumpCeiling(p *player, fromY, toY float64) (float64, bool) {
 
 func (w *World) treeRegrowthBlocked(n *Node) bool {
 	radius := .45 * max(.65, n.Scale)
+	if n.Kind == "cactus" {
+		radius = .85 * n.Scale
+	}
 	for _, p := range w.players {
-		if p.island == "" && distance(p.x, p.z, n.X, n.Z) < radius+.5 {
+		if p.island == "" && !p.inCave && playerY(p) > -1.7 && distance(p.x, p.z, n.X, n.Z) < radius+.5 {
 			return true
 		}
 	}
@@ -413,25 +459,9 @@ func (w *World) damagePlayer(killer, victim *player, damage float64, cause strin
 		}
 		victim.profile.Coins -= coins
 		addCoins(killer, coins)
-		occupied := []int{}
-		for i, s := range victim.profile.BagSlots {
-			if s.Count > 0 {
-				occupied = append(occupied, i)
-			}
-		}
-		rand.Shuffle(len(occupied), func(i, j int) { occupied[i], occupied[j] = occupied[j], occupied[i] })
-		stacks := 0
-		for _, slot := range occupied[:min(5, len(occupied))] {
-			s := victim.profile.BagSlots[slot]
-			if gain(killer, s.Item, s.Count) {
-				victim.profile.BagSlots[slot] = Stack{}
-				stacks++
-			}
-		}
-		syncInventory(&victim.profile)
 		killer.profile.Kills++
 		awardHats(&killer.profile)
-		w.eventActor(fmt.Sprintf("%s defeated %s and gained %d coins and %d inventory stacks. Safe slots and hotbar stayed safe.", killer.profile.Name, victim.profile.Name, coins, stacks), "defeat", victim.x, victim.z, killer.profile.ID)
+		w.eventActor(fmt.Sprintf("%s defeated %s and gained %d coins. All inventory items stayed safe.", killer.profile.Name, victim.profile.Name, coins), "defeat", victim.x, victim.z, killer.profile.ID)
 	} else {
 		w.event(victim.profile.Name+" was defeated by "+cause+" and returned to the forest.", "defeat", victim.x, victim.z)
 	}
@@ -452,21 +482,17 @@ func (w *World) damageAnimal(attacker *player, a *Animal, damage float64) {
 	}
 	a.Health -= damage
 	if attacker != nil {
-		attacker.profile.Reputation[a.ID] = max(-10, attacker.profile.Reputation[a.ID]-2)
+		changeSpeciesReputation(attacker, a.Species, -2)
 	}
 	if a.Health > 0 {
-		w.eventActor("The "+a.Species+" remembers being hurt.", "hit", a.X, a.Z, actor)
+		w.eventActor("Your reputation with "+a.Species+"s fell after hurting one.", "hit", a.X, a.Z, actor)
 		return
 	}
 	a.Health = 0
 	a.respawnAt = w.time + 60
 	if attacker != nil {
-		for _, witness := range w.animals {
-			if witness.Health > 0 && distance(a.X, a.Z, witness.X, witness.Z) <= 35 {
-				attacker.profile.Reputation[witness.ID] = max(-10, attacker.profile.Reputation[witness.ID]-3)
-			}
-		}
+		changeSpeciesReputation(attacker, a.Species, -3)
 		gain(attacker, "sea_salt", 2)
 	}
-	w.eventActor("A "+a.Species+" was killed. Witnesses will remember; predators may take revenge.", "defeat", a.X, a.Z, actor)
+	w.eventActor("A "+a.Species+" was killed. Its species now trusts you less.", "defeat", a.X, a.Z, actor)
 }

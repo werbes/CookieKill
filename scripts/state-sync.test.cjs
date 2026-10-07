@@ -18,6 +18,17 @@ const {test} = require('node:test');
   });
   const delta = (extra = {}) => ({type:'delta', seq:2, base:1, time:2, serverTime:2000, ...extra});
 
+  test('club catalog stays available during spins and personal results replace atomically', () => {
+    const decoder=createSnapshotDecoder(),catalog=[{id:'chocolate_shake',name:'Chocolate shake',price:7}];
+    decoder.apply(snapshot({clubDrinks:catalog}));
+    const result={id:5,stake:25,sector:6,multiplier:10,payout:250};
+    const next=decoder.apply(delta({me:{clubResult:result}}));
+    assert.deepEqual(next.clubDrinks,catalog);assert.deepEqual(next.me.clubResult,result);
+    assert.throws(()=>decoder.apply({type:'delta',seq:3,base:2,clubDrinks:{}}),/array/);
+    const cleared=decoder.apply({type:'delta',seq:3,base:2,clubDrinks:[],me:{clubResult:null}});
+    assert.deepEqual(cleared.clubDrinks,[]);assert.equal(cleared.me.clubResult,null);
+  });
+
   test('unchanged data survives deltas and the previous player remains available for damage/death comparisons', () => {
     const decoder = createSnapshotDecoder(), before = decoder.apply(snapshot());
     const after = decoder.apply(delta({me:{health:70, deaths:1}}));

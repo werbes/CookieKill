@@ -68,7 +68,7 @@ func TestLoginSessionReplayAndLogout(t *testing.T) {
 		t.Fatalf("verify returned %d: %s", w.Code, w.Body.String())
 	}
 	cookies := w.Result().Cookies()
-	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Path != "/" || cookies[0].MaxAge != 3600 {
+	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Path != "/" || cookies[0].MaxAge != 0 || !cookies[0].Expires.IsZero() {
 		t.Fatalf("incorrect session cookie: %+v", cookies)
 	}
 	cookie := cookies[0]

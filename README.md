@@ -31,30 +31,33 @@ On Windows, if Go is installed but absent from PATH:
 | Shift | Sprint on land using stamina |
 | Space | Jump while on foot on dry land |
 | Left click | Throw the selected cookie |
-| Q / right click | Eat the selected cookie |
-| E | Chop a tree, gather, dig, open a chest, or interact with a nearby character or furnishing |
-| I | Inventory: 3 permanent slots, 15 inventory slots, and 5 protected hotbar slots |
+| Q | Dismount your camel; eat the selected cookie when on foot |
+| Right click | Eat the selected cookie |
+| E | Mount a nearby camel you own, chop a tree, gather, dig, open a chest, or interact |
+| I | Inventory: 20 protected inventory slots and 5 protected hotbar slots |
 | C | Cookbook and campfire crafting |
 | M | World map |
 | 1 through 5 | Select one of the five hotbar slots |
 | 6 | Open the build menu after buying a home island |
 | R, while placing | Rotate the selected build by 45 degrees |
+| E, in build mode | Take control of the furnishing you are looking at |
+| T / F, while editing | Destroy for materials / pack into inventory (owner only) |
+| Left click, while placing | Place the selected furnishing |
 | Page Up / Page Down, while placing | Raise / lower the selected build |
-| V | Mount or dismount your rented or owned camel |
 | Escape | Open or close the game menu |
 
 Click an occupied inventory slot, then another slot to move its stack. Different items swap; matching items merge. Put cookies in the hotbar to throw or eat them. Homeowners receive a sixth hotbar button for the **Build** menu; the original five item slots remain protected storage. The Escape menu includes **Friends** for friend requests, island visits, and permissions, and **Customize** for avatar and call name settings. Closing a crafting, shopping, or inventory panel returns to play without opening the Escape menu.
 
-Running out of stamina returns you to walking speed while stamina recovers. Release **Shift** and recover at least **20%** stamina before sprinting again. Press **Space** for each jump; holding it does not repeat jumps. You can jump on the mainland, in the cave, and on home islands, but not while swimming or riding a camel.
+Players start with **125 stamina**, enough for roughly **seven seconds of continuous sprinting**; stamina training adds ten per level. Running out of stamina returns you to walking speed while stamina recovers. Release **Shift** and recover at least **20%** stamina before sprinting again. Press **Space** for each jump; holding it does not repeat jumps. You can jump on the mainland, in the cave, and on home islands, but not while swimming or riding a camel.
 
 ## The world
 
 The shared map spans **480 by 460 game units**, with a forest and desert, winding beaches, shallow water that transitions into the deep ocean, and planted city streets. North is negative Z; east is positive X. Small location notices identify the current region. Trees, cacti, rocks, walls, and buildings block movement; doors provide entrances to village buildings and city businesses. Home islands are separate multiplayer spaces reached by teleportation.
 
-* **Wildwood - northwest.** Random forest spawn, berries, nuts, trees, sticks, stones, chests, and pale dig spots containing dough. Trees vary in color, size, and shape. Chop repeatedly to fell a tree: small trees take three chops and yield three wood; the largest take six chops and yield six wood. Felled trees regrow after three minutes. Build a campfire to bake.
-* **Sunbaked Sands - northeast.** Clay villages, varied cacti, desert ingredients, and a rock-covered cave near the middle of the desert. NPC bakers inside three village buildings barter for berries, nuts, shells, or ocean treasures; village ovens provide baking heat. Abu Fanous sells and rents camels on the far eastern edge.
+* **Wildwood - northwest.** Random forest spawn, berries, nuts, trees, sticks, stones, chests, and pale dig spots containing dough. Trees vary in color, size, and shape, with several kinds of wildflowers growing among them. Chop repeatedly to fell a tree: small trees take three chops and yield three wood; the largest take six chops and yield six wood. Felled trees regrow after three minutes. Build a campfire to bake.
+* **Sunbaked Sands - northeast.** Clay villages, flowering cacti, desert ingredients, and a sunken cave entrance near the middle of the desert. Every cactus can be chopped down in two to four hits for two to four cactus ingredients, with safe regrowth after three minutes. NPC bakers inside three village houses sell dough, berries, nuts, cactus, salt, protein, and basic materials, and barter for forest finds and ocean treasures; village ovens provide baking heat. Abu Fanous sells and rents camels on the far eastern edge.
 * **The Blue - southwest.** Collect shells, small warm-colored stones, salt, and washed-up trash along the curved shore. Peace pays **3 coins per kilogram of trash**, and buys other ocean finds. Sea lions, dolphins, sharks, turtles, fish, and whales swim in deeper water.
-* **Crumb City - southeast.** Planted courtyards and palms surround streets connecting twelve individually claimable bakery businesses, a gym, kitchen equipment, provisions, paint, and outfit shops. Shops, bakeries, and the gym have distinct exteriors.
+* **Crumb City - southeast.** Colorful flower beds, planted courtyards, and palms surround streets connecting twelve individually claimable bakery businesses, a gym, kitchen equipment, paint, and outfit shops. Ingredient purchases are available only inside desert village houses; the city provisions shop and protein vending machine have been removed. Shops, bakeries, and the gym have distinct exteriors.
 
 Mainland housing plots have been removed. Construction belongs on home islands; temporary cooking campfires and existing city bakery businesses remain available on the main island.
 
@@ -64,23 +67,28 @@ All recipes begin in the cookbook with visible ingredients and hidden names and 
 
 A new account receives ten basic sugar cookies in its hotbar. They damage opponents when thrown and restore health when eaten. Ingredient recipes can add damage, slow opponents, weaken their throws, or briefly improve movement and throwing range. Discovering the protein recipe reveals cookies that grant **ten seconds of superstrength**: a hit defeats another player while the effect lasts. The brief shield after spawning still protects new arrivals. Respawning does not grant another starting batch.
 
-Each player has **3 permanent slots**, **15 inventory slots**, and **5 hotbar slots**. Every slot holds one item stack. The permanent slots and hotbar survive death unchanged. When another player defeats you, **five random occupied inventory stacks** are chosen for transfer to the killer, or all occupied stacks if there are fewer than five. Other inventory stacks stay with you. A stack that will not fit in the killer's inventory remains with the defeated player.
+Each player has **20 inventory slots** and **5 hotbar slots**. Every slot holds one item stack, and **all items survive death**. Only coins can be lost when another player defeats you.
+
+Click a stack to reveal **Drop 1, Drop 5, Drop 10, and Drop all**. Dropped items form bundles of ten, then a bundle of five when possible, with any remainder lying separately. Press **E** near a bundle or single item to pick it up. Ground items disappear after **30 minutes**; picking them up and dropping them again starts a fresh timer.
 
 The coin reward compares the two players' balances immediately before the defeat, before adding the killing hit reward. A killer with fewer coins receives **10% of the victim's coins, rounded up**. A killer with equal or more coins receives **5%, rounded down**. Valid hits also award **5 coins for a headshot**, **3 for a hand or foot**, and **1 for another body hit**. Practice targets and protected players do not provide player-hit rewards.
 
 ### The cave and your home island
 
-Look for a pile of rocks and small plants near the middle of Sunbaked Sands, around **(120, -98)**. The entrance slopes down from sand onto clay, reaching a fork **ten metres underground**, beneath a vaulted ceiling. Lanterns and crystals decorate the two chambers, with grasses and flowers around the entrance. The **pink lollipop in the left branch** offers your first home island for **200 coins**. Confirm the purchase, then choose whether to teleport home. The **blue lollipop in the other branch** opens friend-island travel.
+Look for a layered sandstone outcrop and a shaded cave mouth near **(120, -75)** in Sunbaked Sands. **Ninety-six steps** descend **24 metres underground** to a rough vaulted cavern with stalactites, rocky columns, and warm amber lighting. Rocks cover the outcrop above ground and the chamber walls below. The **pink lollipop in the left branch** offers your first home island for **200 coins**. Confirm the purchase, then choose whether to teleport home. The **blue lollipop in the other branch** opens friend-island travel.
 
-Your home island starts with a shared materials chest and a permanent **return platform at (0, 28)**. Step onto the platform and interact to teleport directly back to the cave fork. Visitors can use it too. Existing islands also receive the platform; nearby saved furnishings move to clear space without losing their materials. Keep the platform's three-metre landing area free when building. Hotbar slot **6** opens three building categories:
+Your home island starts with a shared materials chest and a permanent **return platform at (0, 28)**. Step onto the platform and interact to teleport directly back to the cave fork. Visitors can use it too. Existing islands also receive the platform; nearby saved furnishings move to clear space without losing their materials. Keep the platform's three-metre landing area free when building. Hotbar slot **6** opens four building categories:
 
 * **Building:** walls, floors, roofs, stairs, window walls, and doors.
-* **Decor:** tables, chairs, beds, potted plants, lanterns, and materials chests.
+* **Decor:** tables, chairs, beds, potted plants, lanterns, shared materials chests, and personal storage chests.
+* **Garden:** trees and colorful flower beds.
 * **Appliances:** mixers, ovens, nut and berry garden beds, adoption ponds, and campfires.
 
 Position pieces and rotate them in **45-degree steps**. Decor and furniture can overlap or stack; appliances cannot share a footprint, even at different heights. Built objects are solid. Floors and stairs provide walkable surfaces, doors can open, chairs can be sat in, and beds can be lain on. Use mixers to make dough and ovens to bake. Plant one nut or berry in a garden bed and harvest four after two minutes. Build a pond, then adopt a wounded fish or turtle from the ocean to give it a safe home.
 
-Permitted builders can move pieces at any time. Destroying a piece returns **half of each material cost, rounded down**. Island construction and permissions are saved. Use the home controls to return to the main island or teleport home again.
+Enter **build mode** from the home menu before placing or editing anything. Look at a furnishing and press **E** to take control of it, then **R** to rotate, **T** to destroy, **F** to pack it into inventory, or **left click** to place it again. Packing is reserved for the owner and keeps the furnishing's colors. Destroying a piece returns **half of each material cost, rounded down**, to your inventory, or to the shared chest when a guest destroys it. Occupied storage and growing or inhabited garden pieces must be emptied first. Leaving build mode cancels an unfinished move. The island map shows furnishing shapes without name labels, and the home menu does not list every placed object.
+
+Personal storage chests hold item stacks for the island owner. Shared materials chests hold construction supplies. Chest colors can be changed in their interaction panels. Plant trees and flowers from the home building catalog to decorate your garden. Island construction, stored contents, and permissions are saved.
 
 ### Friends and shared building
 
@@ -90,15 +98,17 @@ Friend codes are private by default. Enable public sharing to show yours under y
 
 Taste the blue cave lollipop to unlock friend-island travel. A friend must own an island and enable **visitors** before you can teleport there. Visiting does not grant building rights: the owner must grant **you specifically** building permission. Owners can close visits or revoke an individual builder's permission.
 
-Owners and permitted builders can withdraw building materials from the island's chest. Visitors may donate materials by depositing them in that chest. Builders can withdraw those contributions and spend them on the owner's house, decor, or appliances.
+Everyone with access to an island may deposit building materials in its shared chest. **Only the owner may withdraw them.** Guests with building permission spend supplies directly from that chest when placing structures; they do not need to withdraw the supplies first.
 
 ### Bakeries and camels
 
-A city bakery plot costs **250 coins** and can belong to only one player. Twelve plots are available in the shared world. The first upgrade costs **50 coins**, followed by **75, 100, 125, 150**, and so on, adding 25 per level. The first upgrade raises dough production from two to three per batch and reduces production cooldowns by 10%. Later upgrades gradually improve dough yield, cookie batches, and sale prices, with diminishing gains at higher levels. Sale bonuses are calculated over the whole transaction before rounding down: at level one, five basic cookies sell for 11 coins, compared with 10 at level zero. The bakery panel shows exact totals for selling one or five.
+Your first city bakery costs **250 coins**. Its plot becomes available immediately when you disconnect, while your bakery purchase, upgrades, equipment, and colors remain saved. When you return, claim any available plot **for free** to restore your bakery there. Twelve plots are available, each occupied by one connected baker at a time. Oven interactions bake cookies and cakes, mixers prepare dough, and displays only sell baked goods. The plot sign manages upgrades, paint, and your bakery name in the same panel. The name stays with your bakery when you claim a different plot. The first upgrade costs **50 coins**, followed by **75, 100, 125, 150**, and so on, adding 25 per level. The first upgrade raises dough production from two to three per batch and reduces production cooldowns by 10%. Later upgrades gradually improve dough yield, cookie batches, and sale prices, with diminishing gains at higher levels. Sale bonuses are calculated over the whole transaction before rounding down: at level one, five basic cookies sell for 11 coins, compared with 10 at level zero. The display panel shows exact totals for selling one or five.
 
-Buy a **mixer for 40 coins** to make dough 15% sooner, an **oven for 60** to bake 20% sooner, and a **display for 35** to earn one extra coin per cookie or cake sold. Owning all three unlocks paint purchases at the kitchen and paint shops. A paint tin costs **12 coins** and recolors the bakery walls or a purchased piece of equipment from the bakery panel. Seven colors are available.
+Every claimed bakery includes a basic oven, mixer, and display. Buy a **mixer upgrade for 40 coins** to make dough 15% sooner, an **oven for 60** to bake 20% sooner, and a **display for 35** to earn one extra coin per cookie or cake sold. Owning all three unlocks paint purchases at the kitchen and paint shops. A paint tin costs **12 coins** and recolors the bakery walls or a purchased piece of equipment from the bakery panel. Seven colors are available.
 
-Visit **Abu Fanous**, near **(226, -126)** on the far eastern side of Sunbaked Sands, to rent a camel for **20 minutes for 50 coins** or buy one permanently for **350 coins**. Give him one of every cookie and cake recipe to unlock a permanent purchase discount to **175 coins**. Camels speed up land travel; rentals use real elapsed time and expire even while you are away.
+Visit **Abu Fanous**, near **(226, -126)** on the far eastern side of Sunbaked Sands, to rent a camel for **20 minutes for 50 coins** or buy one permanently for **350 coins**. There is no limit on how many camels you can own. Give him one of every cookie and cake recipe to unlock a permanent purchase discount to **175 coins**. Press **Q** to dismount and park a camel, then **E** near it to get back on. Each camel's location is saved individually. The camel you are riding comes with you when teleporting between your home island and the mainland or cave; your other camels stay parked. Camels speed up land travel; rentals use real elapsed time and expire even while you are away.
+
+Name each camel at the **bottom of the Friends panel**. Its name follows it when riding, parking, traveling, and reconnecting. An existing single-camel save migrates to the new herd automatically; that camel initially waits beside Abu Fanous.
 
 ### Ocean life and identity
 
@@ -106,9 +116,9 @@ The ocean starts with **57 animals**, 1.5 times its previous population: nine tu
 
 Each animal has its own swimming pace and heading. A member of a group stays within **one metre of another member**, without marching in a straight line. Dolphins jump individually and slow down during their jump. Larger animals have more health. Gym swimming training improves your ability to keep up.
 
-An untreated animal disappears after **three minutes**; treatment stops that deadline. Animals also eventually die of old age. A replacement appears as an egg after a short delay. Eggs hatch only after **two uninterrupted minutes**: approaching within 1.5 metres, interacting, or hitting the egg resets its timer. Newborns do not inherit the previous animal's trust or grudges.
+An untreated animal disappears after **three minutes**; treatment stops that deadline. Animals also eventually die of old age. A replacement appears as an egg after a short delay. Eggs hatch only after **two uninterrupted minutes**: approaching within 1.5 metres, interacting, or hitting the egg resets its timer. Reputation belongs to the species and remains when an individual is replaced.
 
-Witnesses remember animal kills: sharks and sea lions retaliate, while other species flee. Helping trapped or wounded animals builds trust and can earn pearls and other ocean valuables. Injury and reputation are separate: healthy animals can still learn to trust or avoid you.
+Each of the six ocean species has one reputation score for you, shown in the inventory. **Below zero**, sharks and sea lions attack while the other species swim away. **Above zero**, animals of that species approach and greet you, occasionally bringing a shell, pearl, or treasure. Zero is neutral. Helping an animal raises your reputation with its whole species; hurting or killing one lowers it. Old individual opinions migrate to their species' average score.
 
 Every account has a permanent username and a call name that can change **once per hour**. Customize five skin tones, T-shirts, hoodies or tank tops, trousers or shorts, and seven clothing colors. Hats are earned through achievements: discover a recipe, trade 10 kilograms of trash, rescue three animals, defeat five players, or own a home or bakery. Appearance and identity changes are validated and saved by the server.
 
@@ -186,15 +196,15 @@ You can also build the supplied Dockerfile. Mount configuration read-only at **`
 
 ## Persistence and authentication
 
-Inventory, permanent and hotbar slots, recipe discoveries, coins, gym levels, bakery plots and upgrades, equipment and paint, home islands and their buildings/chests/permissions, friends and requests, permanent friend codes and visibility, camels and discounts, avatar appearance, permanent usernames, call names and their cooldowns, earned hats, kills/deaths, and animal reputation are saved every five seconds and during graceful shutdown to `data/players.json` by default. Saves write a temporary file before replacing the previous file. A malformed save fails startup without overwriting it. Back up the data directory. Abrupt process or machine failure can lose progress since the last successful save, normally up to five seconds.
+All twenty inventory slots and five hotbar slots, recipe discoveries, coins, gym levels, bakery purchases and upgrades, equipment and paint, home islands and their buildings/chests/permissions, friends and requests, permanent friend codes and visibility, camels and discounts, avatar appearance, permanent usernames, call names and their cooldowns, earned hats, kills/deaths, and animal reputation are saved every five seconds and during graceful shutdown to `data/players.json` by default. Saves write a temporary file before replacing the previous file. A malformed save fails startup without overwriting it. Back up the data directory. Abrupt process or machine failure can lose progress since the last successful save, normally up to five seconds.
 
-Existing version-one saves migrate automatically. Valid items fill the new slot arrays; anything beyond their capacity remains in **Saved item recovery** in the inventory panel until there is room to claim it. Previously owned bakeries receive individual plots. Account progress remains linked to the same email address. The new server reads save versions one and two and writes version two; the previous binary cannot load a version-two save. Keep a pre-upgrade backup if you need to return to the earlier binary.
+Existing version-one and version-two saves migrate automatically. Items from the retired three safe slots move into the twenty-slot inventory. Anything beyond its capacity remains in **Saved item recovery** until there is room to claim it. Previously owned bakeries receive individual plots. Account progress remains linked to the same email address. The server reads save versions one, two, and three and writes version three; earlier binaries cannot load a version-three save. Keep a pre-upgrade backup if you need to return to an earlier binary.
 
 Old mainland tents and cabins migrate into home-island ownership. Their original building materials are returned through saved item recovery, so a full inventory cannot erase the investment. Mainland shelters and their safe zones are removed.
 
-Email login codes expire after ten minutes and can be used once; five incorrect attempts invalidate a code. The service rate-limits requests and verification attempts using the actual connection address. Sessions last seven days and use HttpOnly, SameSite cookies and Secure cookies in production. Sessions and pending codes live in memory; a restart requires signing in again. Stable account IDs restore saved progress for the same normalized email address. The public game state does not contain email addresses.
+Email login codes expire after ten minutes and can be used once; five incorrect attempts invalidate a code. The service rate-limits requests and verification attempts using the actual connection address. Select **Keep me signed in on this device** on a device you own to stay signed in for **30 days** after verifying your email once, including across browser and server restarts. Signing out revokes that device's session. Without this option, the browser gets a session cookie and the server expires the session after seven days at most; server restarts require signing in again. All session cookies are HttpOnly and SameSite, and Secure in production. Remembered sessions are saved atomically to `data/sessions.json` (under the configured data directory), containing only token hashes, player IDs/names, and expiration times. Pending codes and ordinary sessions remain in memory. Stable account IDs restore saved progress for the same normalized email address. The public game state does not contain email addresses.
 
-Resources, ocean animals and eggs, world time, player positions, transient buffs, and main-island campfires are recreated when the server restarts. Home-island buildings, including campfires and adopted pond animals, persist. Signing in after a server restart spawns a saved account in the forest. Reconnecting to the same running server preserves position, health, buffs, and action cooldowns; disconnecting cannot refill health or bypass bakery production timers. Disconnected players remain in the world for ten seconds to prevent immediately escaping incoming attacks.
+Resources, ocean animals and eggs, world time, player positions, transient buffs, and main-island campfires are recreated when the server restarts. Home-island buildings, including campfires and adopted pond animals, persist. Signing in after a server restart spawns a saved account in the forest. Reconnecting to the same running server preserves position, health, buffs, and action cooldowns; disconnecting cannot refill health or bypass bakery production timers. Disconnected players remain in the world for ten seconds to prevent immediately escaping incoming attacks; their bakery plot is released immediately. Restarting the server also clears plot occupancy without removing saved bakery purchases or upgrades.
 
 ## Development and verification
 
@@ -203,6 +213,8 @@ go test ./...
 go vet ./...
 go build ./...
 node --test scripts/state-sync.test.cjs
+node --test scripts/cave-scenery.test.cjs
+node --test scripts/motion.test.cjs scripts/scenery-batches.test.cjs
 node scripts/island-panels.test.cjs
 ```
 
@@ -216,6 +228,8 @@ The GitHub Actions workflow runs race-enabled tests, vet, the build, browser Jav
 
 Run `go test ./internal/server -run TestDeltaSteadyStateBandwidth -v` to compare complete snapshots, deltas, and compressed deltas over 100 simulated updates. This measures payload sizes in a stock local world, excluding the initial snapshot and network overhead; actual hosting traffic depends on player activity and connection count.
 
+Run `go test ./internal/game -run '^$' -bench 'BenchmarkWorld' -benchmem` to measure simulation and snapshot construction at 1, 16, and 64 players. The fixture includes saved accounts, friend relationships, home islands, and the complete procedural map. Compare steady-state `SnapshotUpdate` batches separately from first-connection snapshots, which include the static layout. Server regressions also exercise blocked disk writes, ordered final saves, reconnects, mailbox pressure, and tick timing.
+
 For the optional browser smoke check, keep a development server running and install Playwright locally with Node.js/npm:
 
 ```sh
@@ -225,9 +239,23 @@ node scripts/browser-smoke.cjs
 
 The script uses installed Google Chrome at `C:/Program Files/Google/Chrome/Application/chrome.exe` on Windows. Set `CK_CHROME` to another installed Chrome/Chromium executable if needed; for example, in PowerShell: `$env:CK_CHROME = 'C:\path\to\chrome.exe'`. On other systems, set `CK_CHROME` or install Playwright's Chromium with `node .tools/node_modules/playwright/cli.js install chromium`. Set `CK_TEST_URL` if the development server uses a different local address.
 
-The smoke check creates a local test account and checks rendering, login, authoritative state updates, movement, throwing, inventory, and the map. Screenshots are written to the ignored `test-results/` directory. It does not test real email delivery, certificate issuance, or production deployment. Node.js and Playwright are needed only for this optional check.
+The smoke check creates a local test account and checks rendering, login, authoritative state updates, movement, throwing, inventory, and the map. Screenshots are written to the ignored `test-results/` directory. It defaults to software rendering; set `CK_SMOKE_HARDWARE=1` to use Chrome's default graphics backend. It does not test real email delivery, certificate issuance, or production deployment. Node.js and Playwright are needed only for this optional check.
+
+`node scripts/auth-browser-smoke.cjs` uses the same `CK_TEST_URL` server to check both login steps at laptop sizes, the opt-in checkbox, browser-session versus 30-day cookies, remembered sign-in after reopening, and sign-out revocation.
+
+`node scripts/camel-browser-smoke.cjs` starts its own isolated server with a saved herd and home island, checks naming in Friends, **E/Q** mounting controls, mounted travel between home and cave, and saved names and parking locations after reconnecting. It chooses a free local port automatically; `CK_CAMEL_TEST_PORT` can override it.
+
+`node scripts/inventory-browser-smoke.cjs` starts an isolated server and checks the protected twenty-slot inventory and five-slot hotbar, Drop 1/5/10/all, ground bundles, and picking items back up through normal controls.
+
+`node scripts/island-building-browser-smoke.cjs` starts an isolated server and checks explicit build mode, aimed **E** selection, **R/T/F** and click placement, packed furnishings, chest colors, personal storage, gardens, and the uncluttered island map.
+
+`node scripts/cave-browser-smoke.cjs` checks the rocky entrance, the full descent to both lollipop chambers and the return climb, and captures forest wildflowers, cactus blossoms, and city flowerbeds in Chrome.
+
+`node scripts/render-benchmark.cjs` builds an isolated server on port 8094 and records draw calls, frame timings, and a fixed forest screenshot. Run again with `--unbatched` to compare the same scene without plant batching. It defaults to Chrome's software renderer; set `CK_RENDER_HARDWARE=1` to use Chrome's default graphics backend. Treat software frame timings separately from hardware FPS. `CK_RENDER_TEST_PORT` and `CK_CHROME` override the port and browser. Results are saved under `test-results/` and the test server stops afterward.
 
 `node scripts/island-browser-smoke.cjs` builds and runs its own isolated development server with two seeded test accounts. It checks home travel, the sixth hotbar slot, placement and rotation, moving and destroying builds, chest transfers, friend requests and permissions, and both cave branches in Chrome. It saves screenshots under `test-results/` and stops its server afterward. Its default port is 8091; set `CK_ISLAND_TEST_PORT` to use another free port.
+
+`node scripts/bakery-browser-smoke.cjs` checks bakery purchase, upgrades, paint and naming in the same panel, separate oven/mixer/display actions, release on disconnect, another player's purchase, and free restoration on a different plot. It runs an isolated server on port 8093 (`CK_BAKERY_TEST_PORT` overrides this), uses two test accounts, saves screenshots, and stops the server afterward.
 
 Add `--tour` to walk from the forest through the desert village and city gym to Peace's beach stand, checking entrances and interaction screens. `--tour-only` runs that walkthrough without repeating the main UI checks. Use an isolated development world for test accounts:
 
@@ -250,6 +278,10 @@ web/                browser UI, first-person renderer, local Three.js assets
 
 The simulation runs at 20 ticks per second and publishes state ten times per second using [coder/websocket](https://github.com/coder/websocket). The browser requests `/ws?updates=delta-v1`: each connection receives a complete initial snapshot, then only changed player fields and changed entity fields, additions, and removals. Inventory maps and slots replace their previous values when changed; recipes and event lists are sent only when changed. WebSocket compression is negotiated when supported. The server computes each delta against the last successfully written state, so discarding queued updates for a slow connection cannot lose changes. Sequence checks reconnect the browser with a fresh snapshot if its baseline is lost. Older tabs using `/ws` continue receiving full snapshots until refreshed; rebuild and deploy the executable with its embedded browser assets to enable the new protocol.
 
-The server limits the world to 64 simultaneous connections, validates actions and movement, bounds input rates, and disconnects superseded account connections. This is a playable alpha with one shared world, procedural graphics, fixed discoverable recipes, twelve exclusively owned bakery plots, player homes, and a compact economy. Swimming changes speed and height; free diving is not implemented. World geometry blocks movement and projectiles, with door openings for accessible buildings. The connection limit is a guardrail, not a measured capacity guarantee; public launch would benefit from load testing, playtesting/balance, monitoring, and a transactional database for multiple server instances.
+The server limits the world to 64 simultaneous connections, validates actions and movement, bounds input rates, and disconnects superseded account connections. This is a playable alpha with one shared world, procedural graphics, fixed discoverable recipes, twelve bakery plots occupied during a player session, player homes, and a compact economy. Swimming changes speed and height; free diving is not implemented. World geometry blocks movement and projectiles, with door openings for accessible buildings. The connection limit is a guardrail, not a measured capacity guarantee; public launch would benefit from load testing, playtesting/balance, monitoring, and a transactional database for multiple server instances.
+
+One goroutine owns the world and receives typed commands through a bounded in-memory channel. Connection readers validate messages before submitting them; connection writers encode and send snapshots independently. A separate disk worker saves detached profiles, keeps at most one newer pending save, and completes the final save before shutdown. Disk writes and socket backpressure do not pause the simulation. Initial snapshots include the static map; periodic updates omit that copy and construct only entities visible in the player's world.
+
+The browser interpolates confirmed movement samples with a 120 ms local-position buffer and a 150 ms buffer for other players and animals. Mouse look remains immediate; stalled connections hold the last confirmed position. Teleports and reconnects reset the buffer. Stationary plants and ground decorations share spatial rendering batches while retaining individual chopping and regrowth visibility. These changes reduce update jitter and rendering work; they do not guarantee a particular frame rate on every device.
 
 Three.js is vendored under its MIT license in `web/vendor/THREE-LICENSE.txt`.

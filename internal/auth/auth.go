@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"mime"
 	"net"
@@ -23,12 +24,13 @@ import (
 )
 
 const (
-	cookieName       = "cookiekill_session"
-	challengeTTL     = 10 * time.Minute
-	maxCodeAttempts  = 5
-	maxPendingCodes  = 10000
-	maxSessions      = 20000
-	maxRateLimitKeys = 40000
+	cookieName           = "cookiekill_session"
+	challengeTTL         = 10 * time.Minute
+	maxCodeAttempts      = 5
+	maxPendingCodes      = 10000
+	maxSessions          = 20000
+	maxRateLimitKeys     = 40000
+	rememberedSessionTTL = 30 * 24 * time.Hour
 )
 
 // Config requires SMTP in production. Port 465 uses implicit TLS; all other
@@ -42,6 +44,9 @@ type Config struct {
 	SMTPPass      string
 	SMTPFrom      string
 	SessionTTL    time.Duration
+	// SessionFile stores remembered sessions across server restarts.
+	// An empty path keeps all sessions in memory (for embedded/test use).
+	SessionFile string
 }
 
 // Player deliberately contains no email address.
@@ -58,8 +63,9 @@ type challenge struct {
 }
 
 type session struct {
-	player  Player
-	expires time.Time
+	player     Player
+	expires    time.Time
+	persistent bool
 }
 
 type rateLimit struct {
@@ -110,6 +116,9 @@ func New(cfg Config) (*Service, error) {
 		limits:     make(map[string]rateLimit),
 	}
 	s.send = func(email, code string) error { return sendCode(cfg, email, code) }
+	if err := s.loadSessions(); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -213,8 +222,9 @@ func (s *Service) verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		Email string `json:"email"`
-		Code  string `json:"code"`
+		Email        string `json:"email"`
+		Code         string `json:"code"`
+		KeepSignedIn bool   `json:"keepSignedIn"`
 	}
 	if !readJSON(w, r, &request) {
 		return
@@ -259,27 +269,57 @@ func (s *Service) verify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "That code is invalid or expired.")
 		return
 	}
-	if len(s.sessions) >= maxSessions {
+	previous, hasPrevious := sessionDigest(r)
+	oldSession, replacing := s.sessions[previous]
+	replacing = replacing && hasPrevious
+	if len(s.sessions) >= maxSessions && !replacing {
 		s.mu.Unlock()
 		writeError(w, http.StatusServiceUnavailable, "Login is temporarily unavailable.")
 		return
 	}
-	delete(s.challenges, email)
 	// A fresh login rotates this browser's session instead of accumulating them.
-	if previous, ok := sessionDigest(r); ok {
-		delete(s.sessions, previous)
+	next := maps.Clone(s.sessions)
+	if hasPrevious {
+		delete(next, previous)
 	}
 	p := playerForEmail(email)
-	expires := now.Add(s.cfg.SessionTTL)
-	s.sessions[sha256.Sum256([]byte(token))] = session{player: p, expires: expires}
+	ttl := s.cfg.SessionTTL
+	if request.KeepSignedIn {
+		ttl = rememberedSessionTTL
+	}
+	expires := now.Add(ttl)
+	next[sha256.Sum256([]byte(token))] = session{player: p, expires: expires, persistent: request.KeepSignedIn}
+	if request.KeepSignedIn || replacing && oldSession.persistent {
+		if err := s.saveSessionsLocked(next); err != nil {
+			s.mu.Unlock()
+			writeError(w, http.StatusServiceUnavailable, "Unable to save your sign-in. Please try again.")
+			return
+		}
+	}
+	s.sessions = next
+	delete(s.challenges, email)
 	s.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, Secure: s.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, Expires: expires, MaxAge: int(s.cfg.SessionTTL.Seconds())})
+	cookie := &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, Secure: s.cfg.SecureCookies, SameSite: http.SameSiteStrictMode}
+	if request.KeepSignedIn {
+		cookie.Expires = expires
+		cookie.MaxAge = int(ttl.Seconds())
+	}
+	http.SetCookie(w, cookie)
 	writeJSON(w, http.StatusOK, map[string]any{"player": p})
 }
 
 func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	if digest, ok := sessionDigest(r); ok {
 		s.mu.Lock()
+		if sess, exists := s.sessions[digest]; exists && sess.persistent {
+			next := maps.Clone(s.sessions)
+			delete(next, digest)
+			if err := s.saveSessionsLocked(next); err != nil {
+				s.mu.Unlock()
+				writeError(w, http.StatusServiceUnavailable, "Unable to sign out. Please try again.")
+				return
+			}
+		}
 		delete(s.sessions, digest)
 		s.mu.Unlock()
 	}

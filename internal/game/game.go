@@ -23,6 +23,15 @@ func (w *World) Act(id string, a Action) (err error) {
 	if a.Action == "move_item" {
 		return moveItem(p, a)
 	}
+	if a.Action == "drop_item" {
+		return w.dropItem(p, a)
+	}
+	if a.Action == "pickup_item" {
+		return w.pickupItem(p, a.Target)
+	}
+	if a.Action == "club_gamble" {
+		return w.gambleClub(p, a)
+	}
 	if a.Amount == 0 {
 		a.Amount = 1
 	}
@@ -30,13 +39,19 @@ func (w *World) Act(id string, a Action) (err error) {
 		return errors.New("Choose an amount between 1 and 20.")
 	}
 	switch a.Action {
+	case "buy_drink":
+		return w.buyClubDrink(p, a)
+	case "drink":
+		return w.drink(p, a.Item)
+	case "club_sit":
+		return w.sitClub(p, a.Target)
 	case "friend_public", "friend_request", "friend_accept", "friend_decline", "friend_remove":
 		return w.socialAction(p, a)
-	case "eat_lollipop", "buy_home", "teleport_home", "teleport_main", "teleport_cave", "visit_island", "island_visitors", "island_builder", "chest_deposit", "chest_withdraw", "build", "move_build", "destroy_build", "use_build":
+	case "eat_lollipop", "buy_home", "teleport_home", "teleport_main", "teleport_cave", "visit_island", "island_visitors", "island_builder", "chest_deposit", "chest_withdraw", "storage_deposit", "storage_withdraw", "build_mode", "edit_build", "cancel_build", "build", "move_build", "destroy_build", "pack_build", "paint_build", "use_build":
 		return w.islandAction(p, a)
 	case "adopt_animal":
 		return w.adoptAnimal(p, a.Target)
-	case "camel_rent", "camel_buy", "camel_gift", "camel_ride":
+	case "camel_rent", "camel_buy", "camel_gift", "camel_ride", "camel_mount", "camel_dismount":
 		return w.camelAction(p, a)
 	case "throw":
 		return w.throw(p, a.Item)
@@ -64,12 +79,26 @@ func (w *World) Act(id string, a Action) (err error) {
 		return w.createSafeZone(p)
 	case "paint":
 		return w.paintBakery(p, a.Target, a.Item)
+	case "bakery_rename":
+		return w.renameBakery(p, a.Name)
+	case "camel_rename":
+		return w.renameCamel(p, a.Target, a.Name)
 	case "interact":
 		return w.interact(p, a.Target)
 	case "craft":
+		if a.Target != "" {
+			if _, recipe := recipeFor(a.Item); !recipe {
+				return errors.New("The bakery oven bakes cookies and cakes.")
+			}
+			if err := w.requireBakeryStation(p, "oven", a.Target); err != nil {
+				return err
+			}
+		}
 		return w.craft(p, a.Item, a.Amount)
 	case "trade":
 		return w.trade(p, a.Target, a.Item, a.Amount)
+	case "buy_ingredient":
+		return w.buyIngredients(p, a.Target, a.Item, a.Amount)
 	case "train":
 		return w.train(p, a.Item)
 	case "buy_land":
@@ -77,7 +106,7 @@ func (w *World) Act(id string, a Action) (err error) {
 	case "upgrade":
 		return w.upgradeBakery(p)
 	case "make_dough":
-		if err := w.requireBakery(p); err != nil {
+		if err := w.requireBakeryStation(p, "mixer", a.Target); err != nil {
 			return err
 		}
 		if p.cooldowns["dough"] > w.time {
@@ -94,19 +123,7 @@ func (w *World) Act(id string, a Action) (err error) {
 		w.event("Fresh dough is ready.", "craft", p.x, p.z)
 		return nil
 	case "order_dough":
-		if err := w.requireBakery(p); err != nil {
-			return err
-		}
-		cost := 5 * a.Amount
-		if p.profile.Coins < cost {
-			return fmt.Errorf("Dough delivery costs %d coins.", cost)
-		}
-		p.profile.Coins -= cost
-		if !gain(p, "dough", 8*a.Amount) {
-			return errors.New("Your inventory is full. Move or use a stack first.")
-		}
-		w.event("A dough delivery arrived.", "craft", p.x, p.z)
-		return nil
+		return errors.New("Buy ingredients inside a desert village house, or prepare dough at your bakery mixer.")
 	case "consume_protein":
 		if a.Item != "protein_powder" && a.Item != "protein_drink" {
 			return errors.New("Choose protein powder or a protein drink.")
@@ -127,11 +144,15 @@ func (w *World) Act(id string, a Action) (err error) {
 	}
 }
 
-func addCoins(p *player, count int) { p.profile.Coins = min(inventoryLimit, p.profile.Coins+count) }
+func addCoins(p *player, count int) {
+	if count > 0 {
+		p.profile.Coins += min(count, max(0, coinLimit-p.profile.Coins))
+	}
+}
 
 func (w *World) near(p *player, id string, radius float64) bool {
 	for _, n := range w.nodes {
-		if n.ID == id && n.Island == p.island {
+		if n.ID == id && sameNodeLayer(p, n) {
 			return n.Available && distance(p.x, p.z, n.X, n.Z) <= radius
 		}
 	}
@@ -141,6 +162,9 @@ func (w *World) near(p *player, id string, radius float64) bool {
 func (w *World) requireBakery(p *player) error {
 	if !p.profile.Bakery {
 		return errors.New("Buy your bakery land in the city first.")
+	}
+	if p.profile.BakeryPlot == "" || w.plotOwner(p.profile.BakeryPlot) != p.profile.ID {
+		return errors.New("Claim a free city plot to reopen your saved bakery at no cost.")
 	}
 	if !w.near(p, p.profile.BakeryPlot, 10) {
 		return errors.New("Visit your city bakery to do that.")
@@ -198,6 +222,9 @@ func (w *World) eat(p *player, item string) error {
 	if item == "" {
 		item = p.profile.Selected
 	}
+	if _, ok := clubDrinkFor(item); ok {
+		return w.drink(p, item)
+	}
 	r, ok := recipeFor(item)
 	if !ok {
 		return errors.New("Choose a cookie to eat.")
@@ -226,6 +253,17 @@ func (w *World) eat(p *player, item string) error {
 }
 
 func (w *World) interact(p *player, target string) error {
+	if strings.HasPrefix(target, "club_seat_") {
+		return w.sitClub(p, target)
+	}
+	if _, ok := w.drops[target]; ok {
+		return w.pickupItem(p, target)
+	}
+	for _, c := range p.profile.Camels {
+		if c.ID == target {
+			return w.mountCamel(p, target)
+		}
+	}
 	if target == "island_portal" {
 		return w.islandAction(p, Action{Action: "teleport_cave"})
 	}
@@ -247,7 +285,7 @@ func (w *World) interact(p *player, target string) error {
 		}
 	}
 	for _, n := range w.nodes {
-		if n.ID != target || n.Island != p.island {
+		if n.ID != target || n.Island != p.island || !sameNodeLayer(p, n) {
 			continue
 		}
 		if distance(p.x, p.z, n.X, n.Z) > 5 {
@@ -256,8 +294,20 @@ func (w *World) interact(p *player, target string) error {
 		if !n.Available {
 			return errors.New("This resource is regrowing. Come back shortly.")
 		}
+		if n.PlotID != "" {
+			station := strings.TrimPrefix(n.Kind, "bakery_")
+			if err := w.requireBakeryStation(p, station, n.ID); err != nil {
+				return err
+			}
+			messages := map[string]string{"oven": "Bake your cookie and cake recipes at this oven.", "mixer": "Prepare fresh dough at this mixer.", "display": "Sell your baked cookies and cakes at this display."}
+			w.event(messages[station], "hint", p.x, p.z)
+			return nil
+		}
 		if n.Kind == "wood" {
 			return w.chopTree(p, n)
+		}
+		if n.Kind == "cactus" {
+			return w.chopCactus(p, n)
 		}
 		if n.respawn <= 0 {
 			switch n.Kind {
@@ -270,9 +320,15 @@ func (w *World) interact(p *player, target string) error {
 			case "gym":
 				w.event("Train legs, stamina, arms, or swimming for 2 coins. Protein speeds recovery.", "hint", p.x, p.z)
 			case "bakery_plot":
-				w.event("Buy this land for 250 coins to open your own bakery.", "hint", p.x, p.z)
+				message := "Buy your first bakery for 250 coins. Your progress is saved when you leave."
+				if p.profile.BakeryPlot == n.ID {
+					message = "Manage this bakery's upgrades and paint at its sign. Use each kitchen station separately."
+				} else if p.profile.Bakery {
+					message = "Claim a free city plot to reopen your saved bakery at no cost."
+				}
+				w.event(message, "hint", p.x, p.z)
 			case "desert_trader":
-				w.event("Saffron trades special cookies for berries, nuts, shells, or treasure.", "hint", p.x, p.z)
+				w.event("Step inside to buy baking ingredients and supplies, or barter for special desert cookies.", "hint", p.x, p.z)
 			default:
 				w.event("Open your inventory to see the actions available here.", "hint", p.x, p.z)
 			}
@@ -310,6 +366,9 @@ func (w *World) craft(p *player, item string, amount int) error {
 		if p.island != "" {
 			return w.islandAction(p, Action{Action: "build", Item: "fire", X: p.x + 2, Y: p.y, Z: p.z})
 		}
+		if p.inCave {
+			return errors.New("Build your campfire outside the clay cave, on the desert surface.")
+		}
 		if inWater(p) {
 			return errors.New("You need dry land to build a fire.")
 		}
@@ -345,7 +404,7 @@ func (w *World) craft(p *player, item string, amount int) error {
 	if !ok {
 		return errors.New("That recipe is unknown.")
 	}
-	atBakery := p.profile.Bakery && w.near(p, p.profile.BakeryPlot, 10)
+	atBakery := w.requireBakeryStation(p, "oven", "") == nil
 	atHomeOven := w.nearIslandAppliance(p, "oven")
 	if item == "cake" && !atBakery && !atHomeOven {
 		return errors.New("This recipe needs the oven in your own bakery.")
@@ -359,7 +418,7 @@ func (w *World) craft(p *player, item string, amount int) error {
 		canBake = true
 	}
 	for _, n := range w.nodes {
-		if n.Kind == "fire" && n.Island == p.island && n.Available && distance(p.x, p.z, n.X, n.Z) <= 7 {
+		if n.Kind == "fire" && sameNodeLayer(p, n) && n.Available && distance(p.x, p.z, n.X, n.Z) <= 7 {
 			canBake = true
 			break
 		}
@@ -418,7 +477,7 @@ func spend(p *player, cost map[string]int, amount int) {
 
 func (w *World) trade(p *player, target, item string, amount int) error {
 	if target == "bakery" {
-		target = p.profile.BakeryPlot
+		target = bakeryStationID(p.profile.BakeryPlot, "display")
 	}
 	if !w.near(p, target, 7) {
 		return errors.New("Move closer to the trader or shop.")
@@ -427,8 +486,11 @@ func (w *World) trade(p *player, target, item string, amount int) error {
 	if strings.HasPrefix(target, "desert_trader") {
 		kind = "desert_trader"
 	}
-	if w.isPlot(target) {
-		kind = "bakery"
+	for _, node := range w.nodes {
+		if node.ID == target && node.Kind == "bakery_display" {
+			kind = "bakery_display"
+			break
+		}
 	}
 	switch kind {
 	case "kitchen_shop":
@@ -438,8 +500,6 @@ func (w *World) trade(p *player, target, item string, amount int) error {
 			return errors.New("The paint shop sells paint for your bakery.")
 		}
 		return w.kitchenTrade(p, item, amount)
-	case "general_shop":
-		return w.generalTrade(p, item, amount)
 	case "peace":
 		prices := map[string]int{"trash": 3, "shell": 2, "stone": 1, "pearl": 12, "treasure": 25, "old_coin": 5, "rare_item": 60}
 		price, ok := prices[item]
@@ -495,30 +555,8 @@ func (w *World) trade(p *player, target, item string, amount int) error {
 		}
 		w.event("Saffron shared a box of special desert cookies.", "trade", p.x, p.z)
 		return nil
-	case "vending":
-		price := 0
-		if item == "protein_powder" {
-			price = 8
-		}
-		if item == "protein_drink" {
-			price = 6
-		}
-		if price == 0 {
-			return errors.New("The vending machine sells protein powder and protein drinks.")
-		}
-		if p.profile.Coins < price*amount {
-			return errors.New("You need more coins for that protein purchase.")
-		}
-		p.profile.Coins -= price * amount
-		if !gain(p, item, amount) {
-			return errors.New("Your inventory is full. Move or use a stack first.")
-		}
-		return nil
-	case "bakery":
-		if target != p.profile.BakeryPlot {
-			return errors.New("You can only sell at your own bakery.")
-		}
-		if err := w.requireBakery(p); err != nil {
+	case "bakery_display":
+		if err := w.requireBakeryStation(p, "display", target); err != nil {
 			return err
 		}
 		if _, ok := recipeFor(item); !ok {
@@ -599,32 +637,20 @@ func (w *World) helpAnimal(p *player, a *Animal) error {
 		a.Health = a.MaxHealth
 		a.Need = ""
 		a.needAt = w.time + 120
-		p.profile.Reputation[a.ID] = min(10, p.profile.Reputation[a.ID]+3)
+		changeSpeciesReputation(p, a.Species, 3)
 		p.profile.Rescues++
 		awardHats(&p.profile)
-		for _, witness := range w.animals {
-			if witness.ID != a.ID && witness.Health > 0 && distance(a.X, a.Z, witness.X, witness.Z) <= 30 {
-				p.profile.Reputation[witness.ID] = min(10, p.profile.Reputation[witness.ID]+1)
-			}
-		}
-		a.rewardAt[p.profile.ID] = w.time + 45
+		p.cooldowns["ocean_gift:"+a.Species] = w.time + 45
 		p.cooldowns["interact"] = w.time + .5
-		w.event("You helped a "+a.Species+". Nearby animals remember your kindness. You found a pearl!", "animal", a.X, a.Z)
+		w.eventActor("You helped a "+a.Species+". Your reputation with this species improved. You found a pearl!", "animal", a.X, a.Z, p.profile.ID)
 		return nil
 	}
-	if p.profile.Reputation[a.ID] < 2 {
-		return errors.New("This animal does not trust you yet. Help trapped or wounded ocean animals.")
+	if p.profile.Reputation[a.Species] <= 0 {
+		return errors.New("This species does not trust you yet. Help one of its trapped or wounded animals.")
 	}
-	if a.rewardAt[p.profile.ID] > w.time {
-		return errors.New("Your ocean friend is still looking for another treasure.")
+	if !w.greetAnimal(p, a) {
+		return errors.New("Your ocean friends have just greeted you. Give them a little time to explore.")
 	}
-	items := []string{"pearl", "old_coin", "treasure", "rare_item"}
-	item := items[int(w.sequence)%len(items)]
-	if !gain(p, item, 1) {
-		return errors.New("Your inventory is full. Move or use a stack first.")
-	}
-	a.rewardAt[p.profile.ID] = w.time + 60
 	p.cooldowns["interact"] = w.time + .5
-	w.event("Your "+a.Species+" friend led you to a "+item+"!", "animal", a.X, a.Z)
 	return nil
 }

@@ -58,6 +58,9 @@ func (e *stateEncoder) encode(snapshot game.Snapshot) ([]byte, error) {
 	if !reflect.DeepEqual(previous.BuildCatalog, snapshot.BuildCatalog) {
 		frame["buildCatalog"] = snapshot.BuildCatalog
 	}
+	if !reflect.DeepEqual(previous.ClubDrinks, snapshot.ClubDrinks) {
+		frame["clubDrinks"] = snapshot.ClubDrinks
+	}
 	if !reflect.DeepEqual(previous.Friends, snapshot.Friends) {
 		frame["friends"] = snapshot.Friends
 	}

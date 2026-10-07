@@ -141,12 +141,12 @@ func TestMultiplayerMovementProtectionPersistenceAndLogout(t *testing.T) {
 	bob := dial(t, srv.URL, signIn(t, srv.URL, "bob@example.com"))
 	snapshot(t, bob, func(s game.Snapshot) bool { return len(s.Players) == 1 })
 	send(t, alice, map[string]any{"type": "input", "x": 1, "z": 0, "yaw": 0, "pitch": 0})
-	send(t, alice, map[string]any{"type": "action", "action": "move_item", "from": "hotbar", "fromSlot": 0, "to": "safe", "toSlot": 0})
-	after := snapshot(t, alice, func(s game.Snapshot) bool { return s.Me.X > first.Me.X && s.Me.SafeSlots[0].Item == "sugar" })
+	send(t, alice, map[string]any{"type": "action", "action": "move_item", "from": "hotbar", "fromSlot": 0, "to": "bag", "toSlot": 0})
+	after := snapshot(t, alice, func(s game.Snapshot) bool { return s.Me.X > first.Me.X && s.Me.BagSlots[0].Item == "sugar" })
 	if after.Me.X-first.Me.X > 10 {
 		t.Fatal("movement teleported")
 	}
-	if after.Me.SafeSlots[0].Count != 10 || len(after.Me.SafeSlots) != 3 || len(after.Me.BagSlots) != 15 || len(after.Me.Hotbar) != 5 {
+	if after.Me.BagSlots[0].Count != 10 || len(after.Me.BagSlots) != 20 || len(after.Me.Hotbar) != 5 {
 		t.Fatal("protection action not applied")
 	}
 	if err := s.Save(); err != nil {
@@ -156,7 +156,7 @@ func TestMultiplayerMovementProtectionPersistenceAndLogout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved[after.Me.ID].SafeSlots[0].Count != 10 {
+	if saved[after.Me.ID].BagSlots[0].Count != 10 {
 		t.Fatal("progress not persisted")
 	}
 	res, err := aliceHTTP.Post(srv.URL+"/api/logout", "application/json", strings.NewReader(`{}`))
@@ -233,7 +233,7 @@ func TestPublicWorldLayoutContainsSceneryWithoutPlayerProfiles(t *testing.T) {
 	if err := json.Unmarshal(payload["layout"], &layout); err != nil {
 		t.Fatal(err)
 	}
-	if layout.Version != 4 || len(layout.Plots) != 12 || len(layout.Zones) != 0 || len(layout.Props) < 200 {
+	if layout.Version != 7 || len(layout.Plots) != 12 || len(layout.Zones) != 0 || len(layout.Props) < 200 {
 		t.Fatal("public preview lacks new world")
 	}
 }

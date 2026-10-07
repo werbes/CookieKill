@@ -5,21 +5,28 @@ import (
 	"sort"
 )
 
+// Ordinary supplies and packed furnishings share the same storage/drop rules.
+func isInventoryItem(item string) bool {
+	if itemSet[item] {
+		return true
+	}
+	if _, ok := clubDrinkFor(item); ok {
+		return true
+	}
+	_, _, ok := packedBuildItem(item)
+	return ok
+}
+
 func syncInventory(p *Profile) {
 	p.Inventory = map[string]int{}
-	for _, slots := range [][]Stack{p.SafeSlots[:], p.BagSlots[:], p.Hotbar[:]} {
+	for _, slots := range [][]Stack{p.BagSlots[:], p.Hotbar[:]} {
 		for _, s := range slots {
 			if s.Count > 0 {
 				p.Inventory[s.Item] += s.Count
 			}
 		}
 	}
-	p.Protected = []string{}
-	for _, s := range p.SafeSlots {
-		if s.Count > 0 {
-			p.Protected = append(p.Protected, s.Item)
-		}
-	}
+	p.Protected = nil
 	if p.SelectedSlot == 5 && p.HomeIsland != nil {
 		p.Selected = "build_menu"
 		return
@@ -34,18 +41,8 @@ func normalizeInventory(p *Profile) {
 	}
 	if p.InventoryVersion < 2 {
 		old := cloneMap(p.Inventory)
-		safeIndex := 0
-		for _, key := range p.Protected {
-			if safeIndex >= 3 {
-				break
-			}
-			if itemSet[key] && old[key] > 0 {
-				p.SafeSlots[safeIndex] = Stack{key, min(inventoryLimit, old[key])}
-				safeIndex++
-				delete(old, key)
-			}
-		}
-		if old[p.Selected] > 0 && itemSet[p.Selected] {
+		p.BagSlots, p.Hotbar = [20]Stack{}, [5]Stack{}
+		if old[p.Selected] > 0 && isInventoryItem(p.Selected) {
 			p.Hotbar[0] = Stack{p.Selected, min(inventoryLimit, old[p.Selected])}
 			delete(old, p.Selected)
 		}
@@ -55,30 +52,49 @@ func normalizeInventory(p *Profile) {
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			if !itemSet[key] || old[key] <= 0 {
+			if !isInventoryItem(key) || old[key] <= 0 {
 				continue
 			}
 			n := min(inventoryLimit, old[key])
-			if !putEmpty(p.BagSlots[:], key, n) && !putEmpty(p.Hotbar[:], key, n) && !putEmpty(p.SafeSlots[:], key, n) {
+			if !putEmpty(p.BagSlots[:], key, n) && !putEmpty(p.Hotbar[:], key, n) {
 				p.Recovery[key] += n
 			}
 		}
-		p.InventoryVersion = 2
+		// Version-one Inventory already includes protected items.
+		p.SafeSlots = nil
 	}
-	for _, slots := range [][]Stack{p.SafeSlots[:], p.BagSlots[:], p.Hotbar[:]} {
+	for _, slots := range [][]Stack{p.BagSlots[:], p.Hotbar[:]} {
 		for i, s := range slots {
-			if !itemSet[s.Item] || s.Count <= 0 {
+			if !isInventoryItem(s.Item) || s.Count <= 0 {
 				slots[i] = Stack{}
 			} else {
 				slots[i].Count = min(inventoryLimit, s.Count)
 			}
 		}
 	}
+	// The five new bag slots can hold all three old safe stacks. Merge where
+	// possible and retain unexpected overflow in legacy recovery.
+	for _, s := range p.SafeSlots {
+		if !isInventoryItem(s.Item) || s.Count <= 0 {
+			continue
+		}
+		remaining := min(inventoryLimit, s.Count)
+		for i, dst := range p.BagSlots {
+			if dst.Item == s.Item && dst.Count > 0 {
+				n := min(remaining, inventoryLimit-dst.Count)
+				p.BagSlots[i].Count += n
+				remaining -= n
+			}
+		}
+		if remaining > 0 && !putEmpty(p.BagSlots[:], s.Item, remaining) {
+			p.Recovery[s.Item] += remaining
+		}
+	}
+	p.SafeSlots = nil
+	p.InventoryVersion = 3
 	for key, n := range p.Recovery {
-		if !itemSet[key] || n <= 0 {
+		if !isInventoryItem(key) || n <= 0 {
 			delete(p.Recovery, key)
-		} else {
-			p.Recovery[key] = min(inventoryLimit, n)
 		}
 	}
 	syncInventory(p)
@@ -97,11 +113,11 @@ func putEmpty(slots []Stack, item string, count int) bool {
 // New items fill existing stacks, then the bag. A full inventory is an atomic
 // refusal; recovery is only for legacy saves, never extra gameplay storage.
 func gain(p *player, item string, count int) bool {
-	if count <= 0 || !itemSet[item] {
+	if count <= 0 || !isInventoryItem(item) {
 		return false
 	}
 	next := p.profile
-	for _, slots := range [][]Stack{next.BagSlots[:], next.Hotbar[:], next.SafeSlots[:]} {
+	for _, slots := range [][]Stack{next.BagSlots[:], next.Hotbar[:]} {
 		for i, s := range slots {
 			if s.Item == item && s.Count > 0 {
 				n := min(count, inventoryLimit-s.Count)
@@ -129,7 +145,7 @@ func take(p *player, item string, count int) bool {
 	if count < 0 || p.profile.Inventory[item] < count {
 		return false
 	}
-	for _, slots := range [][]Stack{p.profile.BagSlots[:], p.profile.Hotbar[:], p.profile.SafeSlots[:]} {
+	for _, slots := range [][]Stack{p.profile.BagSlots[:], p.profile.Hotbar[:]} {
 		for i, s := range slots {
 			if s.Item == item {
 				n := min(count, s.Count)
@@ -171,8 +187,6 @@ func hasHotbar(p *player, item string) bool {
 
 func inventorySlots(p *Profile, kind string) []Stack {
 	switch kind {
-	case "safe":
-		return p.SafeSlots[:]
 	case "bag":
 		return p.BagSlots[:]
 	case "hotbar":

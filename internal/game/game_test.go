@@ -125,8 +125,8 @@ func TestReconnectPreservesHealthPositionAndProductionCooldown(t *testing.T) {
 	w, p := testWorld()
 	p.profile.Bakery = true
 	p.profile.BakeryPlot = "bakery_plot_0"
-	p.x = 24
-	p.z = 72
+	nodePosition(w, p, "bakery_plot_0_mixer")
+	x, z := p.x, p.z
 	p.health = 35
 	mustAct(t, w, Action{Action: "make_dough"})
 	w.Input("one", Input{X: 1, Sprint: true})
@@ -134,12 +134,13 @@ func TestReconnectPreservesHealthPositionAndProductionCooldown(t *testing.T) {
 	advance(w, 1)
 	w.Join("one", "Baker")
 	p = w.players["one"]
-	if p.health != 35 || p.x != 24 || p.z != 72 {
+	if p.health != 35 || p.x != x || p.z != z {
 		t.Fatal("reconnect healed or relocated player")
 	}
 	if p.input.X != 0 || p.input.Sprint {
 		t.Fatal("reconnect retained movement input")
 	}
+	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
 	if err := w.Act("one", Action{Action: "make_dough"}); err == nil {
 		t.Fatal("reconnect bypassed production cooldown")
 	}
@@ -376,7 +377,7 @@ func TestGymLocationCapsAndProteinRecovery(t *testing.T) {
 	}
 }
 
-func TestAnimalsRememberWitnessedKillsAndKindness(t *testing.T) {
+func TestSpeciesReputationTracksKindnessAndHarm(t *testing.T) {
 	w, p := testWorld()
 	victim := findAnimal(w, "turtle")
 	victim.Need = "trapped"
@@ -391,19 +392,20 @@ func TestAnimalsRememberWitnessedKillsAndKindness(t *testing.T) {
 	p.x = -30
 	p.z = 50
 	mustAct(t, w, Action{Action: "interact", Target: victim.ID})
-	if victim.Need != "" || p.profile.Reputation[victim.ID] != 3 || p.profile.Inventory["pearl"] != 1 {
+	if victim.Need != "" || p.profile.Reputation[victim.Species] != 3 || p.profile.Inventory["pearl"] != 1 {
 		t.Fatal("turtle rescue did not grant trust and pearl")
 	}
-	if p.profile.Reputation[witness.ID] != 1 {
-		t.Fatal("nearby witness did not remember kindness")
+	if p.profile.Reputation[witness.Species] != 0 {
+		t.Fatal("helping a turtle changed an unrelated species reputation")
 	}
 	w.damageAnimal(p, victim, 1000)
-	if p.profile.Reputation[witness.ID] >= 0 {
-		t.Fatal("witness did not remember killing")
+	if p.profile.Reputation[victim.Species] >= 0 {
+		t.Fatal("killing a turtle did not lower the species reputation")
 	}
-	if p.profile.Reputation[distant.ID] != 0 {
-		t.Fatal("animal remembered a killing it could not witness")
+	if p.profile.Reputation[distant.Species] != 0 || p.profile.Reputation[witness.Species] != 0 {
+		t.Fatal("killing a turtle changed unrelated species reputations")
 	}
+	w.damageAnimal(p, witness, 1)
 	advance(w, .1)
 	if witness.Disposition != "hunting" {
 		t.Fatal("shark did not seek revenge")
@@ -411,8 +413,8 @@ func TestAnimalsRememberWitnessedKillsAndKindness(t *testing.T) {
 	saved := w.Profiles()
 	restored := New(saved)
 	restored.Join("one", "Baker")
-	if restored.players["one"].profile.Reputation[witness.ID] >= 0 {
-		t.Fatal("animal memory was not persisted")
+	if restored.players["one"].profile.Reputation[witness.Species] >= 0 {
+		t.Fatal("species reputation was not persisted")
 	}
 }
 
@@ -426,7 +428,7 @@ func TestPersistedProfilesAreSanitized(t *testing.T) {
 	if _, ok := p.profile.Inventory["unknown"]; ok {
 		t.Fatal("unknown item restored")
 	}
-	if len(p.profile.Protected) != 1 {
+	if len(p.profile.Protected) != 0 {
 		t.Fatal("invalid protected slots restored")
 	}
 }

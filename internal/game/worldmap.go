@@ -7,11 +7,16 @@ import (
 )
 
 const (
-	MinX       = -240.0
-	MaxX       = 240.0
-	MinZ       = -260.0
-	MaxZ       = 200.0
-	CaveFloorY = -10.0
+	MinX           = -240.0
+	MaxX           = 240.0
+	MinZ           = -260.0
+	MaxZ           = 200.0
+	CaveFloorY     = -24.0
+	CaveMouthZ     = -75.0
+	CaveStairTopZ  = -78.0
+	CaveStairCount = 96
+	CaveStairRun   = 37.0 / CaveStairCount
+	CaveStairRise  = -CaveFloorY / CaveStairCount
 )
 
 type Point struct {
@@ -104,15 +109,21 @@ func groundY(p *player) float64 {
 	if inWater(p) {
 		return -.6
 	}
-	return caveGroundY(p.x, p.z)
+	if p.inCave {
+		return caveGroundY(p.x, p.z)
+	}
+	return 0
 }
 
 // Construction now belongs to private home islands; city bakeries remain businesses.
 var buildingZones = []BuildZone{}
 
 func caveGroundY(x, z float64) float64 {
-	if x >= 117 && x <= 123 && z <= -98 && z >= -115 {
-		return CaveFloorY * (-98 - z) / 17
+	if clubFootprint(x, z) {
+		return clubGroundY(x, z)
+	}
+	if x >= 117 && x <= 123 && z <= CaveMouthZ && z >= -115 {
+		return -CaveStairRise * math.Ceil(max(0, (CaveStairTopZ-z)/CaveStairRun-1e-9))
 	}
 	if x >= 107 && x <= 133 && z <= -113 && z >= -129 {
 		return CaveFloorY
@@ -120,7 +131,28 @@ func caveGroundY(x, z float64) float64 {
 	return 0
 }
 
-func caveReserved(x, z float64) bool { return x > 104 && x < 136 && z > -132 && z < -92 }
+func caveFootprint(x, z float64) bool {
+	return clubFootprint(x, z) || math.Abs(x-120) <= caveHalfWidth(z) && z <= CaveMouthZ && z >= -115 ||
+		x >= 107 && x <= 133 && z <= -113 && z >= -129
+}
+
+func caveHalfWidth(z float64) float64 { return 3 + 1.4*max(0, min(1, (z-CaveStairTopZ)/3)) }
+
+func caveMouth(x, z float64) bool {
+	return clubMouth(x, z) || math.Abs(x-120) <= caveHalfWidth(z) && z < CaveMouthZ && z > -80
+}
+
+func sameNodeLayer(p *player, n *Node) bool {
+	underground := n.InCave || n.Kind == "pink_lollipop" || n.Kind == "blue_lollipop"
+	return p.island == n.Island && p.inCave == underground
+}
+
+func caveReserved(x, z float64) bool {
+	return x > 103 && x < 137 && z > -134 && z < -68 ||
+		x > -223 && x < -181 && z > -255 && z < -199 ||
+		x > -207 && x < -198 && z >= -204 && z < -186 ||
+		x >= -207 && x <= -30 && z > -197 && z < -187
+}
 
 func buildZone(x, z float64) string {
 	for _, b := range buildingZones {
@@ -131,9 +163,6 @@ func buildZone(x, z float64) string {
 	return ""
 }
 func zoneAt(x, z float64) string {
-	if caveGroundY(x, z) < 0 {
-		return "Sunbaked clay caves"
-	}
 	for _, b := range buildingZones {
 		if math.Abs(x-b.X) < b.Width/2 && math.Abs(z-b.Z) < b.Depth/2 {
 			return b.Name
@@ -168,7 +197,7 @@ func (w *World) StaticLayout() Layout {
 	return l
 }
 func (w *World) seedMap() {
-	w.layout = Layout{Version: 4, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
+	w.layout = Layout{Version: 7, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
 	for x := MinX; x <= 0; x += 3 {
 		w.layout.Coast = append(w.layout.Coast, Point{x, coastZ(x)})
 	}
@@ -193,19 +222,17 @@ func (w *World) seedMap() {
 	addNode("blue_lollipop", "blue_lollipop", "Blue lollipop · visit friends", 129, -124, 0, 0)
 	addNode("abu_fanous", "abu_fanous", "Abu Fanous · camel keeper", 226, -126, 0, 0)
 	w.seedCave()
+	w.seedClub()
 	building("saffron_house", "desert_building", "SAFFRON • BARTER", 32, -30, 8, 7, 4)
 	building("juniper_house", "desert_building", "JUNIPER • BARTER", 150, -55, 9, 8, 4)
 	building("clove_house", "desert_building", "CLOVE • BARTER", 55, -195, 9, 8, 4)
-	for i, p := range []Point{{51, -48}, {15, -52}, {131, -75}, {175, -68}, {77, -210}, {36, -220}} {
+	for i, p := range []Point{{51, -48}, {15, -52}, {146, -91}, {175, -68}, {77, -210}, {36, -220}} {
 		building(fmt.Sprintf("village_house_%d", i), "desert_building", "", p.X, p.Z, 8, 7, 4)
 	}
 	addNode("gym", "gym", "The Rolling Pin Gym", 45, 20, 0, 0)
-	addNode("vending", "vending", "Protein vending machine", 49, 20, 0, 0)
 	building("gym_building", "gym", "ROLLING PIN GYM", 45, 20, 12, 10, 6)
 	addNode("kitchen_shop", "kitchen_shop", "The Kitchen Workshop", 80, 22, 0, 0)
 	building("kitchen_store", "kitchen_shop", "KITCHEN WORKSHOP", 80, 22, 12, 9, 5)
-	addNode("general_shop", "general_shop", "The Crumb Market", 140, 22, 0, 0)
-	building("general_store", "general_shop", "CRUMB MARKET", 140, 22, 12, 9, 5)
 	building("paint_store", "paint_shop", "PIGMENT & COLOUR", 178, 22, 12, 9, 5)
 	addNode("paint_shop", "paint_shop", "Pigment & Colour", 178, 22, 0, 0)
 	building("outfit_store", "outfit_shop", "THREAD & THIMBLE", 210, 22, 11, 9, 5)
@@ -242,7 +269,7 @@ func (w *World) seedMap() {
 		kind := []string{"wood", "stick", "stone", "dough", "berry", "nut", "chest"}[i%7]
 		x := -12 - rng.Float64()*220
 		z := -15 - rng.Float64()*233
-		if w.staticBlocked(x, z, 2) || buildZone(x, z) != "" {
+		if w.staticBlocked(x, z, 2) || buildZone(x, z) != "" || caveReserved(x, z) {
 			continue
 		}
 		addNode(fmt.Sprintf("forest_%d", i), kind, labels[kind], x, z, 2, 35)
@@ -261,7 +288,7 @@ func (w *World) seedMap() {
 		if kind == "cactus" {
 			n := w.nodes[len(w.nodes)-1]
 			n.Scale, n.Variant, n.Color = .65+rng.Float64()*.9, rng.IntN(4), cactusColors[rng.IntN(len(cactusColors))]
-			w.colliders = append(w.colliders, Collider{ID: fmt.Sprintf("desert_%d", i), X: x, Z: z, Radius: .6, Height: 2.2})
+			w.makeCactus(n, n.Scale, n.Variant)
 		}
 	}
 	for i := 0; i < 75; i++ {
@@ -273,6 +300,27 @@ func (w *World) seedMap() {
 			amount = 2
 		}
 		addNode(fmt.Sprintf("beach_%d", i), kind, labels[kind], x, z, amount, 35)
+	}
+	// Small cactus gardens grow outside the village walls. These use the same
+	// resources as wilderness cacti, so every visible cactus can be chopped.
+	for _, house := range append([]WorldProp{}, w.layout.Props...) {
+		if house.Kind != "desert_building" {
+			continue
+		}
+		for i, side := range []float64{-1, 1} {
+			x, z := house.X+side*(house.Width/2+2), house.Z-1
+			if w.staticBlocked(x, z, 1) {
+				continue
+			}
+			n := &Node{ID: fmt.Sprintf("%s_cactus_%d", house.ID, i), Kind: "cactus", X: x, Z: z, Available: true}
+			w.nodes = append(w.nodes, n)
+			w.makeCactus(n, .65+float64(i)*.15, i)
+		}
+	}
+	for i, point := range []Point{{112, -120}, {128, -116}, {125, -128}} {
+		n := &Node{ID: fmt.Sprintf("cave_roof_cactus_%d", i), Kind: "cactus", X: point.X, Z: point.Z, Available: true}
+		w.nodes = append(w.nodes, n)
+		w.makeCactus(n, []float64{.7, .85, .65}[i], i)
 	}
 	w.seedDecor(rng)
 }
@@ -299,13 +347,12 @@ func (w *World) buildingColliders(p WorldProp) {
 		furniture("_treadmill_left", -3, -2, 1.2, 2.7, 1.4)
 		furniture("_treadmill_right", 3, -2, 1.2, 2.7, 1.4)
 		furniture("_bench", 0, -2.8, 4, .85, .65)
-		furniture("_vending", 4, 0, 1.3, .85, 2.2)
 	case "desert_building":
 		for _, side := range []float64{-1, 1} {
 			w.colliders = append(w.colliders, Collider{ID: fmt.Sprintf("%s_awning_%v", p.ID, side), X: p.X + side*1.9, Z: p.Z + p.Depth/2 + 2.2, Radius: .07, Height: 3})
 		}
 		w.colliders = append(w.colliders, Collider{ID: p.ID + "_pot", X: p.X - 3, Z: p.Z + p.Depth/2 + .5, Radius: .5, Height: 1.2})
-	case "kitchen_shop", "general_shop", "paint_shop", "outfit_shop":
+	case "kitchen_shop", "paint_shop", "outfit_shop":
 		for _, side := range []float64{-1, 1} {
 			furniture(fmt.Sprintf("_window_display_%v", side), side*(p.Width/2-1.6), p.Depth/2+.5, 2, .8, 1.1)
 		}
@@ -372,7 +419,7 @@ func (w *World) seedDecor(rng *rand.Rand) {
 			}
 		}
 		for _, p := range w.layout.Props {
-			if p.Kind == "desert_building" || p.Kind == "gym" || p.Kind == "bakery" || p.Kind == "kitchen_shop" || p.Kind == "general_shop" || p.Kind == "paint_shop" || p.Kind == "outfit_shop" {
+			if p.Kind == "desert_building" || p.Kind == "gym" || p.Kind == "bakery" || p.Kind == "kitchen_shop" || p.Kind == "paint_shop" || p.Kind == "outfit_shop" {
 				if circleRect(x, z, r+3, p.X, p.Z, p.Width, p.Depth) {
 					return false
 				}
@@ -405,6 +452,12 @@ func (w *World) seedDecor(rng *rand.Rand) {
 			w.nodes = append(w.nodes, n)
 			w.makeWoodTree(n, scale, rng.IntN(5))
 			w.layout.Props[len(w.layout.Props)-1].Kind = kind
+			return
+		}
+		if kind == "cactus" {
+			n := &Node{ID: id, Kind: kind, X: x, Z: z, Available: true}
+			w.nodes = append(w.nodes, n)
+			w.makeCactus(n, scale, rng.IntN(5))
 			return
 		}
 		prop := WorldProp{ID: id, Kind: kind, X: x, Z: z, Width: 2 * r, Depth: 2 * r, Height: h, Scale: scale, Variant: rng.IntN(5)}

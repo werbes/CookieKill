@@ -25,7 +25,7 @@ func TestSlotMigrationRetainsEveryItemAndOnlyMigratesOnce(t *testing.T) {
 	w := New(map[string]Profile{"one": {Name: "Old Baker", Inventory: old, Protected: []string{"sugar", "berry_cookie", "cake", "nut_cookie", "sun_cookie"}, Selected: "protein_cookie"}})
 	w.Join("one", "Login Name")
 	p := w.players["one"]
-	if p.profile.SafeSlots[0].Item != "sugar" || p.profile.Hotbar[0].Item != "protein_cookie" {
+	if len(p.profile.SafeSlots) != 0 || p.profile.InventoryVersion != 3 || p.profile.Hotbar[0].Item != "protein_cookie" {
 		t.Fatal("migration lost requested priority slots")
 	}
 	for item, count := range old {
@@ -56,9 +56,9 @@ func TestInventoryMovesSwapsAndHotbarRestriction(t *testing.T) {
 	w, p := testWorld()
 	gain(p, "wood", 12)
 	gain(p, "berry_cookie", 4)
-	mustAct(t, w, Action{Action: "move_item", From: "bag", FromSlot: 0, To: "safe", ToSlot: 0})
-	if p.profile.SafeSlots[0] != (Stack{"wood", 12}) {
-		t.Fatal("safe slots must accept resources")
+	mustAct(t, w, Action{Action: "move_item", From: "bag", FromSlot: 0, To: "bag", ToSlot: 19})
+	if p.profile.BagSlots[19] != (Stack{"wood", 12}) {
+		t.Fatal("expanded inventory slots must accept resources")
 	}
 	if err := w.Act("one", Action{Action: "throw", Item: "berry_cookie"}); err == nil {
 		t.Fatal("bag cookie bypassed hotbar")
@@ -72,8 +72,8 @@ func TestInventoryMovesSwapsAndHotbarRestriction(t *testing.T) {
 	if p.profile.Hotbar[1].Count != 1 || p.profile.Inventory["berry_cookie"] != 3 {
 		t.Fatal("throw did not consume hotbar only")
 	}
-	mustAct(t, w, Action{Action: "move_item", From: "safe", FromSlot: 0, To: "hotbar", ToSlot: 1})
-	if p.profile.SafeSlots[0].Item != "berry_cookie" || p.profile.Hotbar[1].Item != "wood" {
+	mustAct(t, w, Action{Action: "move_item", From: "bag", FromSlot: 19, To: "hotbar", ToSlot: 1})
+	if p.profile.BagSlots[19].Item != "berry_cookie" || p.profile.Hotbar[1].Item != "wood" {
 		t.Fatal("different items should swap")
 	}
 	if err := w.Act("one", Action{Action: "move_item", From: "bag", FromSlot: 15, To: "safe", ToSlot: 0}); err == nil {
@@ -81,7 +81,7 @@ func TestInventoryMovesSwapsAndHotbarRestriction(t *testing.T) {
 	}
 }
 
-func TestDeathTransfersFiveRandomBagStacksAndWealthShare(t *testing.T) {
+func TestDeathTransfersOnlyCoinsAndKeepsEveryInventorySlot(t *testing.T) {
 	for _, tc := range []struct {
 		name                string
 		killer, coins, want int
@@ -91,31 +91,21 @@ func TestDeathTransfersFiveRandomBagStacksAndWealthShare(t *testing.T) {
 			w.Join("two", "Victim")
 			v := w.players["two"]
 			v.buffs = map[string]float64{}
-			v.profile.Coins = tc.coins
-			killer.profile.Coins = tc.killer
-			v.profile.SafeSlots[0] = Stack{"pearl", 50}
-			keys := []string{"wood", "stick", "stone", "dough", "berry", "nut", "trash"}
-			for i, key := range keys {
-				v.profile.BagSlots[i] = Stack{key, i + 2}
+			v.profile.Coins, killer.profile.Coins = tc.coins, tc.killer
+			for i := range v.profile.BagSlots {
+				v.profile.BagSlots[i] = Stack{"wood", i + 2}
+			}
+			for i := range v.profile.Hotbar {
+				v.profile.Hotbar[i] = Stack{"cake", i + 3}
 			}
 			syncInventory(&v.profile)
+			bag, hotbar, killerBag, killerHotbar := v.profile.BagSlots, v.profile.Hotbar, killer.profile.BagSlots, killer.profile.Hotbar
 			w.damagePlayer(killer, v, 1000, "test")
 			if killer.profile.Coins != tc.killer+tc.want || v.profile.Coins != tc.coins-tc.want {
 				t.Fatal("wrong wealth-based share")
 			}
-			remaining, stolen := 0, 0
-			for i, key := range keys {
-				if v.profile.Inventory[key] > 0 {
-					remaining++
-				} else {
-					stolen++
-					if killer.profile.Inventory[key] != i+2 {
-						t.Fatal("loot should transfer the entire selected stack")
-					}
-				}
-			}
-			if remaining != 2 || stolen != 5 || v.profile.SafeSlots[0].Count != 50 || v.profile.Hotbar[0].Count != 10 {
-				t.Fatal("death touched protected storage or took wrong number of stacks")
+			if v.profile.BagSlots != bag || v.profile.Hotbar != hotbar || killer.profile.BagSlots != killerBag || killer.profile.Hotbar != killerHotbar {
+				t.Fatal("death deleted or transferred inventory items")
 			}
 		})
 	}
@@ -159,8 +149,8 @@ func TestFullBagPurchaseCraftAndGatherAreAtomic(t *testing.T) {
 	}
 	syncInventory(&p.profile)
 	p.profile.Coins = 100
-	nodePosition(w, p, "general_shop")
-	if err := w.Act("one", Action{Action: "trade", Target: "general_shop", Item: "dough"}); err == nil {
+	nodePosition(w, p, "desert_trader")
+	if err := w.Act("one", Action{Action: "buy_ingredient", Target: "desert_trader", Item: "dough"}); err == nil {
 		t.Fatal("full bag purchase accepted")
 	}
 	if p.profile.Coins != 100 || len(p.profile.Recovery) > 0 {
@@ -241,6 +231,7 @@ func TestBakeryPlotsPricesProgressionAndPaint(t *testing.T) {
 			t.Fatalf("upgrade expected%d", cost)
 		}
 	}
+	nodePosition(w, p, "bakery_plot_0_mixer")
 	mustAct(t, w, Action{Action: "make_dough"})
 	if p.profile.Inventory["dough"] <= 2 || p.cooldowns["dough"]-w.time >= 8 {
 		t.Fatal("upgrades did not improve production")
@@ -258,8 +249,8 @@ func TestBakeryPlotsPricesProgressionAndPaint(t *testing.T) {
 	mustAct(t, w, Action{Action: "paint", Target: "walls", Item: "teal"})
 	restored := New(w.Profiles())
 	restored.Join("one", "Baker")
-	if restored.players["one"].profile.Paint["walls"] != "teal" || restored.plotOwner("bakery_plot_1") != "two" {
-		t.Fatal("property ownership/paint lost on restart")
+	if restored.players["one"].profile.Paint["walls"] != "teal" || restored.plotOwner("bakery_plot_1") != "" || !restored.profiles["two"].Bakery {
+		t.Fatal("restart should preserve purchases/paint while releasing city plots")
 	}
 }
 
@@ -479,16 +470,19 @@ func TestFirstBakeryUpgradeHasVisibleBoundedBenefits(t *testing.T) {
 	nodePosition(w, p, "bakery_plot_0")
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
 	mustAct(t, w, Action{Action: "upgrade"})
+	nodePosition(w, p, "bakery_plot_0_mixer")
 	mustAct(t, w, Action{Action: "make_dough"})
 	if p.profile.Inventory["dough"] != 3 || math.Abs(p.cooldowns["dough"]-w.time-7.2) > .000001 {
 		t.Fatal("first upgrade should make three dough with a ten percent shorter cooldown")
 	}
 	setItem(p, "dough", 20)
+	nodePosition(w, p, "bakery_plot_0_oven")
 	mustAct(t, w, Action{Action: "craft", Item: "sugar", Amount: 20})
 	if p.profile.Inventory["sugar"] != 31 {
 		t.Fatal("first upgrade did not improve a large baking batch")
 	}
-	mustAct(t, w, Action{Action: "trade", Target: "bakery", Item: "sugar", Amount: 20})
+	nodePosition(w, p, "bakery_plot_0_display")
+	mustAct(t, w, Action{Action: "trade", Target: "bakery_plot_0_display", Item: "sugar", Amount: 20})
 	if p.profile.Coins != 745 {
 		t.Fatal("sugar sale bonus was rounded away per cookie instead of across the batch")
 	}
@@ -515,7 +509,7 @@ func TestAnimalHitsFollowJumpHeight(t *testing.T) {
 	}
 }
 
-func TestPurchasedBakeryDisplayBlocksMovementAndShotsWhileOffline(t *testing.T) {
+func TestBakeryDisplayBlocksMovementAndShotsOnlyWhileClaimed(t *testing.T) {
 	w, p := testWorld()
 	p.profile.Coins = 1000
 	nodePosition(w, p, "bakery_plot_0")
@@ -524,8 +518,8 @@ func TestPurchasedBakeryDisplayBlocksMovementAndShotsWhileOffline(t *testing.T) 
 		t.Fatal("unbought display has an invisible collision box")
 	}
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
-	if w.solidBlocked(x, z, .42) {
-		t.Fatal("bakery ownership alone created a display collider")
+	if !w.solidBlocked(x, z, .42) {
+		t.Fatal("base bakery display is not solid")
 	}
 	nodePosition(w, p, "kitchen_shop")
 	mustAct(t, w, Action{Action: "trade", Target: "kitchen_shop", Item: "display"})
@@ -548,11 +542,11 @@ func TestPurchasedBakeryDisplayBlocksMovementAndShotsWhileOffline(t *testing.T) 
 		t.Fatal("projectile passed through a purchased display")
 	}
 	w.Leave("one")
-	if !w.solidBlocked(x, z, .42) {
-		t.Fatal("display became passable when owner disconnected")
+	if w.solidBlocked(x, z, .42) {
+		t.Fatal("released bakery left an invisible display collider")
 	}
 	restored := New(w.Profiles())
-	if !restored.solidBlocked(x, z, .42) {
-		t.Fatal("offline display collision lost after restart")
+	if restored.solidBlocked(x, z, .42) {
+		t.Fatal("restart restored an offline display to an unclaimed plot")
 	}
 }

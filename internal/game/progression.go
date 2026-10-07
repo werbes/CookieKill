@@ -8,8 +8,8 @@ import (
 
 func bakeryBoost(p *player) float64 { l := float64(p.profile.BakeryLevel); return l / (l + 3) }
 func (w *World) buyLand(p *player, target string) error {
-	if p.profile.Bakery {
-		return errors.New("You already own a bakery.")
+	if p.profile.BakeryPlot != "" {
+		return errors.New("Your bakery already occupies a city plot this session.")
 	}
 	if target == "" {
 		for _, n := range w.nodes {
@@ -25,15 +25,23 @@ func (w *World) buyLand(p *player, target string) error {
 	if w.plotOwner(target) != "" {
 		return errors.New("Another player owns this bakery plot.")
 	}
-	if p.profile.Coins < 250 {
-		return errors.New("A bakery plot costs 250 coins.")
+	returning := p.profile.Bakery
+	if !returning {
+		if p.profile.Coins < 250 {
+			return errors.New("Your first bakery costs 250 coins.")
+		}
+		p.profile.Coins -= 250
 	}
-	p.profile.Coins -= 250
 	p.profile.Bakery = true
 	p.profile.BakeryPlot = target
 	w.rebuildPropertyColliders()
+	w.clearNewBakeryDisplay(target)
 	awardHats(&p.profile)
-	w.event(p.profile.Name+" opened a bakery!", "bakery", p.x, p.z)
+	if returning {
+		w.event("Your saved bakery is open again. Reclaiming a free plot costs no coins.", "bakery", p.x, p.z)
+	} else {
+		w.event(p.profile.Name+" opened a bakery!", "bakery", p.x, p.z)
+	}
 	return nil
 }
 func (w *World) upgradeBakery(p *player) error {
@@ -98,20 +106,5 @@ func (w *World) paintBakery(p *player, target, color string) error {
 		return errors.New("Buy a tin of that paint at the kitchen shop.")
 	}
 	p.profile.Paint[target] = color
-	return nil
-}
-func (w *World) generalTrade(p *player, item string, amount int) error {
-	prices := map[string]int{"dough": 3, "berry": 2, "nut": 2, "wood": 2, "stick": 1, "stone": 1, "sea_salt": 3}
-	price, ok := prices[item]
-	if !ok {
-		return errors.New("This city shop sells dough, ingredients and building supplies.")
-	}
-	if p.profile.Coins < price*amount {
-		return errors.New("You need more coins for those supplies.")
-	}
-	p.profile.Coins -= price * amount
-	if !gain(p, item, amount) {
-		return errors.New("Your inventory is full. Move or use a stack first.")
-	}
 	return nil
 }
