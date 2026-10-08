@@ -79,10 +79,10 @@ func TestBakeryCustomersRequireDisplayStockAndWaitForExactOrder(t *testing.T) {
 }
 func TestBakeryStaffHiresOnceAndAutomatesAwayFromOwner(t *testing.T) {
 	w, p := businessWorld(t)
-	for _, role := range []string{"chef", "cashier"} {
+	for _, role := range []string{"chef", "cashier", "server"} {
 		mustAct(t, w, Action{Action: "bakery_hire", Target: "bakery_plot_0", Item: role})
 	}
-	if p.profile.Coins != 250 {
+	if p.profile.Coins != 0 {
 		t.Fatal("wrong one-time staff prices")
 	}
 	if p.bakery.chefStatus != "Starting shift" {
@@ -96,7 +96,7 @@ func TestBakeryStaffHiresOnceAndAutomatesAwayFromOwner(t *testing.T) {
 	p.profile.BakeryPantry = map[string]int{"baking_sugar": 1, "butter": 1, "flour": 1, "egg": 1}
 	p.x, p.z = -35, -35
 	advance(w, 105)
-	if p.profile.Coins <= 250 || !p.profile.Discovered["sugar"] {
+	if p.profile.Coins <= 0 || !p.profile.Discovered["sugar"] {
 		t.Fatal("chef/cashier did not generate real customer sales")
 	}
 	if p.profile.BagSlots != bag || p.profile.Hotbar != hotbar {
@@ -105,14 +105,14 @@ func TestBakeryStaffHiresOnceAndAutomatesAwayFromOwner(t *testing.T) {
 	nodes := w.Snapshot("one").Nodes
 	staff := 0
 	for _, n := range nodes {
-		if n.Kind == "bakery_chef" || n.Kind == "bakery_cashier" {
+		if n.Kind == "bakery_chef" || n.Kind == "bakery_cashier" || n.Kind == "bakery_server" {
 			staff++
 			if n.Owner != "one" || n.PlotID != "bakery_plot_0" || n.Available {
 				t.Fatal("staff node lacks ownership or became gathering resource")
 			}
 		}
 	}
-	if staff != 2 {
+	if staff != 3 {
 		t.Fatal("staff did not appear in bakery")
 	}
 }
@@ -131,14 +131,15 @@ func TestBakeryChefUsesPantryKnownRecipesAndCapacity(t *testing.T) {
 	if len(p.profile.BakeryDisplay) != 0 || p.profile.Inventory["berry"] != 10 {
 		t.Fatal("chef used owner's bag without pantry deposit")
 	}
-	nodePosition(w, p, "bakery_plot_0_mixer")
+	nodePosition(w, p, "bakery_plot_0_fridge")
 	mustAct(t, w, Action{Action: "bakery_pantry_deposit", Item: "berry", Amount: 2})
 	mustAct(t, w, Action{Action: "bakery_pantry_deposit", Item: "dough", Amount: 1})
 	advance(w, 20)
-	if p.profile.BakeryDisplay["berry_cookie"] != 1 || p.profile.BakeryPantry["berry"] != 0 || p.profile.BakeryPantry["dough"] != 0 || p.profile.Inventory["berry"] != 8 || p.profile.Inventory["dough"] != 9 {
+	if p.profile.Production["bakery_cooling_table"].Output["berry_cookie"] != 1 || p.profile.BakeryDisplay["berry_cookie"] != 0 || p.profile.BakeryPantry["berry"] != 0 || p.profile.BakeryPantry["dough"] != 0 || p.profile.Inventory["berry"] != 8 || p.profile.Inventory["dough"] != 9 {
 		t.Fatal("chef did not use exact pantry recipe")
 	}
 	p.profile.BakeryDisplay = map[string]int{"sugar": bakeryDisplayCapacity}
+	p.profile.Production["bakery_cooling_table"].Output = map[string]int{"sugar": productionCapacity}
 	mustAct(t, w, Action{Action: "bakery_pantry_deposit", Item: "berry", Amount: 2})
 	mustAct(t, w, Action{Action: "bakery_pantry_deposit", Item: "dough", Amount: 1})
 	beforePantry := cloneMap(p.profile.BakeryPantry)
@@ -154,7 +155,7 @@ func TestBakeryBusinessTransfersPermissionsAndAtomicFailure(t *testing.T) {
 	if err := w.Act("one", Action{Action: "bakery_stock", Item: "stone"}); err == nil {
 		t.Fatal("display accepted non-cookie")
 	}
-	p.profile.BakeryDisplay["sugar"] = 99
+	p.profile.BakeryDisplay["sugar"] = bakeryDisplayCapacity - 1
 	before := cloneProfile(p.profile)
 	if err := w.Act("one", Action{Action: "bakery_stock", Item: "sugar", Amount: 2}); err == nil || !reflect.DeepEqual(before, p.profile) {
 		t.Fatal("overfull stocking was not atomic")

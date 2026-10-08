@@ -54,6 +54,7 @@ func New(saved map[string]Profile) *World {
 	w.restoreProperties()
 	w.restoreSocial()
 	w.rebuildPropertyColliders()
+	w.restoreCamelHomes()
 	return w
 }
 
@@ -77,6 +78,7 @@ func sanitize(p Profile) Profile {
 		}
 	}
 	p.Coins = max(0, min(p.Coins, coinLimit))
+	normalizeTownStats(&p)
 	if p.Levels == nil {
 		p.Levels = map[string]int{}
 	}
@@ -109,6 +111,7 @@ func sanitize(p Profile) Profile {
 	normalizeCamels(&p)
 	p.Kills = max(0, p.Kills)
 	p.Deaths = max(0, p.Deaths)
+	normalizeAchievements(&p)
 	return p
 }
 
@@ -128,11 +131,21 @@ func cloneProfile(p Profile) Profile {
 	p.Recovery = cloneMap(p.Recovery)
 	p.Discovered = cloneMap(p.Discovered)
 	p.Hats = cloneMap(p.Hats)
+	p.Achievements = cloneMap(p.Achievements)
+	p.HungAchievements = append([]string{}, p.HungAchievements...)
 	p.Equipment = cloneMap(p.Equipment)
 	p.Paint = cloneMap(p.Paint)
 	p.BakeryDisplay = cloneMap(p.BakeryDisplay)
 	p.BakeryPantry = cloneMap(p.BakeryPantry)
 	p.BakeryStaff = cloneMap(p.BakeryStaff)
+	p.BakeryStaffBreaks = cloneMap(p.BakeryStaffBreaks)
+	p.BakeryChefRecipes = append([]string{}, p.BakeryChefRecipes...)
+	trays := make(map[string]map[string]int, len(p.BakeryServerCarry))
+	for worker, stock := range p.BakeryServerCarry {
+		trays[worker] = cloneMap(stock)
+	}
+	p.BakeryServerCarry = trays
+	p.BakeryCarry = cloneMap(p.BakeryCarry)
 	p.BakeryFurniture = append([]BakeryFurniture{}, p.BakeryFurniture...)
 	p.Production = cloneProduction(p.Production)
 	if p.Camels != nil {
@@ -155,10 +168,12 @@ func (w *World) Join(id, name string) {
 		name = string([]rune(name)[:24])
 	}
 	if _, ok := w.players[id]; ok {
+		w.players[id].disconnected = false
 		// Account login cannot bypass call-name cooldown.
 		return
 	}
 	if p, ok := w.offline[id]; ok {
+		p.disconnected = false
 		// Account login cannot bypass call-name cooldown.
 		p.input = Input{}
 		p.jumpQueued, p.sprinting = false, false
@@ -187,9 +202,19 @@ func (w *World) Join(id, name string) {
 func (w *World) Leave(id string) {
 	w.ReleaseBakeryPlot(id)
 	if p, ok := w.players[id]; ok {
+		if p.cookieArena != nil {
+			_ = w.leaveCookieArena(p)
+		}
+		_ = w.leaveCamelRace(p)
+		if p.island == CamelTrainingIsland {
+			_ = w.leaveCamelTraining(p)
+		}
+		w.houseOfflineCamels(p)
 		p.buildMode, p.editingBuildID = false, ""
 		p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
-		if p.bakerySeatID != "" { p.posture, p.bakerySeatID = "", "" }
+		if p.bakerySeatID != "" {
+			p.posture, p.bakerySeatID = "", ""
+		}
 		if p.clubSeatID != "" {
 			p.posture, p.clubSeatID = "", ""
 		}
@@ -250,6 +275,7 @@ func (w *World) Input(id string, in Input) {
 	}
 	in.Yaw = math.Remainder(in.Yaw, math.Pi*2)
 	in.Pitch = max(-1.35, min(1.35, in.Pitch))
+	w.cookiePracticeInput(p, in)
 	if in.Jump && !p.jumpHeld {
 		p.jumpQueued = true
 	}
@@ -275,6 +301,9 @@ func (w *World) event(message, kind string, x, z float64) {
 func (w *World) eventActor(message, kind string, x, z float64, actor string) {
 	w.event(message, kind, x, z)
 	w.events[len(w.events)-1].Actor = actor
+	if p := w.players[actor]; p != nil {
+		w.events[len(w.events)-1].Island = p.island
+	}
 }
 
 func (w *World) Profiles() map[string]Profile {
@@ -345,7 +374,12 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		out.Homes = w.homes()
 	}
 	out.ServerTime = w.now().Unix()
+	out.DayCycle = dayCycleAt(w.time)
+	out.JohnPork = w.johnPorkSnapshot(viewer)
 	out.ClubDrinks = append([]ClubDrink{}, clubDrinks...)
+	out.ClubCakes = append([]ClubCake{}, clubCakes...)
+	out.CamelRace = w.camelRaceSnapshot(id)
+	out.Town = w.townSnapshot(id)
 	for pid, p := range w.players {
 		if viewer != nil && p.island != viewer.island {
 			continue
@@ -374,7 +408,14 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 			}
 			continue
 		}
-		out.Players = append(out.Players, PlayerView{ID: pid, Name: p.profile.Name, X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Area: area(p.x, p.z), Buffs: buffs, Username: p.profile.Username, CallName: p.profile.CallName, Avatar: p.profile.Avatar, InCave: p.inCave})
+		heldItem := ""
+		if slot := p.profile.SelectedSlot; slot >= 0 && slot < len(p.profile.Hotbar) && p.profile.Hotbar[slot].Count > 0 {
+			heldItem = p.profile.Hotbar[slot].Item
+		}
+		if isCookieArena(p.island) {
+			heldItem = "sugar"
+		}
+		out.Players = append(out.Players, PlayerView{ID: pid, Name: p.profile.Name, X: p.x, Y: playerY(p), Z: p.z, Yaw: p.yaw, Pitch: p.pitch, Health: p.health, MaxHealth: 100, Area: area(p.x, p.z), Buffs: buffs, Username: p.profile.Username, CallName: p.profile.CallName, Avatar: p.profile.Avatar, Island: p.island, InCave: p.inCave, HeldItem: heldItem, Grounded: grounded(p), Sprinting: p.sprinting})
 	}
 	sort.Slice(out.Players, func(i, j int) bool { return out.Players[i].ID < out.Players[j].ID })
 	for _, n := range w.nodes {
@@ -382,6 +423,9 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 			continue
 		}
 		cp := w.bakeryNodeView(*n, owners)
+		if cp.Kind == "club_cake_seller" {
+			cp.Available = w.clubNodeAvailable(n)
+		}
 		if cp.Kind == "club_seat" {
 			for pid, p := range w.players {
 				if p.clubSeatID == cp.ID && p.posture == "sitting" {
@@ -393,8 +437,8 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		out.Nodes = append(out.Nodes, cp)
 	}
 	for _, shot := range w.projectiles {
-		if !mainland {
-			break
+		if viewer != nil && shot.Island != viewer.island || viewer == nil && shot.Island != "" {
+			continue
 		}
 		out.Projectiles = append(out.Projectiles, *shot)
 	}
@@ -424,6 +468,11 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		out.Animals = append(out.Animals, cp)
 	}
 	for _, e := range w.events {
+		// Retain the creation world: an arena player may have returned to the
+		// mainland while their recent hit events are still being broadcast.
+		if isCookieArena(e.Island) && (viewer == nil || viewer.island != e.Island) || viewer != nil && isCookieArena(viewer.island) && e.Island != viewer.island {
+			continue
+		}
 		if (e.Kind == "craft" || e.Kind == "animal") && e.Actor != "" && e.Actor != id {
 			continue
 		}
@@ -443,8 +492,14 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		out.Recipes = append(out.Recipes, r)
 	}
 	w.decorateIslandSnapshot(id, &out)
+	w.decorateCamelRaceSnapshot(viewer, &out)
+	w.decorateCamelTrainingSnapshot(viewer, &out)
+	w.decorateCookieArenaSnapshot(viewer, &out)
+	w.cookiePracticeSnapshot(viewer, &out)
+	w.decorateCamelCompanions(viewer, &out)
 	w.bakeryBusinessSnapshot(viewer, &out)
 	w.bakeryFurnitureSnapshot(viewer, &out)
 	out.BakingIngredients = append([]BakingIngredient{}, bakingIngredients...)
+	w.decorateAchievementSnapshot(viewer, &out)
 	return out
 }

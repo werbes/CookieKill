@@ -66,6 +66,20 @@ test('reduced flashing respects the device preference and freezes light animatio
   preference.matches=false;setClubReducedFlashing(true);assert.equal(clubReducedFlashing(),true);setClubReducedFlashing(false);assert.equal(clubReducedFlashing(),false);delete globalThis.matchMedia;
 });
 
+test('Disco Duke and his cake stand appear at night at the authoritative seller location',async()=>{
+  const [THREE,{buildForestClub}]=await modules;
+  const parent=new THREE.Group(),scene=buildForestClub({THREE,parent,flatLabel:()=>new THREE.Group(),makePerson:()=>new THREE.Group()});
+  const seller=scene.group.getObjectByName('club-cake-seller');
+  assert.ok(seller);assert.deepEqual(seller.position.toArray(),[-191,-12,-245]);assert.equal(seller.visible,false);
+  scene.update(1,true,null,true);assert.equal(seller.visible,true);
+  for(const part of ['coat','hat','feather','chain','cane','sign'])assert.ok(seller.getObjectByName('club-cake-seller-'+part),part+' should be visible at the stand');
+  assert.ok(seller.getObjectByName('club-funny-cake-tray'));assert.equal(seller.getObjectsByProperty('name','club-funny-cake').length,5);
+  scene.update(2,false,null,false);assert.equal(seller.visible,false,'dawn hides him even while the club is inactive');
+  scene.update(3,false,null,true);assert.equal(seller.visible,true);
+  assert.ok(seller.children.filter(o=>o.isPointLight).every(o=>o.visible===false),'a distant club does not keep the seller light active');
+  parent.visible=false;assert.equal(seller.parent.parent,parent,'seller follows main-island scenery visibility');
+});
+
 test('club panels use authoritative drink prices and serialize spins through result/error/disconnect',async()=>{
   const [,,{createClubPanels,CLUB_MULTIPLIERS}]=await modules;
   const actions=[],state={connected:true,modal:'shop',context:{kind:'club_casino'},snapshot:{me:{coins:100,inventory:{chocolate_shake:2}},clubDrinks:[{id:'chocolate_shake',name:'Chocolate shake',price:7,heal:8,stamina:18}]}};

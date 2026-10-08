@@ -48,6 +48,10 @@ func TestRunServerCancellationSavesAndReleasesListener(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataDir := t.TempDir()
+	legacy := []byte(`{"version":3,"profiles":{"alice":{"id":"alice","name":"Alice","coins":321,"inventoryVersion":3}}}`)
+	if err := os.WriteFile(filepath.Join(dataDir, "players.json"), legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
 	cfg := appConfig{Dev: true, Addr: "127.0.0.1:0", DataDir: dataDir}
 	ready := make(chan struct{}, 1)
 	done := make(chan error, 1)
@@ -70,15 +74,18 @@ func TestRunServerCancellationSavesAndReleasesListener(t *testing.T) {
 	if err := receiveWithin(t, done); err != nil {
 		t.Fatalf("shutdown failed: %v", err)
 	}
-	contents, err := os.ReadFile(filepath.Join(dataDir, "players.json"))
+	contents, err := os.ReadFile(filepath.Join(dataDir, "players", "alice.json"))
 	if err != nil {
-		t.Fatalf("shutdown did not persist players: %v", err)
+		t.Fatalf("shutdown did not persist the player file: %v", err)
 	}
 	var save struct {
-		Version  int                        `json:"version"`
-		Profiles map[string]json.RawMessage `json:"profiles"`
+		Version int `json:"version"`
+		Profile struct {
+			ID    string `json:"id"`
+			Coins int    `json:"coins"`
+		} `json:"profile"`
 	}
-	if err := json.Unmarshal(contents, &save); err != nil || save.Version != 3 || save.Profiles == nil {
+	if err := json.Unmarshal(contents, &save); err != nil || save.Version != 3 || save.Profile.ID != "alice" || save.Profile.Coins != 321 {
 		t.Fatalf("invalid shutdown save: %s (decode error: %v)", contents, err)
 	}
 	listener, err := net.Listen("tcp", strings.TrimPrefix(url, "http://"))
@@ -113,9 +120,27 @@ func TestRunServerOccupiedAddressNeverReportsReady(t *testing.T) {
 }
 
 func TestRunServerPreservesMalformedSave(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		path     string
+		contents string
+	}{
+		{name: "legacy", path: "players.json", contents: `{"version":2,"profiles":`},
+		{name: "player", path: filepath.Join("players", "alice.json"), contents: `{"version":3,"profile":`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testRunServerPreservesMalformedSave(t, test.path, []byte(test.contents))
+		})
+	}
+}
+
+func testRunServerPreservesMalformedSave(t *testing.T, relativePath string, contents []byte) {
+	t.Helper()
 	dataDir := t.TempDir()
-	savePath := filepath.Join(dataDir, "players.json")
-	contents := []byte(`{"version":2,"profiles":`)
+	savePath := filepath.Join(dataDir, relativePath)
+	if err := os.MkdirAll(filepath.Dir(savePath), 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(savePath, contents, 0600); err != nil {
 		t.Fatal(err)
 	}

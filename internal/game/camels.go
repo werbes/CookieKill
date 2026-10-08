@@ -11,15 +11,26 @@ import (
 // Camels retain their identity and parking place independently of their rider.
 // RentalUntil is zero for a permanently owned camel. There is no herd size cap.
 type Camel struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name,omitempty"`
-	X           float64 `json:"x"`
-	Y           float64 `json:"y"`
-	Z           float64 `json:"z"`
-	Yaw         float64 `json:"yaw"`
-	Island      string  `json:"island"`
-	InCave      bool    `json:"inCave"`
-	RentalUntil int64   `json:"rentalUntil"`
+	ID            string                `json:"id"`
+	Name          string                `json:"name,omitempty"`
+	X             float64               `json:"x"`
+	Y             float64               `json:"y"`
+	Z             float64               `json:"z"`
+	Yaw           float64               `json:"yaw"`
+	Island        string                `json:"island"`
+	InCave        bool                  `json:"inCave"`
+	RentalUntil   int64                 `json:"rentalUntil"`
+	TraitsVersion int                   `json:"traitsVersion"`
+	Speed         float64               `json:"speed"`
+	Jump          float64               `json:"jump"`
+	Stamina       float64               `json:"stamina"`
+	Happiness     float64               `json:"happiness"`
+	HomePenID     string                `json:"homePenId,omitempty"`
+	HomePenSlot   int                   `json:"homePenSlot,omitempty"`
+	Following     bool                  `json:"following,omitempty"` // Snapshot-only companion activity.
+	EatingUntil   float64               `json:"eatingUntil,omitempty"`
+	Training      CamelTrainingProgress `json:"training"`
+	TrainingBoost CamelTrainingProgress `json:"trainingBoost"`
 }
 
 func nextCamelID(p *Profile) string {
@@ -71,9 +82,10 @@ func normalizeCamels(p *Profile) {
 			c.ID = nextCamelID(p)
 		}
 		seen[c.ID] = true
+		camelTraits(c)
 		if !finite(c.X) || !finite(c.Y) || !finite(c.Z) || !finite(c.Yaw) ||
 			c.X < MinX || c.X > MaxX || c.Z < MinZ || c.Z > MaxZ ||
-			c.Island != "" && (math.Hypot(c.X, c.Z) > 40 || c.Y < 0 || c.Y > 15) ||
+			c.Island != "" && (math.Hypot(c.X, c.Z) > 65 || c.Y < 0 || c.Y > 15) ||
 			c.Island == "" && (waterAt(c.X, c.Z) || c.InCave && !caveFootprint(c.X, c.Z)) {
 			c.X, c.Y, c.Z, c.Yaw, c.Island, c.InCave = 224, 0, -126, 0, "", false
 		}
@@ -86,12 +98,19 @@ func normalizeCamels(p *Profile) {
 		}
 		c.RentalUntil = max(0, c.RentalUntil)
 	}
+	normalizeCamelHomes(p)
 	camelCompatibility(p)
 }
 
 func mountedCamel(p *player) *Camel {
 	if !p.ridingCamel {
 		return nil
+	}
+	if p.island == CamelRaceIsland && p.raceCamel != nil {
+		return p.raceCamel
+	}
+	if p.island == CamelTrainingIsland && p.training != nil {
+		return ownCamel(p, p.training.camelID)
 	}
 	for i := range p.profile.Camels {
 		if p.profile.Camels[i].ID == p.mountedCamelID {
@@ -102,6 +121,9 @@ func mountedCamel(p *player) *Camel {
 }
 
 func syncMountedCamel(p *player) {
+	if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+		return
+	}
 	if c := mountedCamel(p); c != nil {
 		c.X, c.Y, c.Z, c.Yaw = p.x, groundY(p), p.z, p.yaw
 		c.Island, c.InCave = p.island, p.inCave
@@ -127,6 +149,9 @@ func (w *World) expireCamels(p *player) {
 }
 
 func (w *World) updateMountedCamel(p *player) {
+	if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+		return
+	}
 	// Also supports an in-memory legacy companion during a rolling migration.
 	if p.ridingCamel && p.mountedCamelID == "" {
 		normalizeCamels(&p.profile)
@@ -228,6 +253,8 @@ func (w *World) mountCamel(p *player, target string) error {
 			candidate.x, candidate.z = x, z
 		}
 	}
+	camelTraits(nearest)
+	delete(p.camelCalls, nearest.ID)
 	p.x, p.y, p.z, p.yaw = nearest.X, nearest.Y, nearest.Z, nearest.Yaw
 	p.posture, p.ridingCamel, p.mountedCamelID = "", true, nearest.ID
 	resetMovement(p)
@@ -284,6 +311,7 @@ func (w *World) camelAction(p *player, a Action) error {
 		w.dismountCamel(p)
 		p.profile.Coins -= cost
 		c := Camel{ID: nextCamelID(&p.profile), X: p.x, Y: groundY(p), Z: p.z, Yaw: p.yaw, Island: p.island, InCave: p.inCave, RentalUntil: until}
+		camelTraits(&c)
 		p.profile.Camels = append(p.profile.Camels, c)
 		camelCompatibility(&p.profile)
 		p.ridingCamel, p.mountedCamelID, p.posture = true, c.ID, ""
@@ -309,7 +337,7 @@ func (w *World) camelNodes(viewer *player) []Node {
 			if c.Name != "" {
 				label = c.Name
 			}
-			nodes = append(nodes, Node{ID: c.ID, Kind: "camel", Label: label, Owner: owner, X: c.X, Y: c.Y, Z: c.Z, Yaw: c.Yaw, InCave: c.InCave, Island: c.Island, Available: true})
+			nodes = append(nodes, Node{ID: c.ID, Kind: "camel", Label: label, Owner: owner, X: c.X, Y: c.Y, Z: c.Z, Yaw: c.Yaw, InCave: c.InCave, Island: c.Island, Phase: w.camelNodePhase(owner, c), Available: true})
 		}
 	}
 	return nodes

@@ -129,8 +129,8 @@ func TestPackedStationsPauseStaffAndCustomersUntilReplaced(t *testing.T) {
 	mustAct(t, w, Action{Action: "bakery_pack", Target: "display"})
 	stock, coins := bakeryStockCount(p.profile.BakeryDisplay), p.profile.Coins
 	w.Tick(.05)
-	if c.Phase != "leaving" || c.Amount != 0 || !strings.Contains(p.bakery.chefStatus, "display") {
-		t.Fatal("packed display did not pause baking and send customers out empty-handed")
+	if c.Phase != "leaving" || c.Amount != 0 || !w.bakeryWorkerReady(p, "chef") {
+		t.Fatal("packed display failed to send customers out while retaining the independent kitchen chef")
 	}
 	advance(w, 45)
 	if len(p.bakery.customers) != 0 || bakeryStockCount(p.profile.BakeryDisplay) != stock || p.profile.Coins != coins {

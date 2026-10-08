@@ -30,8 +30,8 @@ const { chromium } = require(require.resolve('playwright', { paths: [path.resolv
     hats: {}, discovered: { sugar: true }, camelOwned: true, camels,
     homeIsland: { owner: ownerID, visitors: false, builders: {}, chest: {}, objects: [] },
   };
-  const playersFile = path.join(data, 'players.json');
-  fs.writeFileSync(playersFile, JSON.stringify({ version: 2, profiles: { [ownerID]: profile } }));
+  const playerFile = path.join(data, 'players', ownerID + '.json');
+  fs.writeFileSync(path.join(data, 'players.json'), JSON.stringify({ version: 2, profiles: { [ownerID]: profile } }));
   const executable = path.join(output, process.platform === 'win32' ? 'server.exe' : 'server');
   const go = process.env.CK_GO || (process.platform === 'win32' ? 'C:/Program Files/Go/bin/go.exe' : 'go');
   const build = spawnSync(go, ['build', '-o', executable, '.'], { cwd: root, windowsHide: true, encoding: 'utf8' });
@@ -106,7 +106,7 @@ const { chromium } = require(require.resolve('playwright', { paths: [path.resolv
   async function mount() {
     await page.keyboard.press('e');
     await until(() => snapshot.me.ridingCamel && snapshot.me.mountedCamelId === camels[0].id, 'E mounts nearby owned camel');
-    assert.equal(actions.at(-1).action, 'camel_mount', 'E must use the nearby camel action');
+    assert.equal(actions.at(-1).action, 'interact', 'E lets the server choose feeding or mounting from the held item');
     assert.equal(actions.at(-1).target, camels[0].id);
   }
   async function dismount() {
@@ -218,9 +218,9 @@ const { chromium } = require(require.resolve('playwright', { paths: [path.resolv
     await dismount();
     const savedHerd = structuredClone(snapshot.me.camels);
     await until(() => {
-      try { return JSON.stringify(JSON.parse(fs.readFileSync(playersFile, 'utf8')).profiles[ownerID].camels) === JSON.stringify(savedHerd); }
+      try { return JSON.stringify(JSON.parse(fs.readFileSync(playerFile, 'utf8')).profile.camels) === JSON.stringify(savedHerd); }
       catch { return false; }
-    }, 'herd positions persisted to players.json');
+    }, 'herd positions persisted to the player file');
     snapshot = null;
     await page.reload({ waitUntil: 'networkidle' });
     await page.locator('#start-button').waitFor({ state: 'visible' });

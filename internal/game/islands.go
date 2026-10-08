@@ -8,28 +8,36 @@ import (
 )
 
 type Island struct {
-	Owner    string                    `json:"owner"`
-	Visitors bool                      `json:"visitors"`
-	Builders map[string]bool           `json:"builders"`
-	Chest    map[string]int            `json:"chest"`
-	Objects  []BuildObject             `json:"objects"`
-	Storage  map[string]map[string]int `json:"storage,omitempty"`
+	Owner           string                    `json:"owner"`
+	Visitors        bool                      `json:"visitors"`
+	Builders        map[string]bool           `json:"builders"`
+	Chest           map[string]int            `json:"chest"`
+	Objects         []BuildObject             `json:"objects"`
+	Storage         map[string]map[string]int `json:"storage,omitempty"`
+	UpgradeLevel    int                       `json:"upgradeLevel"`
+	BuildRadius     float64                   `json:"buildRadius"`
+	WalkRadius      float64                   `json:"walkRadius"`
+	NextUpgradeCost int                       `json:"nextUpgradeCost"`
+	MaxUpgrades     int                       `json:"maxUpgrades"`
 }
 
 type BuildObject struct {
-	ID        string  `json:"id"`
-	Kind      string  `json:"kind"`
-	X         float64 `json:"x"`
-	Y         float64 `json:"y"`
-	Z         float64 `json:"z"`
-	Rotation  float64 `json:"rotation"`
-	Open      bool    `json:"open"`
-	Lit       bool    `json:"lit"`
-	Planted   string  `json:"planted,omitempty"`
-	ReadyAt   float64 `json:"readyAt,omitempty"`
-	Adopted   string  `json:"adopted,omitempty"`
-	Color     string  `json:"color,omitempty"`
-	EditingBy string  `json:"editingBy,omitempty"`
+	ID              string   `json:"id"`
+	Kind            string   `json:"kind"`
+	X               float64  `json:"x"`
+	Y               float64  `json:"y"`
+	Z               float64  `json:"z"`
+	Rotation        float64  `json:"rotation"`
+	Open            bool     `json:"open"`
+	Lit             bool     `json:"lit"`
+	Planted         string   `json:"planted,omitempty"`
+	ReadyAt         float64  `json:"readyAt,omitempty"`
+	Adopted         string   `json:"adopted,omitempty"`
+	PondCapacity    int      `json:"pondCapacity,omitempty"`
+	PondUpgradeCost int      `json:"pondUpgradeCost,omitempty"`
+	AdoptedAnimals  []string `json:"adoptedAnimals,omitempty"`
+	Color           string   `json:"color,omitempty"`
+	EditingBy       string   `json:"editingBy,omitempty"`
 }
 
 type BuildRecipe struct {
@@ -68,6 +76,7 @@ var buildRecipes = []BuildRecipe{
 	{"oven", "Oven", "appliances", map[string]int{"stone": 12, "wood": 4}, 2, 1.7, 2},
 	{"garden_bed", "Nut and berry garden", "appliances", map[string]int{"wood": 4, "stone": 3}, 3, 2, .6},
 	{"pond", "Adoption pond", "appliances", map[string]int{"stone": 14, "wood": 4}, 5, 4, .3},
+	{"camel_pen", "Fenced camel enclosure", "appliances", map[string]int{"wood": 24, "stick": 12, "stone": 6}, 8, 8, 1.5},
 	{"fire", "Campfire", "appliances", map[string]int{"wood": 2, "stick": 2, "stone": 3}, 1.4, 1.4, .7},
 }
 
@@ -88,6 +97,10 @@ func cloneIsland(h *Island) *Island {
 	cp.Builders = cloneMap(h.Builders)
 	cp.Chest = cloneMap(h.Chest)
 	cp.Objects = append([]BuildObject{}, h.Objects...)
+	for i := range cp.Objects {
+		cp.Objects[i].AdoptedAnimals = append([]string(nil), h.Objects[i].AdoptedAnimals...)
+	}
+	normalizeIslandUpgrade(&cp)
 	cp.Storage = make(map[string]map[string]int, len(h.Storage))
 	for id, contents := range h.Storage {
 		cp.Storage[id] = cloneMap(contents)
@@ -127,6 +140,7 @@ func normalizeIslandProfile(p *Profile) {
 	}
 	if h := p.HomeIsland; h != nil {
 		h.Owner = p.ID
+		normalizeIslandUpgrade(h)
 		if h.Builders == nil {
 			h.Builders = map[string]bool{}
 		}
@@ -144,11 +158,12 @@ func normalizeIslandProfile(p *Profile) {
 		seen := map[string]bool{}
 		for _, o := range h.Objects {
 			_, ok := buildRecipeFor(o.Kind)
-			if !ok || o.ID == "" || seen[o.ID] || !validBuildPosition(o.X, o.Y, o.Z, o.Rotation) {
+			if !ok || o.ID == "" || seen[o.ID] || !validIslandBuildPosition(h, o.X, o.Y, o.Z, o.Rotation) {
 				continue
 			}
 			o.Rotation = normalizeRotation(o.Rotation)
 			o.EditingBy = ""
+			normalizePond(&o)
 			if !validColor(o.Color) {
 				o.Color = ""
 			}
@@ -178,12 +193,16 @@ func normalizeIslandProfile(p *Profile) {
 }
 
 func overlapsIslandPortal(o BuildObject) bool {
-	r, ok := buildRecipeFor(o.Kind)
+	r, ok := buildObjectRecipe(o)
 	if !ok {
 		return false
 	}
 	x, z := objectLocal(o, islandPortalX, islandPortalZ)
-	return circleRect(x, z, islandPortalRadius, 0, 0, r.Width, r.Depth)
+	if circleRect(x, z, islandPortalRadius, 0, 0, r.Width, r.Depth) {
+		return true
+	}
+	x, z = objectLocal(o, islandUpgradeX, islandUpgradeZ)
+	return circleRect(x, z, 1.5, 0, 0, r.Width, r.Depth)
 }
 
 // Existing islands gain the return platform too. Move nearby saved furnishings
@@ -193,13 +212,13 @@ func clearIslandPortal(h *Island) {
 		if !overlapsIslandPortal(o) {
 			continue
 		}
-		r, _ := buildRecipeFor(o.Kind)
+		r, _ := buildObjectRecipe(o)
 		best, nearest := o, math.Inf(1)
 		fallback, fallbackDistance := o, math.Inf(1)
-		for x := -32.0; x <= 32; x++ {
-			for z := -32.0; z <= 32; z++ {
+		for x := -islandBuildRadius(h); x <= islandBuildRadius(h); x++ {
+			for z := -islandBuildRadius(h); z <= islandBuildRadius(h); z++ {
 				d := distance(o.X, o.Z, x, z)
-				if d >= nearest || math.Hypot(x, z)+math.Hypot(r.Width, r.Depth)/2 > 34 || !validBuildPosition(x, o.Y, z, o.Rotation) {
+				if d >= nearest || math.Hypot(x, z)+math.Hypot(r.Width, r.Depth)/2 > islandBuildRadius(h)+2 || !validIslandBuildPosition(h, x, o.Y, z, o.Rotation) {
 					continue
 				}
 				candidate := o
@@ -212,7 +231,7 @@ func clearIslandPortal(h *Island) {
 					if i == j {
 						continue
 					}
-					or, _ := buildRecipeFor(other.Kind)
+					or, _ := buildObjectRecipe(other)
 					if rectanglesOverlap(x, z, r.Width, r.Depth, o.Rotation, other.X, other.Z, or.Width, or.Depth, other.Rotation) {
 						clear = false
 						if r.Category == "appliances" && or.Category == "appliances" {
@@ -259,11 +278,14 @@ func packedBuildItem(item string) (kind, color string, ok bool) {
 	}
 	kind, color, painted := strings.Cut(strings.TrimPrefix(item, "build_"), ":")
 	_, exists := buildRecipeFor(kind)
-	return kind, color, exists && (!painted || validChoice(kind, "chest", "storage_chest") && validColor(color))
+	return kind, color, exists && (!painted || validChoice(kind, "chest", "storage_chest") && validColor(color) || kind == "pond" && validChoice(color, "capacity2", "capacity3", "capacity4"))
 }
 
 func packedBuildName(o BuildObject) string {
 	item := "build_" + o.Kind
+	if o.Kind == "pond" && pondCapacity(o) > 1 {
+		return item + ":capacity" + strconv.Itoa(pondCapacity(o))
+	}
 	if o.Color != "" && validChoice(o.Kind, "chest", "storage_chest") {
 		item += ":" + o.Color
 	}
@@ -473,18 +495,30 @@ func (w *World) islandAction(p *player, a Action) error {
 			return err
 		}
 		color := ""
+		capacity := 1
 		if a.From != "" {
 			kind, packedColor, valid := packedBuildItem(a.From)
 			if h.Owner != p.profile.ID || !valid || kind != a.Item || !take(p, a.From, 1) {
 				return errors.New("Place a packed furnishing from your own inventory on your own island.")
 			}
 			color = packedColor
+			if kind == "pond" {
+				if packedColor != "" {
+					capacity, _ = strconv.Atoi(strings.TrimPrefix(packedColor, "capacity"))
+				}
+				color = ""
+			}
 		} else if err := spendBuildMaterials(p, h, r.Cost); err != nil {
 			return err
 		}
 		w.sequence++
 		id := "build_" + strconv.FormatInt(w.now().UnixNano(), 36) + "_" + strconv.FormatUint(w.sequence, 36)
-		h.Objects = append(h.Objects, BuildObject{ID: id, Kind: a.Item, X: a.X, Y: a.Y, Z: a.Z, Rotation: normalizeRotation(a.Rotation), Lit: a.Item == "fire", Color: color})
+		object := BuildObject{ID: id, Kind: a.Item, X: a.X, Y: a.Y, Z: a.Z, Rotation: normalizeRotation(a.Rotation), Lit: a.Item == "fire", Color: color}
+		if a.Item == "pond" {
+			object.PondCapacity = capacity
+			normalizePond(&object)
+		}
+		h.Objects = append(h.Objects, object)
 	case "edit_build", "move_build", "destroy_build", "pack_build", "paint_build":
 		index := -1
 		for i, o := range h.Objects {
@@ -497,6 +531,9 @@ func (w *World) islandAction(p *player, a Action) error {
 			return errors.New("That furnishing is no longer here.")
 		}
 		o := h.Objects[index]
+		if o.Kind == "camel_pen" && w.camelPenOccupied(h.Owner, o.ID) {
+			return errors.New("Unhouse the camels assigned to this enclosure before editing or removing it.")
+		}
 		if distance(p.x, p.z, o.X, o.Z) > 12 {
 			return errors.New("Move within 12 metres of the furnishing.")
 		}
@@ -530,7 +567,9 @@ func (w *World) islandAction(p *player, a Action) error {
 			h.Objects[index] = o
 		} else {
 			ownerProfile := w.productionOwnerProfile(h.Owner)
-			if ownerProfile != nil && productionRemovalBlocked(ownerProfile,"home:"+o.ID) { return errors.New("Finish cooking and collect this appliance's output before removing it.") }
+			if ownerProfile != nil && productionRemovalBlocked(ownerProfile, "home:"+o.ID) {
+				return errors.New("Finish cooking and collect this appliance's output before removing it.")
+			}
 			if buildHasContents(h, o) {
 				return errors.New("Empty this chest, harvest this garden, or rehome its animal before removing it.")
 			}
@@ -548,7 +587,9 @@ func (w *World) islandAction(p *player, a Action) error {
 				}
 			}
 			delete(h.Storage, o.ID)
-			if ownerProfile != nil { delete(ownerProfile.Production,"home:"+o.ID) }
+			if ownerProfile != nil {
+				delete(ownerProfile.Production, "home:"+o.ID)
+			}
 			h.Objects = append(h.Objects[:index], h.Objects[index+1:]...)
 		}
 		if a.Action != "paint_build" {
@@ -619,7 +660,7 @@ func (w *World) buildEditor(h *Island, target string) string {
 }
 
 func buildHasContents(h *Island, o BuildObject) bool {
-	if len(h.Storage[o.ID]) > 0 || o.Planted != "" || o.Adopted != "" {
+	if len(h.Storage[o.ID]) > 0 || o.Planted != "" || len(pondAnimals(o)) > 0 {
 		return true
 	}
 	if o.Kind == "chest" && len(h.Chest) > 0 {
@@ -634,24 +675,49 @@ func buildHasContents(h *Island, o BuildObject) bool {
 }
 
 func (w *World) validatePlacement(p *player, h *Island, kind, skip string, a Action) error {
-	if !validBuildPosition(a.X, a.Y, a.Z, a.Rotation) {
-		return errors.New("Build within the island's central 32 metres and below 12 metres high.")
+	if !validIslandBuildPosition(h, a.X, a.Y, a.Z, a.Rotation) {
+		return errors.New("Keep your build inside this island's building radius and below 12 metres high.")
 	}
 	if distance(p.x, p.z, a.X, a.Z) > 12 {
 		return errors.New("Build within 12 metres of where you are standing.")
 	}
-	r, _ := buildRecipeFor(kind)
-	if overlapsIslandPortal(BuildObject{Kind: kind, X: a.X, Z: a.Z, Rotation: normalizeRotation(a.Rotation)}) {
-		return errors.New("Keep the return platform and its three-metre landing area clear.")
+	candidate := BuildObject{Kind: kind, X: a.X, Y: a.Y, Z: a.Z, Rotation: normalizeRotation(a.Rotation)}
+	for _, o := range h.Objects {
+		if o.ID == skip {
+			candidate.PondCapacity = o.PondCapacity
+			break
+		}
 	}
-	if math.Hypot(a.X, a.Z)+math.Hypot(r.Width, r.Depth)/2 > 34 {
+	if kind == "pond" && strings.HasPrefix(a.From, "build_pond:capacity") {
+		candidate.PondCapacity, _ = strconv.Atoi(strings.TrimPrefix(a.From, "build_pond:capacity"))
+	}
+	r, _ := buildObjectRecipe(candidate)
+	if (kind == "camel_pen" || kind == "pond") && a.Y != 0 {
+		return errors.New("Place ponds and camel enclosures directly on the island ground.")
+	}
+	if overlapsIslandPortal(candidate) {
+		return errors.New("Keep the return platform and island upgrade sign clear.")
+	}
+	if math.Hypot(a.X, a.Z)+math.Hypot(r.Width, r.Depth)/2 > islandBuildRadius(h)+2 {
 		return errors.New("Keep the whole object on your island.")
 	}
 	if r.Category == "appliances" {
 		for _, o := range h.Objects {
-			other, _ := buildRecipeFor(o.Kind)
+			other, _ := buildObjectRecipe(o)
 			if o.ID != skip && other.Category == "appliances" && rectanglesOverlap(a.X, a.Z, r.Width, r.Depth, normalizeRotation(a.Rotation), o.X, o.Z, other.Width, other.Depth, o.Rotation) {
 				return errors.New("Appliances need their own space and cannot be stacked on one another.")
+			}
+		}
+	}
+	if owner, ok := w.profileByID(h.Owner); ok {
+		for _, camel := range owner.Camels {
+			pen, exists := camelHomePen(&owner, camel.HomePenID)
+			if !exists || camel.HomePenSlot < 0 || camel.HomePenSlot >= camelPenCapacity {
+				continue
+			}
+			slot := camelPenSlots(pen)[camel.HomePenSlot]
+			if objectBlocks(candidate, r, slot.X, pen.Y, slot.Z, .65) {
+				return errors.New("Keep assigned camel resting places clear, even while their camels are away.")
 			}
 		}
 	}
@@ -659,8 +725,7 @@ func (w *World) validatePlacement(p *player, h *Island, kind, skip string, a Act
 		if other.island != p.island {
 			continue
 		}
-		o := BuildObject{X: a.X, Y: a.Y, Z: a.Z, Kind: kind, Rotation: normalizeRotation(a.Rotation)}
-		if objectBlocks(o, r, other.x, playerY(other), other.z, .42) {
+		if objectBlocks(candidate, r, other.x, playerY(other), other.z, .42) {
 			return errors.New("A player is standing in that space.")
 		}
 	}
@@ -709,6 +774,9 @@ func objectBlocks(o BuildObject, r BuildRecipe, x, y, z, radius float64) bool {
 	if y >= o.Y+r.Height-.05 || y+1.7 <= o.Y {
 		return false
 	}
+	if o.Kind == "camel_pen" {
+		return penBlocks(o, r, x, z, radius)
+	}
 	// A ground floor is a walkable surface, not an invisible wall.
 	if o.Kind == "floor" && o.Y <= y+.45 {
 		return false
@@ -718,15 +786,15 @@ func objectBlocks(o BuildObject, r BuildRecipe, x, y, z, radius float64) bool {
 }
 
 func (w *World) islandBlocked(p *player, x, z float64) bool {
-	if math.Hypot(x, z) > 40 {
-		return true
+	if isCookieArena(p.island) {
+		return cookieArenaBlocked(p, x, z)
 	}
 	h, ok := w.currentIsland(p)
-	if !ok {
+	if !ok || math.Hypot(x, z) > islandWalkRadius(h) {
 		return true
 	}
 	for _, o := range h.Objects {
-		r, _ := buildRecipeFor(o.Kind)
+		r, _ := buildObjectRecipe(o)
 		if objectBlocks(o, r, x, playerY(p), z, .42) {
 			return true
 		}
@@ -735,6 +803,12 @@ func (w *World) islandBlocked(p *player, x, z float64) bool {
 }
 
 func (w *World) islandGround(p *player) float64 {
+	if p.island == CookiePracticeIsland {
+		return cookiePracticeGround(p, p.x, p.z)
+	}
+	if p.island == CookieRingIsland {
+		return 0
+	}
 	h, ok := w.currentIsland(p)
 	if !ok {
 		return 0
@@ -745,7 +819,10 @@ func (w *World) islandGround(p *player) float64 {
 		stepHeight = 0
 	}
 	for _, o := range h.Objects {
-		r, _ := buildRecipeFor(o.Kind)
+		if o.Kind == "camel_pen" {
+			continue
+		}
+		r, _ := buildObjectRecipe(o)
 		lx, lz := objectLocal(o, p.x, p.z)
 		if math.Abs(lx) > r.Width/2 || math.Abs(lz) > r.Depth/2 {
 			continue
@@ -951,12 +1028,12 @@ func (w *World) useBuild(p *player, h *Island, a Action) error {
 				o.ReadyAt = 0
 			}
 		case "pond":
-			if o.Adopted != "" {
-				w.eventActor("Your rescued "+o.Adopted+" is safe at home.", "notification", p.x, p.z, p.profile.ID)
+			if len(pondAnimals(*o)) > 0 {
+				w.eventActor("Your rescued animals are safe at home. Expand this pond to shelter up to four.", "notification", p.x, p.z, p.profile.ID)
 			} else {
 				w.eventActor("Find a wounded fish or turtle in the ocean and choose Adopt to bring it to this pond.", "notification", p.x, p.z, p.profile.ID)
 			}
-		case "chest", "storage_chest":
+		case "chest", "storage_chest", "camel_pen":
 			return nil
 		default:
 			return errors.New("This decoration can be moved or rebuilt with the build menu.")
@@ -973,13 +1050,13 @@ func (w *World) adoptAnimal(p *player, target string) error {
 	}
 	pond := -1
 	for i, o := range p.profile.HomeIsland.Objects {
-		if o.Kind == "pond" && o.Adopted == "" {
+		if o.Kind == "pond" && len(pondAnimals(o)) < pondCapacity(o) && w.buildEditor(p.profile.HomeIsland, o.ID) == "" {
 			pond = i
 			break
 		}
 	}
 	if pond < 0 {
-		return errors.New("You need an empty pond on your home island.")
+		return errors.New("You need a free space in a home pond. Expand a pond to shelter up to four animals.")
 	}
 	for _, a := range w.animals {
 		if a.ID != target {
@@ -991,7 +1068,10 @@ func (w *World) adoptAnimal(p *player, target string) error {
 		if distance(p.x, p.z, a.X, a.Z) > 5 {
 			return errors.New("Swim within 5 metres to adopt this animal.")
 		}
-		p.profile.HomeIsland.Objects[pond].Adopted = a.Species
+		o := &p.profile.HomeIsland.Objects[pond]
+		normalizePond(o)
+		o.AdoptedAnimals = append(o.AdoptedAnimals, a.Species)
+		normalizePond(o)
 		a.Health = 0
 		a.respawnAt = w.time + 120
 		p.profile.Rescues++
@@ -1061,6 +1141,7 @@ func (w *World) decorateIslandSnapshot(id string, out *Snapshot) {
 		out.Animals = []Animal{}
 		out.Projectiles = []Projectile{}
 		if h, ok := w.currentIsland(p); ok {
+			out.Nodes = append(out.Nodes, Node{ID: "island_upgrade", Kind: "island_upgrade", Label: "Expand your home island", X: islandUpgradeX, Z: islandUpgradeZ, Available: true, Island: p.island})
 			out.Island = cloneIsland(h)
 			for i := range out.Island.Objects {
 				out.Island.Objects[i].EditingBy = w.buildEditor(h, out.Island.Objects[i].ID)

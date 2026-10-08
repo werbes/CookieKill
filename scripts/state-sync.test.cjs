@@ -18,6 +18,18 @@ const {test} = require('node:test');
   });
   const delta = (extra = {}) => ({type:'delta', seq:2, base:1, time:2, serverTime:2000, ...extra});
 
+  test('day cycle and John Pork replace through deltas and dawn returns him to bed', () => {
+    const decoder=createSnapshotDecoder(),day={phase:'day',dayNumber:0,elapsed:719,remaining:1,dayDuration:720,nightDuration:360};
+    decoder.apply(snapshot({dayCycle:day,johnPork:null}));
+    const john={id:'john_pork',x:12,y:0,z:0,target:'self',island:'',inCave:false,eating:false};
+    const night=decoder.apply(delta({dayCycle:{...day,phase:'night',elapsed:0,remaining:360},johnPork:john}));
+    assert.equal(night.dayCycle.phase,'night');assert.equal(night.johnPork.target,'self');
+    const moving=decoder.apply({type:'delta',seq:3,base:2,johnPork:{...john,x:.5,eating:true}});assert.equal(moving.johnPork.eating,true);assert.equal(moving.dayCycle.phase,'night');assert.equal(night.johnPork.x,12);
+    const sleeper={id:'john_pork',x:220.2,y:1,z:-238.8,yaw:Math.PI,target:'',island:'',inCave:false,eating:false,sleeping:true};
+    const dawn=decoder.apply({type:'delta',seq:4,base:3,dayCycle:{...day,dayNumber:1,elapsed:0,remaining:720},johnPork:sleeper});assert.deepEqual(dawn.johnPork,sleeper);assert.equal(dawn.dayCycle.phase,'day');
+    const away=decoder.apply({type:'delta',seq:5,base:4,johnPork:null});assert.equal(away.johnPork,null,'world transition hides the sleeper');
+  });
+
   test('club catalog stays available during spins and personal results replace atomically', () => {
     const decoder=createSnapshotDecoder(),catalog=[{id:'chocolate_shake',name:'Chocolate shake',price:7}];
     decoder.apply(snapshot({clubDrinks:catalog}));

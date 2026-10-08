@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"regexp"
 	"testing"
 	"time"
@@ -146,7 +147,7 @@ func TestIslandVisitorBuilderChestIsolationAndRevocation(t *testing.T) {
 		t.Fatal("visitor stole materials")
 	}
 	s := w.Snapshot("two")
-	if len(s.Players) != 0 || len(s.Animals) != 0 || len(s.Nodes) != 1 || s.Nodes[0].Kind != "island_portal" || len(s.Island.Chest) != 0 {
+	if len(s.Players) != 0 || len(s.Animals) != 0 || len(s.Nodes) != 2 || s.Nodes[0].Kind != "island_portal" || s.Nodes[1].Kind != "island_upgrade" || len(s.Island.Chest) != 0 {
 		t.Fatal("island leaked main entities or private chest")
 	}
 	mustAct(t, w, Action{Action: "island_builder", Target: "two", Enabled: true})
@@ -230,14 +231,14 @@ func TestIslandReturnPlatformForOwnersVisitorsAndExistingSaves(t *testing.T) {
 	owner := restored.players["legacy"]
 	restored.setIsland(owner, "legacy")
 	snapshot := restored.Snapshot("legacy")
-	if len(snapshot.Nodes) != 1 || snapshot.Nodes[0].ID != "island_portal" || snapshot.Nodes[0].Island != "legacy" {
+	if len(snapshot.Nodes) != 2 || snapshot.Nodes[0].ID != "island_portal" || snapshot.Nodes[0].Island != "legacy" || snapshot.Nodes[1].ID != "island_upgrade" {
 		t.Fatal("existing island did not receive its permanent platform")
 	}
 	if len(snapshot.Island.Objects) != 1 || snapshot.Island.Objects[0].ID != "old_oven" || overlapsIslandPortal(snapshot.Island.Objects[0]) || snapshot.Island.Objects[0].Rotation != 45 || !snapshot.Island.Objects[0].Lit {
 		t.Fatal("existing furnishing was not preserved and moved clear of the platform")
 	}
 	again := New(restored.Profiles()).Profiles()["legacy"].HomeIsland
-	if len(again.Objects) != 1 || again.Objects[0] != snapshot.Island.Objects[0] {
+	if len(again.Objects) != 1 || !reflect.DeepEqual(again.Objects[0], snapshot.Island.Objects[0]) {
 		t.Fatal("platform migration changed an already migrated island")
 	}
 }
@@ -269,7 +270,7 @@ func TestIslandPlatformMigrationAllowsExistingFloorAndDecorOverlap(t *testing.T)
 		}
 		before := objects[i]
 		before.X, before.Z = o.X, o.Z
-		if o != before {
+		if !reflect.DeepEqual(o, before) {
 			t.Fatalf("migration changed saved furnishing data for %s", o.ID)
 		}
 	}
@@ -279,7 +280,7 @@ func TestIslandPlatformMigrationAllowsExistingFloorAndDecorOverlap(t *testing.T)
 	}
 	reloaded := New(w.Profiles()).Profiles()["paved"].HomeIsland
 	for i, o := range reloaded.Objects {
-		if o != h.Objects[i] {
+		if !reflect.DeepEqual(o, h.Objects[i]) {
 			t.Fatalf("migration moved %s again after restart", o.ID)
 		}
 	}

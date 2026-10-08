@@ -61,56 +61,69 @@ type Home struct {
 
 // Inventory is a derived compatibility view; bag and hotbar slots own items.
 type Profile struct {
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Coins             int               `json:"coins"`
-	Inventory         map[string]int    `json:"inventory"`
-	Protected         []string          `json:"protected,omitempty"` // Legacy migration input.
-	Levels            map[string]int    `json:"levels"`
-	Bakery            bool              `json:"bakery"`
-	BakeryName        string            `json:"bakeryName,omitempty"`
-	BakeryLevel       int               `json:"bakeryLevel"`
-	BakeryDisplay     map[string]int    `json:"bakeryDisplay"`
-	BakeryPantry      map[string]int    `json:"bakeryPantry"`
-	BakeryStaff       map[string]bool   `json:"bakeryStaff"`
-	BakeryChefRecipe  string            `json:"bakeryChefRecipe"`
-	Production map[string]*StationProduction `json:"production"`
-	BakeryFurniture []BakeryFurniture `json:"bakeryFurniture"`
-	BakeryFurnitureVersion int `json:"bakeryFurnitureVersion"`
-	Reputation        map[string]int    `json:"reputation"`
-	Kills             int               `json:"kills"`
-	Deaths            int               `json:"deaths"`
-	Selected          string            `json:"selected"`
-	InventoryVersion  int               `json:"inventoryVersion"`
-	SafeSlots         []Stack           `json:"safeSlots,omitempty"` // Legacy migration input; cleared on load.
-	BagSlots          [20]Stack         `json:"bagSlots"`
-	Hotbar            [5]Stack          `json:"hotbar"`
-	SelectedSlot      int               `json:"selectedSlot"`
-	Recovery          map[string]int    `json:"recovery"`
-	Discovered        map[string]bool   `json:"discovered"`
-	Username          string            `json:"username"`
-	CallName          string            `json:"callName"`
-	CallNameChangedAt int64             `json:"callNameChangedAt"`
-	Avatar            Avatar            `json:"avatar"`
-	Hats              map[string]bool   `json:"hats"`
-	Cleaned           int               `json:"cleaned"`
-	Rescues           int               `json:"rescues"`
-	BakeryPlot        string            `json:"bakeryPlot"`
-	Equipment         map[string]bool   `json:"equipment"`
-	Paint             map[string]string `json:"paint"`
-	Home              *Home             `json:"home,omitempty"`
-	HomeIsland        *Island           `json:"homeIsland,omitempty"`
-	FriendCode        string            `json:"friendCode"`
-	PublicFriendCode  bool              `json:"publicFriendCode"`
-	Friends           map[string]bool   `json:"friends"`
-	FriendRequests    map[string]bool   `json:"friendRequests"`
-	CamelOwned        bool              `json:"camelOwned"`
-	Camels            []Camel           `json:"camels"`
-	CamelRentalUntil  int64             `json:"camelRentalUntil"`
-	CamelDiscount     bool              `json:"camelDiscount"`
+	ID                     string                        `json:"id"`
+	Name                   string                        `json:"name"`
+	Coins                  int                           `json:"coins"`
+	CamelCoins             int                           `json:"camelCoins"`
+	CoinsEarned            int                           `json:"coinsEarned"`
+	PlaySeconds            float64                       `json:"playSeconds"`
+	Inventory              map[string]int                `json:"inventory"`
+	Protected              []string                      `json:"protected,omitempty"` // Legacy migration input.
+	Levels                 map[string]int                `json:"levels"`
+	Bakery                 bool                          `json:"bakery"`
+	BakeryName             string                        `json:"bakeryName,omitempty"`
+	BakeryLevel            int                           `json:"bakeryLevel"`
+	BakeryDisplay          map[string]int                `json:"bakeryDisplay"`
+	BakeryPantry           map[string]int                `json:"bakeryPantry"`
+	BakeryStaff            map[string]bool               `json:"bakeryStaff"`
+	BakeryStaffBreaks      map[string]bool               `json:"bakeryStaffBreaks"`
+	BakeryCarry            map[string]int                `json:"bakeryCarry"`
+	BakeryServerCarry      map[string]map[string]int     `json:"bakeryServerCarry"`
+	BakeryChefRecipe       string                        `json:"bakeryChefRecipe"`
+	BakeryChefRecipes      []string                      `json:"bakeryChefRecipes"`
+	Production             map[string]*StationProduction `json:"production"`
+	BakeryFurniture        []BakeryFurniture             `json:"bakeryFurniture"`
+	BakeryFurnitureVersion int                           `json:"bakeryFurnitureVersion"`
+	Reputation             map[string]int                `json:"reputation"`
+	Kills                  int                           `json:"kills"`
+	CookieRingKills        int                           `json:"cookieRingKills"`
+	Deaths                 int                           `json:"deaths"`
+	Selected               string                        `json:"selected"`
+	InventoryVersion       int                           `json:"inventoryVersion"`
+	SafeSlots              []Stack                       `json:"safeSlots,omitempty"` // Legacy migration input; cleared on load.
+	BagSlots               [20]Stack                     `json:"bagSlots"`
+	Hotbar                 [5]Stack                      `json:"hotbar"`
+	SelectedSlot           int                           `json:"selectedSlot"`
+	Recovery               map[string]int                `json:"recovery"`
+	Discovered             map[string]bool               `json:"discovered"`
+	Username               string                        `json:"username"`
+	CallName               string                        `json:"callName"`
+	CallNameChangedAt      int64                         `json:"callNameChangedAt"`
+	Avatar                 Avatar                        `json:"avatar"`
+	Hats                   map[string]bool               `json:"hats"`
+	Achievements           map[string]bool               `json:"achievements"`
+	HungAchievements       []string                      `json:"hungAchievements"`
+	Cleaned                int                           `json:"cleaned"`
+	Rescues                int                           `json:"rescues"`
+	BakeryPlot             string                        `json:"bakeryPlot"`
+	Equipment              map[string]bool               `json:"equipment"`
+	Paint                  map[string]string             `json:"paint"`
+	Home                   *Home                         `json:"home,omitempty"`
+	HomeIsland             *Island                       `json:"homeIsland,omitempty"`
+	FriendCode             string                        `json:"friendCode"`
+	PublicFriendCode       bool                          `json:"publicFriendCode"`
+	Friends                map[string]bool               `json:"friends"`
+	FriendRequests         map[string]bool               `json:"friendRequests"`
+	CamelOwned             bool                          `json:"camelOwned"`
+	Camels                 []Camel                       `json:"camels"`
+	CamelRentalUntil       int64                         `json:"camelRentalUntil"`
+	CamelDiscount          bool                          `json:"camelDiscount"`
 }
 
 type PlayerView struct {
+	Grounded    bool               `json:"grounded"`
+	Sprinting   bool               `json:"sprinting"`
+	HeldItem    string             `json:"heldItem"`
 	ID          string             `json:"id"`
 	Name        string             `json:"name"`
 	X           float64            `json:"x"`
@@ -134,78 +147,81 @@ type PlayerView struct {
 
 type Self struct {
 	Profile
-	X               float64             `json:"x"`
-	Y               float64             `json:"y"`
-	Z               float64             `json:"z"`
-	Yaw             float64             `json:"yaw"`
-	Pitch           float64             `json:"pitch"`
-	Health          float64             `json:"health"`
-	MaxHealth       float64             `json:"maxHealth"`
-	Stamina         float64             `json:"stamina"`
-	MaxStamina      float64             `json:"maxStamina"`
-	Grounded        bool                `json:"grounded"`
-	Sprinting       bool                `json:"sprinting"`
-	SprintExhausted bool                `json:"sprintExhausted"`
-	Area            string              `json:"area"`
-	Buffs           map[string]float64  `json:"buffs"`
-	Zone            string              `json:"zone"`
-	CanBuildHome    bool                `json:"canBuildHome"`
-	HomeSafeReason  string              `json:"homeSafeReason"`
-	Island          string              `json:"island"`
-	InCave          bool                `json:"inCave"`
-	HomeOffer       bool                `json:"homeOffer"`
-	FriendsTeleport bool                `json:"friendsTeleport"`
-	Posture         string              `json:"posture"`
-	RidingCamel     bool                `json:"ridingCamel"`
-	MountedCamelID  string              `json:"mountedCamelId,omitempty"`
-	BuildMode       bool                `json:"buildMode"`
-	EditingBuildID  string              `json:"editingBuildId,omitempty"`
-	ClubResult      *ClubResult         `json:"clubResult,omitempty"`
-	ClubSeatID      string              `json:"clubSeatId,omitempty"`
-	BakeryBusiness  *BakeryBusinessView `json:"bakeryBusiness,omitempty"`
-	BakeryBuildMode bool `json:"bakeryBuildMode"`
-	EditingBakeryFurnitureID string `json:"editingBakeryFurnitureId,omitempty"`
-	BakerySeatID string `json:"bakerySeatId,omitempty"`
-	Fallen          bool                `json:"fallen"`
-	StandIn         float64             `json:"standIn"`
-	FallChance      float64             `json:"fallChance"`
-	AlcoholDrinks   int                 `json:"alcoholDrinks"`
+	X                        float64             `json:"x"`
+	Y                        float64             `json:"y"`
+	Z                        float64             `json:"z"`
+	Yaw                      float64             `json:"yaw"`
+	Pitch                    float64             `json:"pitch"`
+	Health                   float64             `json:"health"`
+	MaxHealth                float64             `json:"maxHealth"`
+	Stamina                  float64             `json:"stamina"`
+	MaxStamina               float64             `json:"maxStamina"`
+	Grounded                 bool                `json:"grounded"`
+	Sprinting                bool                `json:"sprinting"`
+	SprintExhausted          bool                `json:"sprintExhausted"`
+	Area                     string              `json:"area"`
+	Buffs                    map[string]float64  `json:"buffs"`
+	Zone                     string              `json:"zone"`
+	CanBuildHome             bool                `json:"canBuildHome"`
+	HomeSafeReason           string              `json:"homeSafeReason"`
+	Island                   string              `json:"island"`
+	InCave                   bool                `json:"inCave"`
+	HomeOffer                bool                `json:"homeOffer"`
+	FriendsTeleport          bool                `json:"friendsTeleport"`
+	Posture                  string              `json:"posture"`
+	RidingCamel              bool                `json:"ridingCamel"`
+	MountedCamelID           string              `json:"mountedCamelId,omitempty"`
+	BuildMode                bool                `json:"buildMode"`
+	EditingBuildID           string              `json:"editingBuildId,omitempty"`
+	ClubResult               *ClubResult         `json:"clubResult,omitempty"`
+	ClubSeatID               string              `json:"clubSeatId,omitempty"`
+	BakeryBusiness           *BakeryBusinessView `json:"bakeryBusiness,omitempty"`
+	BakeryBuildMode          bool                `json:"bakeryBuildMode"`
+	EditingBakeryFurnitureID string              `json:"editingBakeryFurnitureId,omitempty"`
+	BakerySeatID             string              `json:"bakerySeatId,omitempty"`
+	Fallen                   bool                `json:"fallen"`
+	StandIn                  float64             `json:"standIn"`
+	FallChance               float64             `json:"fallChance"`
+	AlcoholDrinks            int                 `json:"alcoholDrinks"`
 }
 
 type Node struct {
-	ID            string            `json:"id"`
-	Kind          string            `json:"kind"`
-	Phase         string            `json:"phase,omitempty"`
-	Stock         map[string]int    `json:"stock,omitempty"`
-	BakeryFurniture []BakeryFurniture `json:"bakeryFurniture,omitempty"`
-	OccupiedBy string `json:"occupiedBy,omitempty"`
-	Production *StationProduction `json:"production,omitempty"`
-	LinkedTable string `json:"linkedTable,omitempty"`
-	Item          string            `json:"item,omitempty"`
-	Label         string            `json:"label"`
-	X             float64           `json:"x"`
-	Y             float64           `json:"y,omitempty"`
-	Z             float64           `json:"z"`
-	Yaw           float64           `json:"yaw,omitempty"`
-	InCave        bool              `json:"inCave,omitempty"`
-	Available     bool              `json:"available"`
-	Amount        int               `json:"amount"`
-	Owner         string            `json:"owner,omitempty"`
-	PlotID        string            `json:"plotId,omitempty"`
-	CallName      string            `json:"callName,omitempty"`
-	Username      string            `json:"username,omitempty"`
-	Paint         map[string]string `json:"paint,omitempty"`
-	Equipment     map[string]bool   `json:"equipment,omitempty"`
-	BakeryLevel   int               `json:"bakeryLevel"`
-	Island        string            `json:"island,omitempty"`
-	ExpiresAt     float64           `json:"expiresAt,omitempty"`
-	Scale         float64           `json:"scale,omitempty"`
-	Variant       int               `json:"variant,omitempty"`
-	Color         string            `json:"color,omitempty"`
-	ChopRemaining int               `json:"chopRemaining,omitempty"`
-	ChopTotal     int               `json:"chopTotal,omitempty"`
-	readyAt       float64
-	respawn       float64
+	HungAchievements []string           `json:"hungAchievements,omitempty"`
+	ID               string             `json:"id"`
+	Kind             string             `json:"kind"`
+	Phase            string             `json:"phase,omitempty"`
+	Stock            map[string]int     `json:"stock,omitempty"`
+	BakeryFurniture  []BakeryFurniture  `json:"bakeryFurniture,omitempty"`
+	OccupiedBy       string             `json:"occupiedBy,omitempty"`
+	Production       *StationProduction `json:"production,omitempty"`
+	LinkedTable      string             `json:"linkedTable,omitempty"`
+	FurnitureID      string             `json:"furnitureId,omitempty"`
+	ProductionKey    string             `json:"productionKey,omitempty"`
+	Item             string             `json:"item,omitempty"`
+	Label            string             `json:"label"`
+	X                float64            `json:"x"`
+	Y                float64            `json:"y,omitempty"`
+	Z                float64            `json:"z"`
+	Yaw              float64            `json:"yaw,omitempty"`
+	InCave           bool               `json:"inCave,omitempty"`
+	Available        bool               `json:"available"`
+	Amount           int                `json:"amount"`
+	Owner            string             `json:"owner,omitempty"`
+	PlotID           string             `json:"plotId,omitempty"`
+	CallName         string             `json:"callName,omitempty"`
+	Username         string             `json:"username,omitempty"`
+	Paint            map[string]string  `json:"paint,omitempty"`
+	Equipment        map[string]bool    `json:"equipment,omitempty"`
+	BakeryLevel      int                `json:"bakeryLevel"`
+	Island           string             `json:"island,omitempty"`
+	ExpiresAt        float64            `json:"expiresAt,omitempty"`
+	Scale            float64            `json:"scale,omitempty"`
+	Variant          int                `json:"variant,omitempty"`
+	Color            string             `json:"color,omitempty"`
+	ChopRemaining    int                `json:"chopRemaining,omitempty"`
+	ChopTotal        int                `json:"chopTotal,omitempty"`
+	readyAt          float64
+	respawn          float64
 }
 
 type Animal struct {
@@ -238,23 +254,26 @@ type Animal struct {
 }
 
 type Projectile struct {
-	ID     string  `json:"id"`
-	Owner  string  `json:"owner"`
-	Item   string  `json:"item"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Z      float64 `json:"z"`
-	VX     float64 `json:"vx"`
-	VY     float64 `json:"vy"`
-	VZ     float64 `json:"vz"`
-	damage float64
-	born   float64
-	super  bool
+	Island    string  `json:"island,omitempty"`
+	ID        string  `json:"id"`
+	Owner     string  `json:"owner"`
+	Item      string  `json:"item"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Z         float64 `json:"z"`
+	VX        float64 `json:"vx"`
+	VY        float64 `json:"vy"`
+	VZ        float64 `json:"vz"`
+	damage    float64
+	born      float64
+	super     bool
+	arenaLife uint64
 }
 
 type Event struct {
 	ID      uint64  `json:"id"`
 	Actor   string  `json:"actor,omitempty"`
+	Island  string  `json:"island,omitempty"`
 	Text    string  `json:"text"`
 	Kind    string  `json:"kind"`
 	X       float64 `json:"x"`
@@ -275,26 +294,37 @@ type Recipe struct {
 }
 
 type Snapshot struct {
-	Time         float64       `json:"time"`
-	ServerTime   int64         `json:"serverTime"`
-	Me           Self          `json:"me"`
-	Players      []PlayerView  `json:"players"`
-	Projectiles  []Projectile  `json:"projectiles"`
-	Nodes        []Node        `json:"nodes"`
-	Animals      []Animal      `json:"animals"`
-	Events       []Event       `json:"events"`
-	Recipes      []Recipe      `json:"recipes"`
-	Homes        []Home        `json:"homes"`
-	Layout       *Layout       `json:"layout,omitempty"`
-	Island       *Island       `json:"island,omitempty"`
-	BuildCatalog []BuildRecipe `json:"buildCatalog"`
-	Friends      []FriendView  `json:"friends"`
-	ClubDrinks   []ClubDrink   `json:"clubDrinks"`
+	CookieArena            CookieArenaView         `json:"cookieArena"`
+	CookiePractice         *CookiePracticeView     `json:"cookiePractice,omitempty"`
+	CamelTraining          CamelTrainingView       `json:"camelTraining"`
+	AchievementCatalog     []AchievementDefinition `json:"achievementCatalog"`
+	HatCatalog             []HatDefinition         `json:"hatCatalog"`
+	CamelRace              CamelRaceView           `json:"camelRace"`
+	Town                   TownView                `json:"town"`
+	Time                   float64                 `json:"time"`
+	DayCycle               DayCycle                `json:"dayCycle"`
+	JohnPork               *JohnPorkView           `json:"johnPork"`
+	ServerTime             int64                   `json:"serverTime"`
+	Me                     Self                    `json:"me"`
+	Players                []PlayerView            `json:"players"`
+	Projectiles            []Projectile            `json:"projectiles"`
+	Nodes                  []Node                  `json:"nodes"`
+	Animals                []Animal                `json:"animals"`
+	Events                 []Event                 `json:"events"`
+	Recipes                []Recipe                `json:"recipes"`
+	Homes                  []Home                  `json:"homes"`
+	Layout                 *Layout                 `json:"layout,omitempty"`
+	Island                 *Island                 `json:"island,omitempty"`
+	BuildCatalog           []BuildRecipe           `json:"buildCatalog"`
+	Friends                []FriendView            `json:"friends"`
+	ClubDrinks             []ClubDrink             `json:"clubDrinks"`
+	ClubCakes              []ClubCake              `json:"clubCakes"`
 	BakeryFurnitureCatalog []BakeryFurnitureRecipe `json:"bakeryFurnitureCatalog"`
-	BakingIngredients []BakingIngredient `json:"bakingIngredients"`
+	BakingIngredients      []BakingIngredient      `json:"bakingIngredients"`
 }
 
 type player struct {
+	disconnected                            bool
 	profile                                 Profile
 	island, posture                         string
 	y                                       float64
@@ -304,14 +334,19 @@ type player struct {
 	inCave                                  bool
 	homeOffer, friendsTeleport, ridingCamel bool
 	mountedCamelID                          string
+	raceCamel                               *Camel
+	training                                *camelTraining
+	cookieArena                             *cookieArenaSession
+	practice                                *practiceSession
+	camelCalls                              map[string]*camelCall
 	buildMode                               bool
 	editingBuildID                          string
 	clubResult                              *ClubResult
 	clubSeatID                              string
 	bakery                                  *bakeryBusiness
-	bakeryBuildMode bool
-	editingBakeryFurnitureID string
-	bakerySeatID string
+	bakeryBuildMode                         bool
+	editingBakeryFurnitureID                string
+	bakerySeatID                            string
 	fallen                                  bool
 	standAt, fallDistance                   float64
 	alcoholDrinks                           int
@@ -323,6 +358,11 @@ type player struct {
 }
 
 type World struct {
+	camelRace         *camelRace
+	raceRegistrations map[string]float64
+	raceStartHandled  float64
+	johnPork          *johnPork
+	johnIgnored       map[string]bool
 	time              float64
 	sequence          uint64
 	players           map[string]*player

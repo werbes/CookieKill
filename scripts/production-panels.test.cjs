@@ -6,11 +6,11 @@ function fixture(create,bakingItemName){
  const button=(label,kind,data={},disabled=false)=>`<button data-action="${kind}" data-payload='${JSON.stringify(data)}'${disabled?' disabled':''}>${label}</button>`,panel=create({state,button,escapeHTML:String,pretty:String,itemName:id=>bakingItemName(id,name=>name==='sugar'?'Sugar cookie':name)||id,renderModal(){},action:(action,data)=>actions.push({action,...data}),shopRow:(_icon,title,note,buttons)=>`<article><h3>${title}</h3><p>${note}</p>${buttons}</article>`});return {state,me,panel,actions};
 }
 const buttons=(html,action)=>Array.from(html.matchAll(/<button data-action="([^"]+)" data-payload='([^']+)'([^>]*)>(.*?)<\/button>/g)).filter(m=>m[1]===action).map(m=>({data:JSON.parse(m[2]),disabled:m[3].includes('disabled'),label:m[4]}));
-test('base dough requires four raw ingredients, an idle collected mixer and bakery ownership',async()=>{
+test('base dough requires four raw ingredients and bakery ownership; busy stations accept paid batches until their queue is full',async()=>{
  const [{createProductionPanels},{bakingItemName}]=await modules,{panel,me}=fixture(createProductionPanels,bakingItemName),node={id:'plot_mixer',kind:'bakery_mixer',production:{output:{}}};
  const base=()=>buttons(panel.mixer(node),'production_mix').find(b=>b.data.item==='dough');assert.deepEqual(base().data,{target:node.id,item:'dough',amount:1});assert.equal(base().disabled,false);
  me.inventory.baking_sugar=0;me.inventory.sugar=100;assert.equal(base().disabled,true,'finished sugar cookies cannot replace raw sugar');me.inventory.baking_sugar=1;me.bakery=false;assert.equal(base().disabled,true);me.bakery=true;
- node.production.job={item:'dough',amount:40,remaining:22.4,total:40};assert.equal(base().disabled,true);assert.match(panel.mixer(node),/23 seconds remaining/);delete node.production.job;node.production.output={dough:40};assert.equal(base().disabled,true);assert.deepEqual(buttons(panel.mixer(node),'production_collect')[0].data,{target:node.id,item:'dough',amount:40});
+ node.production.job={item:'dough',amount:40,remaining:22.4,total:40};assert.equal(base().disabled,false);assert.match(panel.mixer(node),/23 seconds remaining/);delete node.production.job;node.production.output={dough:40};assert.equal(base().disabled,false);assert.deepEqual(buttons(panel.mixer(node),'production_collect')[0].data,{target:node.id,item:'dough',amount:40});node.production.queue=Array.from({length:32},()=>({item:'dough',amount:40,total:40}));assert.equal(base().disabled,true);assert.match(panel.mixer(node),/32 \/ 32 queued/);
 });
 test('recipe mixing checks the selected dough stack and scaled add-ins; full batches and held shortcuts preserve inventory',async()=>{
  const [{createProductionPanels},{bakingItemName}]=await modules,{panel,me,actions}=fixture(createProductionPanels,bakingItemName),node={id:'mixer',kind:'bakery_mixer'},choice=()=>buttons(panel.mixer(node),'production_mix').find(b=>b.data.item==='berry_cookie');
@@ -29,4 +29,11 @@ test('ovens load held dough and send pickup to a linked table, including home ta
 test('ingredient shop uses authoritative prices, shop quantity cap and unambiguous sugar naming',async()=>{
  const [{createProductionPanels},{bakingItemName}]=await modules,{panel,me}=fixture(createProductionPanels,bakingItemName);let buy=buttons(panel.ingredientShop({id:'ingredient_shop'}),'buy_ingredient');assert.equal(buy[0].data.item,'baking_sugar');assert.match(buy[0].label,/4 coins/);assert.equal(bakingItemName('sugar'),null);assert.equal(bakingItemName('baking_sugar'),'Sugar');
  panel.handle('production-batch',{amount:20,shop:true});me.coins=79;buy=buttons(panel.ingredientShop({id:'ingredient_shop'}),'buy_ingredient');assert.equal(buy[0].disabled,true);assert.equal(buy[2].disabled,false);panel.handle('production-batch',{amount:40,shop:true});assert.equal(buttons(panel.ingredientShop({id:'ingredient_shop'}),'buy_ingredient')[0].data.amount,20);
+});
+test('each additional station displays its own FIFO and queues while busy without targeting another appliance',async()=>{
+ const [{createProductionPanels},{bakingItemName}]=await modules,{panel,me}=fixture(createProductionPanels,bakingItemName),node={id:'plot_station_extra',kind:'bakery_oven',productionKey:'bakery:extra',linkedTable:'cooling'};
+ me.production.bakery_oven={job:{item:'sugar',amount:1,remaining:1,total:5},queue:Array(32).fill({item:'sugar',amount:1,total:5})};
+ me.production['bakery:extra']={job:{item:'berry_cookie',amount:5,remaining:10,total:25},queue:[{item:'sugar',amount:2,total:10},{item:'cake',amount:1,total:5}],queueLimit:32};
+ let html=panel.oven(node),choice=buttons(html,'production_bake')[0];assert.equal(choice.disabled,false);assert.equal(choice.data.target,node.id);assert.equal(choice.label,'Queue & bake 5');assert.match(html,/2 \/ 32 queued/);assert.ok(html.indexOf('2 sugar')<html.indexOf('1 cake'),'waiting batches retain FIFO order');
+ me.production['bakery:extra'].queue=Array(32).fill({item:'sugar',amount:1,total:5});assert.equal(buttons(panel.oven(node),'production_bake')[0].disabled,true);
 });

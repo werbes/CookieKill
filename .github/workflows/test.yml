@@ -26,6 +26,7 @@ jobs:
       - run: node --check web/cave-scenery.js
       - run: node --check web/club-scenery.js
       - run: node --check web/club-panels.js
+      - run: node --check web/funny-cake-effects.js
       - run: node --check web/club-settings.js
       - run: node --check web/club-odds.js
       - run: node --check web/bakery-panels.js
@@ -34,6 +35,25 @@ jobs:
       - run: node --check web/bakery-furnishings.js
       - run: node --check web/production-panels.js
       - run: node --check web/production-scenery.js
+      - run: node --check web/night-scene.js
+      - run: node --check web/john-hut-scenery.js
+      - run: node --check web/camel-race-scene.js
+      - run: node --check web/camel-race-panels.js
+      - run: node --check web/camel-training-panels.js
+      - run: node --check web/camel-training-scene.js
+      - run: node --check web/achievement-panels.js
+      - run: node --check web/achievement-scenery.js
+      - run: node --check web/bouquet-view.js
+      - run: node --check web/camel-care-panels.js
+      - run: node --check web/camel-view.js
+      - run: node --check web/ambient-audio.js
+      - run: node --check web/cookie-activity-art.js
+      - run: node --check web/tree-ring-scene.js
+      - run: node --check web/cookie-practice-scene.js
+      - run: node --check web/cookie-activities-panels.js
+      - run: node --check web/practice-avatar.js
+      - run: node --check web/town-scenery.js
+      - run: node --check web/town-panels.js
       - run: node --check web/baking-items.js
       - run: node --check web/roof-scenery.js
       - run: node --check web/flower-scenery.js
@@ -43,8 +63,15 @@ jobs:
       - run: node --test scripts/state-sync.test.cjs
       - run: node --test scripts/cave-scenery.test.cjs
       - run: node --test scripts/club.test.cjs
+      - run: node --test scripts/funny-cake-panels.test.cjs scripts/funny-cake-effects.test.cjs
       - run: node --test scripts/bakery-panels.test.cjs scripts/bakery-scene.test.cjs scripts/bakery-room.test.cjs scripts/bakery-furnishings.test.cjs
       - run: node --test scripts/production-panels.test.cjs scripts/production-scenery.test.cjs scripts/roof-scenery.test.cjs
+      - run: node --test scripts/night-scene.test.cjs
+      - run: node --test scripts/camel-race-ui.test.cjs scripts/town.test.cjs
+      - run: node --test scripts/camel-companions-ui.test.cjs scripts/ambient-audio.test.cjs
+      - run: node --test scripts/cookie-activities.test.cjs
+      - run: node --test scripts/camel-training-ui.test.cjs scripts/achievements.test.cjs scripts/bouquets.test.cjs
+      - run: node --test scripts/home-upgrades.test.cjs
       - run: node --test scripts/motion.test.cjs scripts/scenery-batches.test.cjs
       - run: node scripts/island-panels.test.cjs
   windows:

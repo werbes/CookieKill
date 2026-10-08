@@ -371,6 +371,7 @@ func (c *coordinator) handle(raw ownerCommand) {
 		if c.peers[command.id] == command.peer && !c.closing {
 			delete(c.peers, command.id)
 			c.world.Input(command.id, game.Input{})
+			c.world.SetConnected(command.id, false)
 			c.world.ReleaseBakeryPlot(command.id)
 			c.departed[command.id] = time.Now().Add(10 * time.Second)
 		}

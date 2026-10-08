@@ -137,9 +137,15 @@ func TestSceneryBlocksPlayersAndCookiesButDoorsStayOpen(t *testing.T) {
 	if p.z < -26.5+.42 {
 		t.Fatalf("player crossed village wall: %.2f", p.z)
 	}
-	// Test the solid furniture supplied to the same renderer coordinates.
-	if !w.staticBlocked(42, 18, .42) {
-		t.Fatal("gym treadmill is not solid")
+	// Workout furniture now lives in the practice center beyond the silver cookie.
+	for _, n := range w.nodes {
+		if n.Kind == "gym" {
+			t.Fatal("retired city gym is still an interactive training menu")
+		}
+	}
+	p.island = CookiePracticeIsland
+	if !cookiePracticeBlocked(p, -16, 6) || cookiePracticeBlocked(p, 0, 20) {
+		t.Fatal("practice treadmill is not solid or the entry path is blocked")
 	}
 	if w.solidBlockedAt(19, 0, 66.5, .42) {
 		t.Fatal("unclaimed bakery contains a fixed oven instead of movable owner furniture")

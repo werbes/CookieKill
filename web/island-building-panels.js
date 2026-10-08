@@ -10,13 +10,19 @@ export function createIslandBuildingPanels(deps) {
   const name=kind=>catalog().find(r=>r.id===kind)?.name||pretty(kind);
   const itemName=item=>item.startsWith('build_')?name(item.slice(6).split(':')[0])+(item.includes(':')?' · '+pretty(item.split(':')[1]):''):deps.itemName?.(item)||pretty(item);
   const colors=['teal','blue','red','purple','sand','black','white'];
-  const icons={wall:'▥',floor:'▱',roof:'⌂',stairs:'▟',window:'▦',door:'▯',chair:'♧',table:'▰',bed:'▱',plant:'❧',mixer:'◴',oven:'▣',garden_bed:'❧',tree:'♠',flowers:'✿',pond:'≈',chest:'▣',storage_chest:'▣',fire:'♨'};
+  const icons={wall:'▥',floor:'▱',roof:'⌂',stairs:'▟',window:'▦',door:'▯',chair:'♧',table:'▰',bed:'▱',plant:'❧',mixer:'◴',oven:'▣',garden_bed:'❧',tree:'♠',flowers:'✿',pond:'≈',camel_pen:'♧',chest:'▣',storage_chest:'▣',fire:'♨'};
   const costText=cost=>Object.entries(cost||{}).map(([item,n])=>`${n} ${pretty(item)}`).join(' · ')||'No materials';
   let category='building';
   function travel(){return `<div class="item-actions">${me().homeIsland&&me().island!==me().id?button('Go to my island','teleport_home',{},false,true):''}${me().island?button('Return to main island','teleport_main'):''}</div>`;}
   function colorControls(object){
     if(!object||!['chest','storage_chest'].includes(object.kind)||!me().buildMode||me().editingBuildId!==object.id)return '';
     return `<div class="notice"><strong>Chest color</strong><p>Use one matching paint. ${owner()?'Paint comes from your inventory.':'Paint comes from the shared materials chest.'}</p><div class="item-actions">${colors.map(color=>button(pretty(color),'paint_build',{target:object.id,item:color},object.color===color||materialCount('paint_'+color)<1)).join('')}</div></div>`;
+  }
+  function upgrade(){
+    const home=island(),p=me();if(!home)return '<div class="notice">Visit the expansion sign beside your home island return platform.</div>';
+    const level=home.upgradeLevel||0,max=home.maxUpgrades||5,build=home.buildRadius||32+level*5,walk=home.walkRadius||40+level*5,cost=home.nextUpgradeCost||[150,300,500,750,1000][level]||0;
+    const near=owner()&&p.island===p.id&&Math.hypot(p.x+5,p.z-24)<=3.5&&Math.abs(p.y||0)<=2;
+    return `<div class="island-welcome"><h3>A little more room to grow</h3><p>Expansion ${level} of ${max}. Your island currently has a ${build}-metre building radius and a ${walk}-metre walking radius.</p></div>${level>=max?'<div class="notice good"><strong>Fully expanded</strong><p>All five upgrades are complete. Enjoy the extra space for your home, gardens, ponds, and camel enclosures.</p></div>':`<div class="notice"><strong>Next expansion · ${cost} coins</strong><p>Building radius: ${build} → ${build+5} metres.<br>Walking radius: ${walk} → ${walk+5} metres.<br>Your existing buildings and animals stay where they are.</p>${button('Expand island · '+cost+' coins','upgrade_island',{target:'island_upgrade'},!near||state.connected===false||(p.coins||0)<cost,true)}</div>`}<p class="field-hint">${owner()?'Purchase an expansion at this sign. Maximum five upgrades per island.':'Only the island owner can buy expansions.'}</p><div class="item-actions">${button('Home island menu','tab',{tab:'build'})}${button('Back to the island','island-close')}</div>`;
   }
   function building(){
     const current=island(),p=me();
@@ -37,7 +43,14 @@ export function createIslandBuildingPanels(deps) {
     if(object.kind==='garden_bed')use=object.planted?button(object.readyAt>now?'Growing…':'Harvest '+pretty(object.planted),'use_build',{target:object.id},!canBuild()||object.readyAt>now,true):button('Plant berries','use_build',{target:object.id,item:'berry'},!canBuild()||materialCount('berry')<1,true)+button('Plant nuts','use_build',{target:object.id,item:'nut'},!canBuild()||materialCount('nut')<1);
     if(object.kind==='chest')use=button('Open shared materials chest','tab',{tab:'chest'},false,true);
     if(object.kind==='storage_chest')use=button('Open personal storage','storage-open',{id:object.id},!owner(),true);
-    if(object.kind==='pond')use=`<p>${object.adopted?'Your rescued '+esc(object.adopted)+' is safe in this pond.':'Adopt a wounded fish or turtle from the ocean into this pond.'}</p>`;
+    if(object.kind==='pond'){
+      const animals=object.adoptedAnimals?.length?object.adoptedAnimals:object.adopted?[object.adopted]:[],capacity=Math.max(1,Math.min(4,object.pondCapacity||1)),near=Math.hypot(object.x-p.x,object.z-p.z)<=5&&Math.abs((object.y||0)-(p.y||0))<=3,cost=object.pondUpgradeCost||[75,125,200][capacity-1]||0;
+      use=`<div class="notice good"><strong>${animals.length} / ${capacity} rescued animals</strong><p>${animals.length?animals.map((species,i)=>esc((i+1)+'. '+pretty(species))).join(' · '):'Adopt a wounded fish or turtle from the ocean into this pond.'}</p><p>${capacity>=4?'This pond has its full four-animal capacity.':`Expand to ${capacity+1} places for ${cost} coins. The pond grows from ${capacity+4} × ${capacity+3} to ${capacity+5} × ${capacity+4} metres; leave room around its edge.`}</p>${capacity<4?button('Expand pond · '+cost+' coins','upgrade_pond',{target:object.id},!owner()||!near||!!object.editingBy||state.connected===false||(p.coins||0)<cost,true):''}</div>`;
+    }
+    if(object.kind==='camel_pen'){
+      const herd=p.camels||[],housed=herd.filter(c=>c.homePenId===object.id),near=owner()&&Math.hypot(object.x-p.x,object.z-p.z)<=8&&Math.abs((object.y||0)-(p.y||0))<=2;
+      use=`<div class="notice good"><strong>Home for ${housed.length} / 4 camels</strong><p>The south gate stays open. Assigned camels return to their own place in this enclosure when you log out. Unhouse them before moving or removing their pen.</p><div class="shop-list">${herd.filter(c=>!c.rentalUntil).map((c,i)=>{const here=housed.some(h=>h.id===c.id),close=(c.island||'')===(p.island||'')&&!!c.inCave===!!p.inCave&&Math.hypot(c.x-object.x,c.z-object.z)<=8;return shopRow('♧',c.name||'Camel '+(i+1),here?'This is their home.':close?'Ready to settle into a place.':'Bring this camel near the enclosure first.',here?button('Unhouse','camel_unhouse',{target:c.id},!near||state.connected===false):button('House here','camel_house',{target:c.id,item:object.id},!near||!close||housed.length>=4||!!object.editingBy||state.connected===false,true));}).join('')||'<p>Buy a permanent camel from Abu Fanous, then bring it home.</p>'}</div></div>`;
+    }
     return `<div class="island-object-heading"><span class="island-emblem">${icons[object.kind]||'◇'}</span><div><h3>${esc(name(object.kind))}</h3></div></div><div class="item-actions">${use}</div><p class="field-hint">To edit this object, enter build mode, look at it, and press E.</p>${colorControls(object)}<div class="item-actions">${button('Home island menu','tab',{tab:'build'})}${button('Back to the island','island-close')}</div>`;
   }
   function chest(){
@@ -62,5 +75,5 @@ export function createIslandBuildingPanels(deps) {
     if(kind==='island-object'){const object=island()?.objects?.find(o=>o.id===data.id);if(object)openModal('build_object',object);return true;}
     return false;
   }
-  return {building,buildObject,chest,storage,handle};
+  return {building,buildObject,chest,storage,upgrade,handle};
 }

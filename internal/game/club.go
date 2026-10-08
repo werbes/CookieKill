@@ -120,6 +120,8 @@ func (w *World) seedClub() {
 	}
 	addNode("club_bar", "club_bar", "The Root Room bar", -214, -232)
 	addNode("club_casino", "club_casino", "Seven-sector coin wheel", -191, -237)
+	addNode("club_cake_seller", "club_cake_seller", "Disco Duke · funny cakes", -191, -245)
+	w.nodes[len(w.nodes)-1].Available = dayCycleAt(w.time).Phase == "night"
 	for row, z := range []float64{-245, -248} {
 		for col, x := range []float64{-213, -209, -205, -201} {
 			addNode(fmt.Sprintf("club_seat_%d", row*4+col+1), "club_seat", "Club chair", x, z)
@@ -156,11 +158,14 @@ func (w *World) seedClub() {
 }
 
 func (w *World) requireClubNode(p *player, target, kind string, radius float64) (*Node, error) {
+	if kind == "club_cake_seller" && dayCycleAt(w.time).Phase != "night" {
+		return nil, errors.New("Disco Duke sells funny cakes only at night.")
+	}
 	if p.island != "" || !p.inCave || !clubFootprint(p.x, p.z) {
 		return nil, errors.New("Visit the underground forest club first.")
 	}
 	for _, n := range w.nodes {
-		if n.ID == target && n.Kind == kind && sameNodeLayer(p, n) && n.Available && distance(p.x, p.z, n.X, n.Z) <= radius && math.Abs(playerY(p)-n.Y) <= 2 {
+		if n.ID == target && n.Kind == kind && sameNodeLayer(p, n) && w.clubNodeAvailable(n) && distance(p.x, p.z, n.X, n.Z) <= radius && math.Abs(playerY(p)-n.Y) <= 2 {
 			return n, nil
 		}
 	}

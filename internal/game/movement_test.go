@@ -225,7 +225,7 @@ func TestJumpCannotPassThroughUpperFloorOrThinWall(t *testing.T) {
 	})
 }
 
-func TestJumpIsUnavailableWhileSwimmingOrRiding(t *testing.T) {
+func TestJumpIsUnavailableWhileSwimmingAndAvailableWhileRiding(t *testing.T) {
 	for _, swimming := range []bool{true, false} {
 		w, p := movementWorld()
 		if swimming {
@@ -235,8 +235,8 @@ func TestJumpIsUnavailableWhileSwimmingOrRiding(t *testing.T) {
 		}
 		w.Input("one", Input{Jump: true})
 		w.Tick(.2)
-		if !grounded(p) {
-			t.Fatalf("unsupported jump while swimming=%v riding=%v", swimming, p.ridingCamel)
+		if swimming && !grounded(p) || !swimming && grounded(p) {
+			t.Fatalf("incorrect jump availability while swimming=%v riding=%v", swimming, p.ridingCamel)
 		}
 	}
 }

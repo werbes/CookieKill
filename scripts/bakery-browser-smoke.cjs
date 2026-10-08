@@ -8,8 +8,9 @@ const {spawn,spawnSync}=require('node:child_process');
 const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dirname,'../.tools')]}));
 
 (async()=>{
+  const queueVisual=process.argv.includes('--queue-visual-only'),queuesOnly=queueVisual||process.argv.includes('--queues-only');
   const buildingOnly=process.argv.includes('--building-only'),productionOnly=process.argv.includes('--production-only');
-  const staffOnly=process.argv.includes('--staff-only'),reopenOnly=process.argv.includes('--reopen-only'),handoverOnly=productionOnly||buildingOnly||staffOnly||reopenOnly||process.argv.includes('--handover-only');
+  const staffOnly=process.argv.includes('--staff-only'),reopenOnly=process.argv.includes('--reopen-only'),handoverOnly=queuesOnly||productionOnly||buildingOnly||staffOnly||reopenOnly||process.argv.includes('--handover-only');
   const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results','bakery-browser-'+Date.now()),data=path.join(out,'data');
   fs.mkdirSync(data,{recursive:true});
   const port=Number(process.env.CK_BAKERY_TEST_PORT||8093),base=`http://127.0.0.1:${port}`;
@@ -20,7 +21,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     const bagSlots=slots(15),hotbar=slots(5);hotbar[0]={item:'sugar',count:10};
     [['dough',30],['berry',20],['nut',20],['paint_teal',2],...(!productionOnly?[['baking_sugar',5],['butter',5],['flour',5],['egg',5]]:[])].filter(([item])=>!productionOnly||item!=='dough').forEach(([item,count],i)=>bagSlots[i]={item,count});
     const returning=handoverOnly&&email===ownerEmail;
-    return {id:accountID(email),name,callName:name,username:name.toLowerCase().replaceAll(' ','_'),coins:buildingOnly||productionOnly?2000:returning?703:1000,bakery:returning,bakeryLevel:returning?1:0,inventoryVersion:2,safeSlots:slots(3),bagSlots,hotbar,selectedSlot:0,levels:{},friendCode:code,friends:{},friendRequests:{},avatar:{skin:1,shirt:'tee',pants:'trousers',shirtColor:'teal',pantsColor:'sand'},hats:{},discovered:{sugar:true},equipment:{oven:true,mixer:true,display:true},paint:returning?{walls:'teal'}:{}};
+    return {production:queueVisual&&returning?{bakery_mixer:{job:{item:'dough',amount:40,remaining:40,total:40},queue:[{item:'prepared_berry_cookie',amount:5,remaining:5,total:5},{item:'prepared_berry_cookie',amount:1,remaining:1,total:1}],output:{}},bakery_cooling_table:{output:{sugar:7}}}:{},id:accountID(email),name,callName:name,username:name.toLowerCase().replaceAll(' ','_'),coins:queuesOnly||buildingOnly||productionOnly||staffOnly?2000:returning?703:email===ownerEmail?1050:1000,bakery:returning,bakeryLevel:returning?1:0,inventoryVersion:2,safeSlots:slots(3),bagSlots,hotbar,selectedSlot:0,levels:{},friendCode:code,friends:{},friendRequests:{},avatar:{skin:1,shirt:'tee',pants:'trousers',shirtColor:'teal',pantsColor:'sand'},hats:{},discovered:{sugar:true},equipment:{oven:true,mixer:true,display:true},paint:returning?{walls:'teal'}:{}};
   }
   fs.writeFileSync(path.join(data,'players.json'),JSON.stringify({version:2,profiles:{[ownerID]:profile(ownerEmail,'Bakery Owner','FERN3821'),[otherID]:profile(otherEmail,'Bakery Neighbor','MINT9146')}}));
   const exe=path.join(out,process.platform==='win32'?'server.exe':'server'),go=process.env.CK_GO||(process.platform==='win32'?'C:/Program Files/Go/bin/go.exe':'go');
@@ -55,7 +56,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
       await page.locator('#start-button').waitFor({state:'visible'});await until(()=>client.snapshot?.me,'snapshot after login');await page.locator('#start-button').click();await page.waitForFunction(()=>!!document.pointerLockElement);return client;
     }
     async function resume(client){const page=client.page;await page.bringToFront();failurePage=page;if(await page.locator('#modal').isVisible())await page.locator('#close-modal').click();if(await page.locator('#play-overlay').isVisible())await page.locator('#play-button').click();if(await page.locator('#capture-prompt').isVisible())await page.locator('#capture-prompt').click();await page.waitForFunction(()=>!!document.pointerLockElement);}
-    async function face(client,x,z,pitch=0){await client.page.waitForFunction(()=>!!document.pointerLockElement&&window.__bakeryDebug?.().locked);const yaw=Math.atan2(-(x-client.snapshot.me.x),-(z-client.snapshot.me.z));await client.page.evaluate(({yaw,pitch})=>{const view=window.__bakeryDebug();document.dispatchEvent(new MouseEvent('mousemove',{movementX:(view.yaw-yaw)/.002,movementY:(view.pitch-pitch)/.002}));},{yaw,pitch});await client.page.waitForTimeout(180);}
+    async function face(client,x,z,pitch=0){await client.page.waitForFunction(()=>!!document.pointerLockElement&&window.__bakeryDebug?.().locked);const yaw=Math.atan2(-(x-client.snapshot.me.x),-(z-client.snapshot.me.z));await client.page.evaluate(({yaw,pitch})=>{const view=window.__bakeryDebug();const event=new MouseEvent('mousemove');Object.defineProperty(event,'movementX',{value:(view.yaw-yaw)/.002});Object.defineProperty(event,'movementY',{value:(view.pitch-pitch)/.002});document.dispatchEvent(event);},{yaw,pitch});await client.page.waitForTimeout(180);}
     async function travel(client,x,z){
       await resume(client);const page=client.page,started=Date.now();let last=Date.now(),old={x:client.snapshot.me.x,z:client.snapshot.me.z};
       try{while(Math.hypot(x-client.snapshot.me.x,z-client.snapshot.me.z)>.65){
@@ -82,11 +83,11 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
       await management(returning);
       const hireCoins=returning.snapshot.me.coins;
       await returning.page.getByRole('button',{name:/^Hire chef/}).click();await until(()=>returning.snapshot.me.bakeryStaff.chef,'hire chef');
-      await returning.page.getByRole('button',{name:/^Hire cashier/}).click();await until(()=>returning.snapshot.me.bakeryStaff.cashier,'hire cashier');assert.equal(returning.snapshot.me.coins,hireCoins-500);await shot(returning,'hired-team');
+      await returning.page.getByRole('button',{name:/^Hire cashier/}).click();await until(()=>returning.snapshot.me.bakeryStaff.cashier,'hire cashier');await returning.page.getByRole('button',{name:/^Hire server/}).click();await until(()=>returning.snapshot.me.bakeryStaff.server,'hire server');assert.equal(returning.snapshot.me.coins,hireCoins-750);await shot(returning,'hired-team');
       assert.ok(returning.snapshot.nodes.some(n=>n.kind==='bakery_chef'));assert.ok(returning.snapshot.nodes.some(n=>n.kind==='bakery_cashier'));
       await station(returning,'oven',/YOUR CHEF'S RECIPE/);
       const berryChoice=returning.page.locator('.bakery-chef-choice').filter({hasText:'Berry burst'});await berryChoice.getByRole('button',{name:'Choose recipe',exact:true}).click();await until(()=>returning.snapshot.me.bakeryChefRecipe==='berry_cookie','assign chef recipe');
-      await station(returning,'mixer',/CHEF'S PANTRY/);
+      await station(returning,'fridge',/KITCHEN FRIDGE/);
       const store=async item=>{const row=returning.page.locator('.shop-row').filter({has:returning.page.getByRole('heading',{name:item,exact:true})});await row.getByRole('button',{name:'Store 5',exact:true}).click();};
       await store('Cookie dough');const berriesBefore=returning.snapshot.me.inventory.berry;await store('Berry');await until(()=>returning.snapshot.me.inventory.berry===berriesBefore-5,'fund the pantry');
       const personal=structuredClone(returning.snapshot.me.inventory),automationCoins=returning.snapshot.me.coins;
@@ -98,11 +99,12 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
       console.log('PASS: hired visible chef/cashier, assigned known recipe, pantry-only production and automatic NPC sales');
     }
     const owner=await login(ownerEmail);assert.equal(owner.snapshot.me.id,ownerID);
-    if(reopenOnly||staffOnly||buildingOnly||productionOnly){
+    if(reopenOnly||staffOnly||buildingOnly||productionOnly||queuesOnly){
       const saved=structuredClone(owner.snapshot.me);assert.equal(saved.bakery,true);assert.equal(saved.bakeryPlot,'');
       await route(owner,[[-35,-35],[-35,-9],[8,-9],[8,84],[58,84],[58,78],[58,74],[58,72]]);await face(owner,58,68);await open(owner,/Claim this plot for free/);await shot(owner,'returning-free-claim');
       await owner.page.getByRole('button',{name:/^Claim plot/}).click();await until(()=>owner.snapshot.me.bakeryPlot==='bakery_plot_1','free claim');
       assert.equal(owner.snapshot.me.coins,saved.coins);assert.equal(owner.snapshot.me.bakeryLevel,saved.bakeryLevel);assert.deepEqual(owner.snapshot.me.equipment,saved.equipment);assert.deepEqual(owner.snapshot.me.paint,saved.paint);assert.equal(owner.snapshot.nodes.find(n=>n.id==='bakery_plot_1').owner,ownerID);await shot(owner,'saved-bakery-restored');
+      if(queuesOnly){await require('./bakery-queue-checks.cjs')({visualOnly:queueVisual,owner,until,resume,face,travel,route,open,shot,station,plotOf,actions,out});assert.deepEqual(errors,[]);console.log('Screenshots: '+out);return;}
       if(productionOnly){await require('./production-browser-checks.cjs')({owner,login,ownerEmail,until,resume,face,travel,route,open,shot,management,station,plotOf,actions,out});assert.deepEqual(errors,[]);console.log('Screenshots: '+out);return;}
       if(buildingOnly){await require('./bakery-building-checks.cjs')({owner,login,ownerEmail,otherEmail,until,resume,face,travel,route,open,shot,management,station,plotOf,actions,out,bake:production.bake});assert.deepEqual(errors,[]);console.log('Screenshots: '+out);return;}
       await production.bake(owner,'sugar',1);await shot(owner,'reopened-oven');if(staffOnly)await checkStaff(owner);
@@ -113,9 +115,9 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     if(handoverOnly){await open(owner,/Claim this plot for free/);await owner.page.getByRole('button',{name:/^Claim plot/}).click();await until(()=>owner.snapshot.me.bakeryPlot==='bakery_plot_0','opening saved bakery fixture');assert.equal(owner.snapshot.me.coins,703);}
     else{
     await open(owner,/Buy your first bakery/);await shot(owner,'claim-first-bakery');
-    await owner.page.getByRole('button',{name:/^Buy bakery/}).click();await until(()=>owner.snapshot.me.bakeryPlot==='bakery_plot_0','first bakery purchase');assert.equal(owner.snapshot.me.coins,750);
+    await owner.page.getByRole('button',{name:/^Buy bakery/}).click();await until(()=>owner.snapshot.me.bakeryPlot==='bakery_plot_0','first bakery purchase');assert.equal(owner.snapshot.me.coins,800);
     await until(async()=>await owner.page.getByRole('button',{name:/^Upgrade/}).isVisible(),'management refreshed');
-    await owner.page.getByRole('button',{name:/^Upgrade/}).click();await until(()=>owner.snapshot.me.bakeryLevel===1,'upgrade saved');assert.equal(owner.snapshot.me.coins,700);
+    await owner.page.getByRole('button',{name:/^Upgrade/}).click();await until(()=>owner.snapshot.me.bakeryLevel===1,'upgrade saved');assert.equal(owner.snapshot.me.coins,750);
     const walls=owner.page.locator('.shop-row').filter({has:owner.page.getByRole('heading',{name:'Walls',exact:true})});await walls.getByRole('button',{name:'Teal',exact:true}).click();await until(()=>owner.snapshot.me.paint.walls==='teal','paint saved');assert.ok((await contentActions(owner)).includes('bakery_hire'));await shot(owner,'manage-bakery');
     await owner.page.locator('#bakery-name').fill('Moonflower Bakery');
     await owner.page.locator('#bakery-name-form').getByRole('button',{name:'Save name',exact:true}).click();
@@ -126,7 +128,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     await station(owner,'oven',/Hold plain dough/);
     assert.ok(!(await contentActions(owner)).includes('craft'));assert.equal(await owner.page.getByRole('button',{name:'Build campfire',exact:true}).count(),0);assert.ok((await contentActions(owner)).includes('production_bake'));
     await production.bake(owner,'sugar',1);await shot(owner,'oven-recipes-only');
-    await station(owner,'mixer',/MAKE PLAIN DOUGH/);assert.ok((await contentActions(owner)).includes('production_mix'));assert.ok((await contentActions(owner)).includes('bakery_pantry_deposit'));
+    await station(owner,'mixer',/MAKE PLAIN DOUGH/);assert.ok((await contentActions(owner)).includes('production_mix'));assert.ok(!(await contentActions(owner)).includes('bakery_fridge_deposit'));
     const beforeDough=owner.snapshot.me.inventory.dough;await production.click(owner,'production_mix',{item:'dough',amount:1});await until(()=>owner.snapshot.me.production?.bakery_mixer?.output?.dough===40,'timed mixer dough: '+owner.lastError,48000);await production.collect(owner,'mixer','dough');assert.equal(owner.snapshot.me.inventory.dough,beforeDough+40);await shot(owner,'mixer-dough-only');
     await station(owner,'display',/Put your baked goods on the display/);
     const beforeCoins=owner.snapshot.me.coins,beforeStock=owner.snapshot.me.inventory.sugar;

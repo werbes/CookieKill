@@ -9,13 +9,14 @@ import (
 )
 
 type BakeryFurniture struct {
-	ID        string  `json:"id"`
-	Kind      string  `json:"kind"`
-	X         float64 `json:"x"`
-	Z         float64 `json:"z"`
-	Rotation  float64 `json:"rotation"`
-	Color     string  `json:"color,omitempty"`
-	EditingBy string  `json:"editingBy,omitempty"`
+	ID            string  `json:"id"`
+	Kind          string  `json:"kind"`
+	X             float64 `json:"x"`
+	Z             float64 `json:"z"`
+	Rotation      float64 `json:"rotation"`
+	Color         string  `json:"color,omitempty"`
+	EditingBy     string  `json:"editingBy,omitempty"`
+	ProductionKey string  `json:"productionKey,omitempty"`
 }
 type BakeryFurnitureRecipe struct {
 	ID     string  `json:"id"`
@@ -31,10 +32,11 @@ type BakeryFurnitureRecipe struct {
 }
 
 var bakeryFurnitureCatalog = []BakeryFurnitureRecipe{
-	{"oven", "Bakery oven", 2.2, 1.4, 1.8, 0, 120, "kitchen", true, true},
-	{"mixer", "Dough mixer", 1.6, 1.6, 1.8, 0, 90, "kitchen", true, true},
+	{"oven", "Bakery oven", 2.2, 1.4, 1.8, 0, 120, "kitchen", false, true},
+	{"mixer", "Dough mixer", 1.6, 1.6, 1.8, 0, 90, "kitchen", false, true},
 	{"cooling_table", "Cooling table", 2.4, 1.2, .9, 0, 40, "kitchen", true, true},
-	{"display", "Cookie display", 2.8, .8, 1.65, 0, 100, "cafe", true, true},
+	{"display", "Large cookie display", 4.2, 1.1, 1.65, 0, 100, "cafe", true, true},
+	{"fridge", "Kitchen fridge", 1.4, 1.3, 2.4, 0, 80, "kitchen", true, true},
 	{"chair", "Cafe chair", .9, .9, 1.4, 0, 12, "cafe", false, true},
 	{"table", "Cafe table", 1.8, 1.4, .85, 0, 30, "cafe", false, true},
 	{"counter", "Kitchen counter", 3, .9, 1.1, 0, 45, "any", false, true},
@@ -66,12 +68,15 @@ func bakeryLayoutReachable(objects []BakeryFurniture) bool {
 	if _, ok := w.bakeryRoute(&p, entry, Point{0, -3}); !ok {
 		return false
 	}
-	for _, kind := range []string{"oven", "mixer", "display", "cooling_table"} {
+	for _, f := range objects {
+		if !bakeryStationKind(f.Kind) {
+			continue
+		}
 		for _, back := range []bool{false, true} {
-			if back && kind != "display" {
+			if back && f.Kind != "display" {
 				continue
 			}
-			if point, present := w.bakeryStationServicePoint(&p, kind, back); present {
+			if point, present := w.bakeryFurnitureServicePoint(&p, f, back); present {
 				if _, ok := w.bakeryRoute(&p, entry, point); !ok {
 					return false
 				}
@@ -117,7 +122,7 @@ func normalizeBakeryFurniture(p *Profile) {
 						clear = false
 						break
 					}
-					if r, _ := bakeryFurnitureRecipeFor(existing.Kind); r.Core {
+					if bakeryStationKind(existing.Kind) {
 						a := existing.Rotation * math.Pi / 180
 						if bakeryFurnitureBlocks(candidate, existing.X+math.Sin(a)*1.8, existing.Z+math.Cos(a)*1.8, .35) {
 							clear = false
@@ -139,9 +144,25 @@ func normalizeBakeryFurniture(p *Profile) {
 		}
 		p.BakeryFurnitureVersion = 2
 	}
+	if p.Bakery && p.BakeryFurnitureVersion < 3 {
+		for _, kind := range []string{"oven", "mixer"} {
+			for i := range p.BakeryFurniture {
+				if p.BakeryFurniture[i].Kind == kind {
+					p.BakeryFurniture[i].ProductionKey = "bakery_" + kind
+					break
+				}
+			}
+		}
+		p.BakeryFurnitureVersion = 3
+	}
+	if p.Bakery && p.BakeryFurnitureVersion < 4 {
+		migrateBakeryLogisticsFurniture(p)
+		p.BakeryFurnitureVersion = 4
+	}
 	kept := make([]BakeryFurniture, 0, len(p.BakeryFurniture))
 	ids := map[string]bool{}
 	core := map[string]bool{}
+	keys := map[string]bool{}
 	for _, f := range p.BakeryFurniture {
 		r, ok := bakeryFurnitureRecipeFor(f.Kind)
 		if !ok || f.ID == "" || len(f.ID) > 100 || ids[f.ID] || r.Core && core[f.Kind] || !finite(f.Rotation) || !finite(f.X) || !finite(f.Z) || math.Abs(f.X) > 10 || math.Abs(f.Z) > 8 || len(kept) >= 120 {
@@ -155,6 +176,14 @@ func normalizeBakeryFurniture(p *Profile) {
 			f.Color = ""
 		}
 		f.EditingBy = ""
+		if validChoice(f.Kind, "oven", "mixer") {
+			if f.ProductionKey != "bakery_"+f.Kind || keys[f.ProductionKey] {
+				f.ProductionKey = "bakery:" + f.ID
+			}
+			keys[f.ProductionKey] = true
+		} else {
+			f.ProductionKey = ""
+		}
 		if !bakeryFurnitureInRoom(f, r) {
 			continue
 		}
@@ -252,7 +281,15 @@ func (w *World) bakeryStationPosition(p *player, kind string) (Point, float64, b
 	return Point{}, 0, false
 }
 func (w *World) bakeryStationServicePoint(p *player, kind string, back bool) (Point, bool) {
-	point, rotation, ok := w.bakeryStationPosition(p, kind)
+	for _, f := range p.profile.BakeryFurniture {
+		if f.Kind == kind {
+			return w.bakeryFurnitureServicePoint(p, f, back)
+		}
+	}
+	return Point{}, false
+}
+func (w *World) bakeryFurnitureServicePoint(p *player, f BakeryFurniture, back bool) (Point, bool) {
+	plot, ok := w.bakeryPlot(p)
 	if !ok {
 		return Point{}, false
 	}
@@ -260,8 +297,8 @@ func (w *World) bakeryStationServicePoint(p *player, kind string, back bool) (Po
 	if back {
 		d = -d
 	}
-	a := rotation * math.Pi / 180
-	return Point{point.X + math.Sin(a)*d, point.Z + math.Cos(a)*d}, true
+	a := f.Rotation * math.Pi / 180
+	return Point{plot.X + f.X + math.Sin(a)*d, plot.Z + f.Z + math.Cos(a)*d}, true
 }
 
 type bakeryObstacle struct {
@@ -545,7 +582,7 @@ func (w *World) validateBakeryFurniture(p *player, candidate []BakeryFurniture, 
 	for _, f := range candidate {
 		fr, _ := bakeryFurnitureRecipeFor(f.Kind)
 		if fr.Core && core[f.Kind] {
-			return errors.New("A bakery can have one oven, one mixer, and one display.")
+			return errors.New("A bakery can have one display, one fridge, and one shared cooling table.")
 		}
 		core[f.Kind] = fr.Core || core[f.Kind]
 		if f.ID != changed.ID && bakeryFurnitureOverlaps(changed, f) {
@@ -577,12 +614,15 @@ func (w *World) validateBakeryFurniture(p *player, candidate []BakeryFurniture, 
 	if _, ok := w.bakeryRoute(&preview, entry, Point{plot.X, plot.Z - 3}); !ok {
 		return errors.New("Keep a walkable route between the cafe and kitchen.")
 	}
-	for _, kind := range []string{"oven", "mixer", "display", "cooling_table"} {
+	for _, f := range candidate {
+		if !bakeryStationKind(f.Kind) {
+			continue
+		}
 		for _, back := range []bool{false, true} {
-			if back && kind != "display" {
+			if back && f.Kind != "display" {
 				continue
 			}
-			if service, ok := w.bakeryStationServicePoint(&preview, kind, back); ok {
+			if service, ok := w.bakeryFurnitureServicePoint(&preview, f, back); ok {
 				if _, reachable := w.bakeryRoute(&preview, entry, service); !reachable {
 					return errors.New("Leave a clear path to the front of each station and behind the display.")
 				}
@@ -624,7 +664,7 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 			return errors.New("Choose a bakery furnishing.")
 		}
 		f := BakeryFurniture{Kind: a.Item, X: a.X, Z: a.Z, Rotation: a.Rotation}
-		if r.Core && validColor(p.profile.Paint[f.Kind]) {
+		if bakeryStationKind(f.Kind) && validColor(p.profile.Paint[f.Kind]) {
 			f.Color = p.profile.Paint[f.Kind]
 		}
 		for {
@@ -639,6 +679,9 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 			if !exists {
 				break
 			}
+		}
+		if validChoice(f.Kind, "oven", "mixer") {
+			f.ProductionKey = "bakery:" + f.ID
 		}
 		if a.From != "" {
 			kind, color, ok := packedBakeryItem(a.From)
@@ -703,16 +746,16 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 				return err
 			}
 		case "bakery_pack":
-			if productionRemovalBlocked(&p.profile, "bakery_"+f.Kind) {
+			if productionRemovalBlocked(&p.profile, bakeryProductionKey(f)) {
 				return errors.New("Finish cooking and collect this station's output before packing it.")
 			}
 			if !gain(p, packedBakeryName(f), 1) {
 				return errors.New("Make room in your inventory before packing this furnishing.")
 			}
 			objects = append(objects[:index], objects[index+1:]...)
-			delete(p.profile.Production, "bakery_"+f.Kind)
+			delete(p.profile.Production, bakeryProductionKey(f))
 		case "bakery_destroy":
-			if productionRemovalBlocked(&p.profile, "bakery_"+f.Kind) {
+			if productionRemovalBlocked(&p.profile, bakeryProductionKey(f)) {
 				return errors.New("Finish cooking and collect this station's output before removing it.")
 			}
 			r, _ := bakeryFurnitureRecipeFor(f.Kind)
@@ -722,7 +765,7 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 			}
 			p.profile.Coins += refund
 			objects = append(objects[:index], objects[index+1:]...)
-			delete(p.profile.Production, "bakery_"+f.Kind)
+			delete(p.profile.Production, bakeryProductionKey(f))
 		case "bakery_paint":
 			if !validColor(a.Item) {
 				return errors.New("Choose a valid paint color.")
@@ -734,7 +777,7 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 				return errors.New("You need one matching paint tin.")
 			}
 			objects[index].Color = a.Item
-			if r, _ := bakeryFurnitureRecipeFor(f.Kind); r.Core {
+			if bakeryStationKind(f.Kind) && bakeryProductionKey(f) == "bakery_"+f.Kind {
 				if p.profile.Paint == nil {
 					p.profile.Paint = map[string]string{}
 				}
@@ -748,7 +791,7 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 	}
 	p.profile.BakeryFurniture = objects
 	for _, f := range objects {
-		if r, _ := bakeryFurnitureRecipeFor(f.Kind); r.Core {
+		if bakeryStationKind(f.Kind) && bakeryProductionKey(f) == "bakery_"+f.Kind {
 			if p.profile.Paint == nil {
 				p.profile.Paint = map[string]string{}
 			}
@@ -826,6 +869,12 @@ func (w *World) bakeryFurnitureSnapshot(viewer *player, out *Snapshot) {
 			continue
 		}
 		for _, f := range owner.profile.BakeryFurniture {
+			if validChoice(f.Kind, "oven", "mixer") && bakeryFurnitureNodeID(plot.ID, f) != bakeryStationID(plot.ID, f.Kind) {
+				recipe, _ := bakeryFurnitureRecipeFor(f.Kind)
+				n := Node{ID: bakeryFurnitureNodeID(plot.ID, f), Kind: "bakery_" + f.Kind, PlotID: plot.ID, Label: recipe.Name}
+				out.Nodes = append(out.Nodes, w.bakeryNodeView(n, map[string]*player{plot.ID: owner}))
+				continue
+			}
 			if f.Kind != "chair" {
 				continue
 			}

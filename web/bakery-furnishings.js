@@ -4,6 +4,8 @@ export function ownedBakery(snapshot){return !snapshot?.me?.island&&!snapshot?.m
 export function insideOwnBakery(snapshot){const plot=ownedBakery(snapshot),p=snapshot?.me;return plot&&Math.abs(p.x-plot.x)<=9.7&&Math.abs(p.z-plot.z)<=7.7&&Math.abs(p.y||0)<=2?plot:null;}
 export function bakeryFootprint(object,catalog){const recipe=catalog?.find(r=>r.id===object.kind),angle=(object.rotation||0)*Math.PI/180,c=Math.abs(Math.cos(angle)),s=Math.abs(Math.sin(angle));return {width:(recipe?.width||1)*c+(recipe?.depth||1)*s,depth:(recipe?.depth||1)*c+(recipe?.width||1)*s,room:recipe?.room||'any'};}
 export function bakeryPlacementValid(object,catalog,objects=[]){
+  const entry=catalog?.find(r=>r.id===object.kind),limit=entry?.maxCount>0?entry.maxCount:entry?.core?1:Infinity;
+  if(objects.filter(other=>other.id!==object.id&&other.kind===object.kind).length>=limit)return false;
   const {width,depth,room}=bakeryFootprint(object,catalog),x=object.x,z=object.z;
   if(!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)+width/2>9.5||Math.abs(z)+depth/2>7.5)return false;
   if(room==='kitchen'&&z+depth/2> -1.35||room==='cafe'&&z-depth/2<-.65)return false;
@@ -23,6 +25,7 @@ export function createBakeryFurnishings({THREE,box,cylinder,sphere,flatLabel,dis
     switch(object.kind){
       case 'oven':b(w,h,d,color,0,h/2,0);b(w*.75,h*.47,.045,'#35443f',0,h*.44,d/2+.026);b(w*.8,.07,.11,steel,0,h*.76,d/2+.08);for(const x of [-.28,0,.28])cylinder(.065,.065,.04,'#ead6a6',x*w,h*.87,d/2+.055,g,8).rotation.x=Math.PI/2;b(w+.08,.08,d+.08,steel,0,h+.04,0);cylinder(.13,.16,1.25,steel,0,h+.65,-d*.3,g,8);break;
       case 'mixer':b(w,h*.62,d,color,0,h*.31,0);b(w+.08,.08,d+.08,dark,0,h*.65,0);b(w*.42,h*.3,d*.45,steel,0,h*.84,-d*.18);cylinder(w*.3,w*.17,h*.22,'#dce1d7',0,h*.77,d*.14,g,14);b(.07,.2,.07,'#b8c8c1',0,h*.95,d*.14);break;
+      case 'fridge':b(w,h,d,'#d6dfd7',0,h/2,0);b(w*.94,h*.96,.08,object.color?color:'#dce5dd',0,h/2,d/2+.04);b(w*.94,.035,.03,steel,0,h*.72,d/2+.085);for(const y of [h*.42,h*.84])b(.055,h*.2,.07,dark,-w*.3,y,d/2+.13);for(let i=0;i<5;i++)b(w*.7,.025,.03,'#9bafa5',0,.12+i*.04,d/2+.09);{const label=flatLabel('CHEF’S FRIDGE','#456259','#eff1e4',384,70);label.position.set(.1,h*.59,d/2+.09);label.scale.set(w*.67,.21,1);g.add(label);}break;
       case 'display':b(w,.95,d,color,0,.475,0);b(w+.08,.08,d+.08,dark,0,.99,0);b(w+.08,.06,d+.08,'#cee4d8',0,1.62,0);for(const x of [-w/2,w/2])b(.05,.64,.05,steel,x,1.3,-d/2);b(w,.5,.025,'#d8c39b',0,.55,d/2+.02);break;
       case 'chair':b(w,.12,d*.82,color,0,.53,0);for(const x of [-w*.37,w*.37])for(const z of [-d*.32,d*.32])leg(x,z,.48);b(w,h-.56,.1,color,0,.56+(h-.56)/2,d*.38);break;
       case 'table':b(w,.12,d,color,0,h-.06,0);for(const x of [-w*.39,w*.39])for(const z of [-d*.36,d*.36])leg(x,z,h-.12);break;

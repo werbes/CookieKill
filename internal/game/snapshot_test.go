@@ -1,10 +1,45 @@
 package game
 
 import (
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestPlayerSnapshotShowsOnlyOccupiedSelectedHeldItem(t *testing.T) {
+	w, p := testWorld()
+	w.Join("visitor", "Visitor")
+	p.profile.Hotbar[1] = Stack{Item: "bouquet_daisies", Count: 3}
+	p.profile.SelectedSlot = 1
+	s := w.Snapshot("visitor")
+	if len(s.Players) != 1 || s.Players[0].HeldItem != "bouquet_daisies" {
+		t.Fatal("selected bouquet missing from other player's view")
+	}
+	encoded, err := json.Marshal(s.Players[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"inventory", "hotbar", "bagSlots", "selectedSlot"} {
+		if strings.Contains(string(encoded), `"`+private+`"`) {
+			t.Fatalf("held item leaked %s", private)
+		}
+	}
+	p.profile.SelectedSlot = 2
+	if w.Snapshot("visitor").Players[0].HeldItem != "" {
+		t.Fatal("empty selected slot did not clear held item")
+	}
+	p.profile.SelectedSlot = 1
+	p.profile.Hotbar[1].Count = 0
+	if w.Snapshot("visitor").Players[0].HeldItem != "" {
+		t.Fatal("depleted stack remained visible")
+	}
+	p.profile.SelectedSlot = -1
+	if w.Snapshot("visitor").Players[0].HeldItem != "" {
+		t.Fatal("invalid selected slot exposed held item")
+	}
+}
 
 func TestSnapshotUpdateMatchesFullSnapshotWithoutLayout(t *testing.T) {
 	for _, islands := range []bool{false, true} {
@@ -90,7 +125,7 @@ func TestSnapshotUpdatePreservesIslandAndAccountPrivacy(t *testing.T) {
 	if len(view.Players) != 1 || view.Players[0].ID != "one" || view.Players[0].FriendCode != "" {
 		t.Fatal("update leaked another island's player or a private friend code")
 	}
-	if len(view.Nodes) != 1 || view.Nodes[0].Kind != "island_portal" || len(view.Animals) != 0 || len(view.Projectiles) != 0 {
+	if len(view.Nodes) != 2 || view.Nodes[0].Kind != "island_portal" || view.Nodes[1].Kind != "island_upgrade" || len(view.Animals) != 0 || len(view.Projectiles) != 0 {
 		t.Fatal("island update included mainland entities")
 	}
 	if view.Island == nil || len(view.Island.Chest) != 0 || len(view.Island.Builders) != 0 || len(view.Island.Objects) != 1 {

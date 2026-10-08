@@ -10,7 +10,7 @@ func TestBakeryFurnitureMigratesOnceAndSnapshotsDetach(t *testing.T) {
 	w := New(map[string]Profile{"one": {ID: "one", Bakery: true, Paint: map[string]string{"oven": "teal"}}})
 	w.Join("one", "Baker")
 	p := w.players["one"]
-	if len(p.profile.BakeryFurniture) != 10 || p.profile.BakeryFurnitureVersion != 2 || p.profile.BakeryFurniture[0].Color != "teal" {
+	if len(p.profile.BakeryFurniture) != 11 || p.profile.BakeryFurnitureVersion != 4 || p.profile.BakeryFurniture[0].Color != "teal" {
 		t.Fatal("legacy bakery did not receive one painted layout")
 	}
 	nodePosition(w, p, "bakery_plot_0")
@@ -88,7 +88,7 @@ func TestBakeryInvalidPlacementIsAtomic(t *testing.T) {
 	}
 	beforeCoins := p.profile.Coins
 	mustAct(t, w, Action{Action: "bakery_place", Item: "plant", X: 8, Z: 6})
-	if p.profile.Coins != beforeCoins-15 || len(p.profile.BakeryFurniture) != 11 {
+	if p.profile.Coins != beforeCoins-15 || len(p.profile.BakeryFurniture) != 12 {
 		t.Fatal("valid furnishing did not charge its catalog price exactly once")
 	}
 }
@@ -121,6 +121,7 @@ func TestBakeryPackingPreservesColorStockAndDynamicStation(t *testing.T) {
 		t.Fatal("station colliders did not follow the moved furnishing")
 	}
 	nodePosition(w, p, "bakery_plot_0_display")
+	mustAct(t, w, Action{Action: "bakery_build_mode", Enabled: false})
 	if err := w.requireBakeryStation(p, "display", "bakery_plot_0_display"); err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 )
 
 const productionCapacity = 200
+const productionQueueLimit = 32
 
 type ProductionJob struct {
 	Item        string  `json:"item"`
@@ -16,8 +17,10 @@ type ProductionJob struct {
 	Destination string  `json:"destination,omitempty"`
 }
 type StationProduction struct {
-	Job    *ProductionJob `json:"job,omitempty"`
-	Output map[string]int `json:"output"`
+	Job        *ProductionJob  `json:"job,omitempty"`
+	Queue      []ProductionJob `json:"queue"`
+	QueueLimit int             `json:"queueLimit"`
+	Output     map[string]int  `json:"output"`
 }
 
 func preparedRecipe(item string) (Recipe, bool) {
@@ -38,10 +41,12 @@ func cloneProduction(src map[string]*StationProduction) map[string]*StationProdu
 }
 func cloneStationProduction(value *StationProduction) *StationProduction {
 	if value == nil {
-		return &StationProduction{Output: map[string]int{}}
+		return &StationProduction{Output: map[string]int{}, Queue: []ProductionJob{}, QueueLimit: productionQueueLimit}
 	}
 	copy := *value
 	copy.Output = cloneMap(value.Output)
+	copy.Queue = append([]ProductionJob{}, value.Queue...)
+	copy.QueueLimit = productionQueueLimit
 	if value.Job != nil {
 		job := *value.Job
 		copy.Job = &job
@@ -53,24 +58,64 @@ func productionState(p *Profile, key string) *StationProduction {
 		p.Production = map[string]*StationProduction{}
 	}
 	if p.Production[key] == nil {
-		p.Production[key] = &StationProduction{Output: map[string]int{}}
+		p.Production[key] = &StationProduction{Output: map[string]int{}, Queue: []ProductionJob{}, QueueLimit: productionQueueLimit}
 	}
 	if p.Production[key].Output == nil {
 		p.Production[key].Output = map[string]int{}
 	}
+	p.Production[key].QueueLimit = productionQueueLimit
 	return p.Production[key]
 }
 func productionHasContents(p *Profile, key string) bool {
 	s := p.Production[key]
-	return s != nil && (s.Job != nil || bakeryStockCount(s.Output) > 0)
+	return s != nil && (s.Job != nil || len(s.Queue) > 0 || bakeryStockCount(s.Output) > 0)
+}
+func productionKind(p *Profile, key string) (string, bool) {
+	for _, f := range p.BakeryFurniture {
+		if bakeryStationKind(f.Kind) && bakeryProductionKey(f) == key {
+			return f.Kind, true
+		}
+	}
+	if strings.HasPrefix(key, "bakery_") {
+		kind := strings.TrimPrefix(key, "bakery_")
+		return kind, validChoice(kind, "oven", "mixer", "cooling_table")
+	}
+	if p.HomeIsland != nil {
+		for _, o := range p.HomeIsland.Objects {
+			if key == "home:"+o.ID && validChoice(o.Kind, "oven", "mixer", "table") {
+				return o.Kind, true
+			}
+		}
+	}
+	return "", false
+}
+func (w *World) productionStationPresent(p *player, key string) bool {
+	if strings.HasPrefix(key, "bakery_") || strings.HasPrefix(key, "bakery:") {
+		if _, ok := w.bakeryPlot(p); !ok {
+			return false
+		}
+		for _, f := range p.profile.BakeryFurniture {
+			if bakeryProductionKey(f) == key {
+				return true
+			}
+		}
+		return false
+	}
+	if p.profile.HomeIsland != nil {
+		for _, o := range p.profile.HomeIsland.Objects {
+			if key == "home:"+o.ID {
+				return true
+			}
+		}
+	}
+	return false
 }
 func normalizeProduction(p *Profile) {
 	if p.Production == nil {
 		p.Production = map[string]*StationProduction{}
 	}
 	for key, s := range p.Production {
-		kind := strings.TrimPrefix(key, "bakery_")
-		valid := strings.HasPrefix(key, "bakery_") && validChoice(kind, "mixer", "oven", "cooling_table")
+		kind, valid := productionKind(p, key)
 		if strings.HasPrefix(key, "home:") && p.HomeIsland != nil {
 			for _, o := range p.HomeIsland.Objects {
 				if o.ID == strings.TrimPrefix(key, "home:") && validChoice(o.Kind, "mixer", "oven", "table") {
@@ -107,11 +152,19 @@ func normalizeProduction(p *Profile) {
 			}
 		}
 		s.Output = kept
-		if j := s.Job; j != nil {
-			if kind == "cooling_table" || kind == "table" || !validItem(j.Item) || j.Amount < 1 || j.Amount > productionCapacity || !finite(j.Remaining) || !finite(j.Total) || j.Total <= 0 || j.Total > 1000 || j.Remaining < 0 || j.Remaining > j.Total {
-				s.Job = nil
+		validJob := func(j ProductionJob) bool {
+			return kind != "cooling_table" && kind != "table" && validItem(j.Item) && j.Amount >= 1 && j.Amount <= productionCapacity && finite(j.Remaining) && finite(j.Total) && j.Total > 0 && j.Total <= 1000 && j.Remaining >= 0 && j.Remaining <= j.Total
+		}
+		if s.Job != nil && !validJob(*s.Job) {
+			s.Job = nil
+		}
+		queue := []ProductionJob{}
+		for _, job := range s.Queue {
+			if len(queue) < productionQueueLimit && validJob(job) {
+				queue = append(queue, job)
 			}
 		}
+		s.Queue, s.QueueLimit = queue, productionQueueLimit
 	}
 }
 
@@ -127,12 +180,11 @@ func (w *World) productionStation(p *player, target, kind string) (string, error
 			return "", err
 		}
 		plot, _ := w.bakeryPlot(p)
-		for _, f := range p.profile.BakeryFurniture {
-			if f.Kind == kind && (p.editingBakeryFurnitureID == f.ID || !w.bakeryFurnitureVisible(p, f, plot)) {
-				return "", errors.New("Finish moving this station and approach its open side.")
-			}
+		f, _ := w.bakeryFurnitureForTarget(p, kind, target)
+		if p.editingBakeryFurnitureID == f.ID || !w.bakeryFurnitureVisible(p, f, plot) {
+			return "", errors.New("Finish moving this station and approach its open side.")
 		}
-		return "bakery_" + kind, nil
+		return bakeryProductionKey(f), nil
 	}
 	if p.island != p.profile.ID || p.profile.HomeIsland == nil {
 		return "", errors.New("Use an appliance in your own home.")
@@ -172,10 +224,17 @@ func productionAddinCost(recipe Recipe, amount int, available map[string]int) ma
 	return cost
 }
 func emptyProductionMixer(s *StationProduction) bool {
-	return s.Job == nil && bakeryStockCount(s.Output) == 0
+	return s.Job == nil && len(s.Queue) == 0 && bakeryStockCount(s.Output) == 0
 }
 func startProduction(s *StationProduction, item string, amount int, seconds float64) {
-	s.Job = &ProductionJob{Item: item, Amount: amount, Remaining: seconds, Total: seconds}
+	enqueueProduction(s, ProductionJob{Item: item, Amount: amount, Remaining: seconds, Total: seconds})
+}
+func enqueueProduction(s *StationProduction, job ProductionJob) {
+	if s.Job == nil && len(s.Queue) == 0 {
+		s.Job = &job
+	} else {
+		s.Queue = append(s.Queue, job)
+	}
 }
 
 func (w *World) productionAction(p *player, a Action) error {
@@ -191,8 +250,8 @@ func (w *World) productionAction(p *player, a Action) error {
 			return err
 		}
 		s := productionState(&p.profile, key)
-		if !emptyProductionMixer(s) {
-			return errors.New("Wait for this mixer and collect its finished dough before starting another batch.")
+		if len(s.Queue) >= productionQueueLimit {
+			return errors.New("This station's queue is full. Let a batch finish before adding more.")
 		}
 		if a.Item == "dough" || a.Item == "" {
 			if !p.profile.Bakery {
@@ -253,11 +312,11 @@ func (w *World) productionAction(p *player, a Action) error {
 			return errors.New("Hold enough dough in your selected hotbar slot before loading the oven.")
 		}
 		s := productionState(&p.profile, key)
-		if s.Job != nil {
-			return errors.New("This oven is still baking.")
+		if len(s.Queue) >= productionQueueLimit {
+			return errors.New("This station's queue is full. Let a batch finish before adding more.")
 		}
 		destinationKey := "bakery_cooling_table"
-		if key == "bakery_oven" {
+		if strings.HasPrefix(key, "bakery_") || strings.HasPrefix(key, "bakery:") {
 			if _, _, ok := w.bakeryStationPosition(p, "cooling_table"); !ok {
 				return errors.New("Place the oven's cooling table before baking.")
 			}
@@ -267,15 +326,11 @@ func (w *World) productionAction(p *player, a Action) error {
 				return errors.New("Place a table within six metres of your home oven before baking.")
 			}
 		}
-		destination := productionState(&p.profile, destinationKey)
-		if bakeryStockCount(destination.Output)+a.Amount > productionCapacity {
-			return errors.New("Collect the finished goods before baking another batch.")
-		}
+		productionState(&p.profile, destinationKey)
 		if !takeHeldProductionItem(p, item, a.Amount) {
 			return errors.New("You do not have that dough.")
 		}
-		startProduction(s, recipe, a.Amount, float64(a.Amount)*5)
-		s.Job.Destination = destinationKey
+		enqueueProduction(s, ProductionJob{Item: recipe, Amount: a.Amount, Remaining: float64(a.Amount) * 5, Total: float64(a.Amount) * 5, Destination: destinationKey})
 		return nil
 	}
 	if a.Action == "production_collect" {
@@ -313,62 +368,61 @@ func (w *World) productionAction(p *player, a Action) error {
 
 func (w *World) tickProduction(dt float64) {
 	for _, p := range w.players {
+		if p.disconnected {
+			continue
+		}
 		for key, state := range p.profile.Production {
-			if state == nil || state.Job == nil {
+			if state == nil || state.Job == nil && len(state.Queue) == 0 || !w.productionStationPresent(p, key) {
 				continue
 			}
-			destination := state
-			if strings.HasPrefix(key, "bakery_") {
-				kind := strings.TrimPrefix(key, "bakery_")
-				if _, _, ok := w.bakeryStationPosition(p, kind); !ok {
-					continue
+			remaining := dt
+			for step := 0; step <= productionQueueLimit; step++ {
+				if state.Job == nil {
+					if len(state.Queue) == 0 {
+						break
+					}
+					job := state.Queue[0]
+					state.Queue = state.Queue[1:]
+					state.Job = &job
 				}
+				job := state.Job
+				destination := state
+				kind, _ := productionKind(&p.profile, key)
 				if kind == "oven" {
-					if _, _, ok := w.bakeryStationPosition(p, "cooling_table"); !ok {
-						continue
-					}
-					destination = productionState(&p.profile, "bakery_cooling_table")
-				}
-			} else {
-				present := false
-				if p.profile.HomeIsland != nil {
-					for _, o := range p.profile.HomeIsland.Objects {
-						if "home:"+o.ID == key {
-							present = true
-							break
+					destinationKey := job.Destination
+					if destinationKey == "" {
+						if strings.HasPrefix(key, "home:") {
+							destinationKey = w.homeOvenTable(p, key)
+						} else {
+							destinationKey = "bakery_cooling_table"
 						}
 					}
-				}
-				if !present {
-					continue
-				}
-				if state.Job.Destination != "" {
-					present = false
-					if p.profile.HomeIsland != nil {
-						for _, o := range p.profile.HomeIsland.Objects {
-							if "home:"+o.ID == state.Job.Destination && o.Kind == "table" {
-								present = true
-								break
-							}
-						}
+					if !w.productionStationPresent(p, destinationKey) {
+						break
 					}
-					if !present {
-						continue
-					}
-					destination = productionState(&p.profile, state.Job.Destination)
+					destination = productionState(&p.profile, destinationKey)
+				}
+				spent := min(remaining, job.Remaining)
+				job.Remaining = max(0, job.Remaining-spent)
+				remaining -= spent
+				if job.Remaining > .000001 || bakeryStockCount(destination.Output)+job.Amount > productionCapacity {
+					break
+				}
+				destination.Output[job.Item] += job.Amount
+				if _, ok := recipeFor(job.Item); ok {
+					p.profile.Discovered[job.Item] = true
+					awardHats(&p.profile)
+				}
+				state.Job = nil
+				if len(state.Queue) > 0 {
+					next := state.Queue[0]
+					state.Queue = state.Queue[1:]
+					state.Job = &next
+				}
+				if remaining <= .000001 || state.Job == nil {
+					break
 				}
 			}
-			job := state.Job
-			job.Remaining = max(0, job.Remaining-dt)
-			if job.Remaining > .000001 || bakeryStockCount(destination.Output)+job.Amount > productionCapacity {
-				continue
-			}
-			destination.Output[job.Item] += job.Amount
-			if _, ok := recipeFor(job.Item); ok {
-				p.profile.Discovered[job.Item] = true
-				awardHats(&p.profile)
-			}
-			state.Job = nil
 		}
 	}
 }
@@ -405,8 +459,15 @@ func productionRemovalBlocked(p *Profile, key string) bool {
 		if s != nil && s.Job != nil && s.Job.Destination == key {
 			return true
 		}
+		if s != nil {
+			for _, job := range s.Queue {
+				if job.Destination == key {
+					return true
+				}
+			}
+		}
 	}
-	return key == "bakery_cooling_table" && productionHasContents(p, "bakery_oven")
+	return false
 }
 
 func (w *World) productionOwnerProfile(id string) *Profile {

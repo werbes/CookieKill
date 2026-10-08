@@ -108,13 +108,13 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
       for(const p of [[-35,-35],[-35,-9],[28,-9],[28,-20],[32,-20]])await travel(...p);
       await face(32,-30);await screenshot('desert');await travel(32,-27);await visit('desert barter','desert',/Village barter|berries/i);
       for(const p of [[32,-20],[28,-20],[28,-9],[8,-9],[8,34],[45,34]])await travel(...p);
-      await face(45,20);await screenshot('city');await travel(45,23);await visit('city gym','city',/workout|Train/i);
+      await face(45,20);await screenshot('city');assert.ok(!latest.layout?.props?.some(p=>p.kind==='gym'),'city gym has moved to the silver-cookie practice center');
       for(const p of [[45,34],[8,34],[8,-9],[-30,-9],[-30,10]])await travel(...p);
       await face(-80,65);await screenshot('beach');await face(-30,8);await visit('Peace','beach',/kilogram|trash/i);
       await page.evaluate(()=>window.__smokeInput=null);
     }
     assert.deepEqual(errors,[],'browser runtime errors');assert.deepEqual(failed,[],'failed asset/API requests');
-    console.log(process.argv.includes('--tour-only')?'PASS: Chrome route tour; forest, desert barter, city gym, Peace beach; no browser errors.':'PASS: Chrome WebGL; curved authoritative world; 12 bakery plots; login; movement; throw/eat; 3/15/5 inventory; protected transfers; 5-slot hotbar; undiscovered cookbook; Escape-only menu; direct panel resume; five-tone avatar; earned hats; hourly call name; reload persistence; no browser errors.');
+    console.log(process.argv.includes('--tour-only')?'PASS: Chrome route tour; forest, desert barter, city, Peace beach; no browser errors.':'PASS: Chrome WebGL; curved authoritative world; 12 bakery plots; login; movement; throw/eat; 3/15/5 inventory; protected transfers; 5-slot hotbar; undiscovered cookbook; Escape-only menu; direct panel resume; five-tone avatar; earned hats; hourly call name; reload persistence; no browser errors.');
     console.log(`PASS: ${deltaCount} delta frames decoded; unchanged recipes and nodes retained${process.argv.includes('--tour-only')?'':'; fresh baseline after reconnect'}.`);
     console.log('Screenshots: '+output);
   }catch(error){await screenshot('failure').catch(()=>{});console.error('Browser diagnostics',{errors,failed,me:latest?.me&&{x:latest.me.x,z:latest.me.z,selectedSlot:latest.me.selectedSlot,callName:latest.me.callName},focus:await page.evaluate(()=>({active:document.activeElement?.id,locked:!!document.pointerLockElement,menu:!document.querySelector('#play-overlay').hidden,modal:!document.querySelector('#modal').hidden})).catch(()=>null)});throw error;}

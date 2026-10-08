@@ -31,3 +31,15 @@ test('customers walk toward authoritative positions and carry a bag only after a
  snapshot.nodes[1].x=3;snapshot.nodes[1].phase='Walking to the mixer';scene.sync(snapshot,scenery);scene.update(3.2,.1);assert.notEqual(chef.userData.legs[0].rotation.x,0);assert.ok(chef.position.x>-1.6&&chef.position.x<3);
  snapshot.me.inCave=true;scene.sync(snapshot,scenery);assert.equal(scene.group.visible,false);snapshot.nodes=[];scene.sync(snapshot,scenery);assert.equal(scene.group.children.length,0);scene.dispose();
 });
+test('customer clicks raycast the visible person within reach and cannot pass through a bakery wall',async()=>{
+ const [THREE,{createBakeryScene}]=await modules,{scene,scenery,building}=fixture(THREE,createBakeryScene),customer={id:'customer',kind:'bakery_customer',plotId:'plot',owner:'me',x:0,z:0,yaw:0,phase:'waiting',amount:3},snapshot={me:{id:'me',x:.16,z:3},nodes:[customer]},camera=new THREE.PerspectiveCamera(70,1,.1,100);camera.position.set(.16,.4,3);camera.lookAt(.16,.4,0);scene.sync(snapshot,scenery);
+ assert.equal(scene.pickCustomer(camera,snapshot)?.id,'customer');camera.lookAt(3,.4,0);assert.equal(scene.pickCustomer(camera,snapshot),null);camera.lookAt(.16,.4,0);
+ const wall=new THREE.Mesh(new THREE.BoxGeometry(3,3,.2),new THREE.MeshBasicMaterial());wall.position.set(0,1,1);building.add(wall);assert.equal(scene.pickCustomer(camera,snapshot),null);wall.visible=false;assert.equal(scene.pickCustomer(camera,snapshot)?.id,'customer');snapshot.me.z=4.1;assert.equal(scene.pickCustomer(camera,snapshot),null);snapshot.me.z=3;snapshot.me.inCave=true;assert.equal(scene.pickCustomer(camera,snapshot),null);scene.dispose();
+});
+
+test('server walks with actual baked goods on a tray and clears it after delivery',async()=>{
+ const [THREE,{createBakeryScene}]=await modules,{scene,scenery}=fixture(THREE,createBakeryScene),server={id:'server',kind:'bakery_server',x:0,z:-5,yaw:0,phase:'Carrying fresh bakes to the display',item:'berry_cookie',amount:20},snapshot={me:{},nodes:[server]};
+ scene.sync(snapshot,scenery);const actor=scene.group.children[0],tray=actor.getObjectByName('server-bake-tray');assert.equal(tray.visible,true);assert.equal(tray.children.filter(c=>c.name==='carried-berry_cookie').length,6);assert.equal(actor.userData.body.userData.avatar.shirtColor,'blue');
+ server.z=3;scene.sync(snapshot,scenery);scene.update(1,.1);assert.ok(actor.position.z>-5&&actor.position.z<3);assert.equal(actor.userData.arms[0].rotation.x,.85);
+ server.item='';server.amount=0;server.phase='Display stocked';scene.sync(snapshot,scenery);assert.equal(tray.visible,false);assert.equal(tray.children.length,1);scene.dispose();
+});

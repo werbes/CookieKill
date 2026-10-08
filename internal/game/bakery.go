@@ -27,6 +27,48 @@ func (w *World) ReleaseBakeryPlot(id string) {
 
 func bakeryStationID(plot, station string) string { return plot + "_" + station }
 
+func bakeryStationKind(kind string) bool {
+	return validChoice(kind, "oven", "mixer", "display", "cooling_table", "fridge")
+}
+func bakeryProductionKey(f BakeryFurniture) string {
+	if f.ProductionKey != "" {
+		return f.ProductionKey
+	}
+	if validChoice(f.Kind, "oven", "mixer") && f.ID != f.Kind {
+		return "bakery:" + f.ID
+	}
+	return "bakery_" + f.Kind
+}
+func bakeryFurnitureNodeID(plot string, f BakeryFurniture) string {
+	if validChoice(f.Kind, "oven", "mixer") && bakeryProductionKey(f) != "bakery_"+f.Kind {
+		return plot + "_station_" + f.ID
+	}
+	return bakeryStationID(plot, f.Kind)
+}
+func (w *World) bakeryFurnitureForTarget(p *player, kind, target string) (BakeryFurniture, bool) {
+	plot, ok := w.bakeryPlot(p)
+	if !ok {
+		return BakeryFurniture{}, false
+	}
+	var chosen BakeryFurniture
+	nearest := math.Inf(1)
+	for _, f := range p.profile.BakeryFurniture {
+		if !bakeryStationKind(f.Kind) || kind != "" && f.Kind != kind {
+			continue
+		}
+		if target != "" {
+			if bakeryFurnitureNodeID(plot.ID, f) == target {
+				return f, true
+			}
+			continue
+		}
+		if d := distance(p.x, p.z, plot.X+f.X, plot.Z+f.Z); d < nearest {
+			chosen, nearest = f, d
+		}
+	}
+	return chosen, chosen.ID != ""
+}
+
 // A claimed layout can appear beneath visitors. Move only intersecting players
 // to a clear point; saved layouts may also furnish the default central aisle.
 func (w *World) clearNewBakeryDisplay(plotID string) {
@@ -80,6 +122,7 @@ func (w *World) seedBakeryStations() {
 			{"mixer", "Dough mixer", 5, -5.5},
 			{"cooling_table", "Cooling table", -1.8, -5.5},
 			{"display", "Cookie display", 5, 3},
+			{"fridge", "Kitchen fridge", 8, -5.5},
 		} {
 			w.nodes = append(w.nodes, &Node{ID: bakeryStationID(plot.ID, station.kind), Kind: "bakery_" + station.kind, PlotID: plot.ID, Label: station.label, X: plot.X + station.x, Z: plot.Z + station.z, Available: true})
 		}
@@ -94,11 +137,15 @@ func (w *World) requireBakeryStation(p *player, station, target string) error {
 	if plot == "" || w.plotOwner(plot) != p.profile.ID {
 		return errors.New("Claim a free city plot to reopen your saved bakery at no cost.")
 	}
-	stationID := bakeryStationID(plot, station)
-	if target != "" && target != stationID {
+	f, ok := w.bakeryFurnitureForTarget(p, station, target)
+	if !ok {
 		return errors.New("Use the matching station in your own bakery.")
 	}
-	if !w.near(p, stationID, bakeryStationRange) {
+	location, _ := w.bakeryPlot(p)
+	if p.bakeryBuildMode || p.editingBakeryFurnitureID == f.ID {
+		return errors.New("Finish editing your bakery before using this station.")
+	}
+	if p.island != "" || p.inCave || math.Abs(playerY(p)) > 2.5 || distance(p.x, p.z, location.X+f.X, location.Z+f.Z) > bakeryStationRange {
 		return errors.New("Move closer to your bakery's " + station + ".")
 	}
 	return nil
@@ -125,6 +172,7 @@ func (w *World) bakeryNodeView(n Node, owners map[string]*player) Node {
 	n.Owner, n.CallName, n.Username = "", "", ""
 	n.Paint, n.Equipment, n.BakeryLevel = nil, nil, 0
 	n.Stock, n.BakeryFurniture, n.Production, n.LinkedTable = nil, nil, nil, ""
+	n.FurnitureID, n.ProductionKey = "", ""
 	if n.PlotID != "" {
 		n.Available = p != nil
 	}
@@ -146,18 +194,21 @@ func (w *World) bakeryNodeView(n Node, owners map[string]*player) Node {
 				}
 			}
 		} else {
+			f, available := w.bakeryFurnitureForTarget(p, strings.TrimPrefix(n.Kind, "bakery_"), n.ID)
+			n.Available = available
+			if available {
+				location, _ := w.bakeryPlot(p)
+				n.X, n.Z, n.Yaw = location.X+f.X, location.Z+f.Z, f.Rotation*math.Pi/180
+				n.FurnitureID = f.ID
+				n.ProductionKey = bakeryProductionKey(f)
+			}
 			if validChoice(n.Kind, "bakery_mixer", "bakery_oven", "bakery_cooling_table") {
-				n.Production = cloneStationProduction(p.profile.Production[n.Kind])
+				n.Production = cloneStationProduction(p.profile.Production[n.ProductionKey])
 				if n.Kind == "bakery_oven" {
 					if _, _, ok := w.bakeryStationPosition(p, "cooling_table"); ok {
 						n.LinkedTable = bakeryStationID(plot, "cooling_table")
 					}
 				}
-			}
-			position, rotation, available := w.bakeryStationPosition(p, strings.TrimPrefix(n.Kind, "bakery_"))
-			n.Available = available
-			if available {
-				n.X, n.Z, n.Yaw = position.X, position.Z, rotation*math.Pi/180
 			}
 		}
 		if n.Kind == "bakery_display" {

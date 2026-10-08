@@ -265,7 +265,7 @@ func TestForestClubApproachStairsLayersAndFurniture(t *testing.T) {
 	if !w.solidBlockedAt(-215.5, ClubFloorY, -232, .42) || !w.solidBlockedAt(-188.5, ClubFloorY, -237, .42) {
 		t.Fatal("club furniture has no collision")
 	}
-	if w.layout.Version != 9 {
+	if w.layout.Version < 10 {
 		t.Fatal("club map change did not invalidate cached layout")
 	}
 }

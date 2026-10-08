@@ -67,21 +67,7 @@ func normalizeIdentity(p *Profile) {
 	}
 }
 func awardHats(p *Profile) {
-	if len(p.Discovered) > 0 {
-		p.Hats["chef"] = true
-	}
-	if p.Cleaned >= 10 {
-		p.Hats["recycler"] = true
-	}
-	if p.Rescues >= 3 {
-		p.Hats["ocean"] = true
-	}
-	if p.Kills >= 5 {
-		p.Hats["champion"] = true
-	}
-	if p.Bakery || p.Home != nil {
-		p.Hats["builder"] = true
-	}
+	awardAchievements(p)
 }
 func (w *World) customize(p *player, a Action) error {
 	name := strings.TrimSpace(a.CallName)

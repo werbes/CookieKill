@@ -14,6 +14,10 @@ const (
 func grounded(p *player) bool   { return p.jumpOffset == 0 && p.jumpVelocity == 0 }
 func playerY(p *player) float64 { return groundY(p) + p.jumpOffset }
 func staminaCapacity(p *player) float64 {
+	if c := mountedCamel(p); c != nil {
+		camelTraits(c)
+		return c.Stamina
+	}
 	return baseStamina + float64(p.profile.Levels["stamina"])*10
 }
 
@@ -46,7 +50,22 @@ func (w *World) Tick(dt float64) {
 
 func (w *World) step(dt float64) {
 	w.time += dt
+	w.tickTownStats(dt)
+	w.tickCookieArenas()
+	w.tickCamelRace(dt)
+	w.tickCamelTraining(dt)
 	for _, p := range w.players {
+		if !p.disconnected {
+			awardAchievements(&p.profile)
+		}
+		if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+			for key, until := range p.buffs {
+				if until <= w.time {
+					delete(p.buffs, key)
+				}
+			}
+			continue
+		}
 		if w.time-p.cooldowns["last_input"] > .5 {
 			p.input.X = 0
 			p.input.Z = 0
@@ -59,18 +78,22 @@ func (w *World) step(dt float64) {
 		}
 		previousGround := groundY(p)
 		previousY := playerY(p)
+		practiceLocked := cookiePracticeMovementLocked(p)
+		if practiceLocked {
+			p.jumpQueued = false
+		}
 		if p.fallen {
 			p.jumpQueued = false
 			if math.Hypot(p.input.X, p.input.Z) > .01 || p.input.Jump {
 				_ = w.stand(p)
 			}
 		}
-		if !p.fallen && p.jumpQueued && grounded(p) && !inWater(p) && !p.ridingCamel && p.cooldowns["jump"] <= w.time {
-			p.jumpVelocity = jumpSpeed
+		if !p.fallen && p.jumpQueued && grounded(p) && !inWater(p) && p.cooldowns["jump"] <= w.time {
+			p.jumpVelocity = camelJumpSpeed(p)
 			p.posture = ""
 		}
 		p.jumpQueued = false
-		moving := !p.fallen && math.Hypot(p.input.X, p.input.Z) > .01
+		moving := !p.fallen && !practiceLocked && math.Hypot(p.input.X, p.input.Z) > .01
 		if moving {
 			p.posture = ""
 		}
@@ -79,16 +102,6 @@ func (w *World) step(dt float64) {
 			p.bakerySeatID = ""
 		}
 		w.updateMountedCamel(p)
-		speed := 6 * (1 + float64(p.profile.Levels["legs"])*.04)
-		if p.ridingCamel {
-			speed *= 1.8
-		}
-		if inWater(p) {
-			speed = 4 * (1 + float64(p.profile.Levels["swim"])*.06)
-			if w.active(p, "swim") {
-				speed *= 1.6
-			}
-		}
 		maxStamina := staminaCapacity(p)
 		if p.stamina <= 0 {
 			p.sprintExhausted = true
@@ -102,20 +115,13 @@ func (w *World) step(dt float64) {
 			if p.stamina == 0 {
 				p.sprinting = false
 				p.sprintExhausted = true
-			} else {
-				speed *= 1.65
 			}
 		} else {
 			p.stamina = min(maxStamina, p.stamina+dt*14)
 		}
-		if w.active(p, "speed") {
-			speed *= 1.4
-		}
-		if w.active(p, "slowed") {
-			speed *= .55
-		}
+		speed := w.playerMovementSpeed(p)
 		inputX, inputZ := p.input.X, p.input.Z
-		if p.fallen {
+		if p.fallen || practiceLocked {
 			inputX, inputZ = 0, 0
 		}
 		nx, nz := max(MinX+1, min(MaxX-1, p.x+inputX*speed*dt)), max(MinZ+1, min(MaxZ-1, p.z+inputZ*speed*dt))
@@ -124,7 +130,7 @@ func (w *World) step(dt float64) {
 		dx, dz := (nx-p.x)/float64(steps), (nz-p.z)/float64(steps)
 		for i := 0; i < steps; i++ {
 			beforeX, beforeZ := p.x, p.z
-			onFoot := grounded(p) && !p.ridingCamel && !inWater(p) && !p.fallen
+			onFoot := grounded(p) && !p.ridingCamel && !inWater(p) && !p.fallen && !isCookieArena(p.island)
 			if p.island != "" && !w.islandBlocked(p, p.x+dx, p.z) || p.island == "" && w.moveMainland(p, p.x+dx, p.z, previousY) {
 				p.x += dx
 			}
@@ -152,12 +158,17 @@ func (w *World) step(dt float64) {
 			}
 		}
 	}
+	w.tickCookiePractice(dt)
 	nodes := w.nodes[:0]
 	for _, n := range w.nodes {
 		if n.ExpiresAt > 0 && n.ExpiresAt <= w.time {
 			continue
 		}
 		nodes = append(nodes, n)
+		if n.Kind == "club_cake_seller" {
+			n.Available = w.clubNodeAvailable(n)
+			continue
+		}
 		if !n.Available && n.readyAt <= w.time {
 			if (n.Kind == "wood" || n.Kind == "cactus") && w.treeRegrowthBlocked(n) {
 				n.readyAt = w.time + 1
@@ -172,6 +183,8 @@ func (w *World) step(dt float64) {
 	w.nodes = nodes
 	w.tickProduction(dt)
 	w.tickBakeries(dt)
+	w.tickJohnPork(dt)
+	w.tickCamelCompanions(dt)
 	w.moveAnimals(dt)
 	w.moveProjectiles(dt)
 }
@@ -182,6 +195,17 @@ func (w *World) step(dt float64) {
 func (w *World) moveMainland(p *player, x, z, airborneY float64) bool {
 	candidate := *p
 	candidate.x, candidate.z = x, z
+	if !p.inCave {
+		candidate.y = treeHutGround(p, x, z)
+		if p.ridingCamel && candidate.y > 0 {
+			return false
+		}
+		// Walking may use small stair rises/drops. Stepping off a high deck
+		// requires jumping, which already follows the world-space fall arc.
+		if grounded(p) && p.y-candidate.y > .5 {
+			return false
+		}
+	}
 	if p.inCave && !grounded(p) && airborneY >= 0 && !caveMouth(x, z) {
 		// A jump out of the exposed opening can land on the desert roof instead
 		// of falling through that roof into the covered tunnel.
@@ -209,11 +233,14 @@ func (w *World) moveMainland(p *player, x, z, airborneY float64) bool {
 		return false
 	}
 	p.inCave = candidate.inCave
+	if !candidate.inCave {
+		p.y = candidate.y
+	}
 	return true
 }
 
 func (w *World) moveJump(p *player, dt, previousGround, previousY float64) {
-	if inWater(p) || p.ridingCamel {
+	if inWater(p) {
 		p.jumpOffset, p.jumpVelocity = 0, 0
 		return
 	}
@@ -246,12 +273,18 @@ func (w *World) jumpCeiling(p *player, fromY, toY float64) (float64, bool) {
 		}
 	}
 	if p.island != "" {
+		if isCookieArena(p.island) {
+			for _, c := range cookieArenaColliders(p.island) {
+				consider(c.Y, colliderOverlaps(c, p.x, p.z, .42))
+			}
+			return ceiling, hit
+		}
 		if island, ok := w.currentIsland(p); ok {
 			for _, o := range island.Objects {
-				if o.Kind == "door" && o.Open {
+				if o.Kind == "camel_pen" || o.Kind == "door" && o.Open {
 					continue
 				}
-				r, _ := buildRecipeFor(o.Kind)
+				r, _ := buildObjectRecipe(o)
 				lx, lz := objectLocal(o, p.x, p.z)
 				consider(o.Y, circleRect(lx, lz, .42, 0, 0, r.Width, r.Depth))
 			}
@@ -325,6 +358,12 @@ func (w *World) moveProjectiles(dt float64) {
 	surviving := w.projectiles[:0]
 	for _, shot := range w.projectiles {
 		if w.time-shot.born > 5 {
+			continue
+		}
+		if isCookieArena(shot.Island) {
+			if w.moveCookieArenaProjectile(shot, dt) {
+				surviving = append(surviving, shot)
+			}
 			continue
 		}
 		nx, ny, nz := shot.X+shot.VX*dt, shot.Y+shot.VY*dt, shot.Z+shot.VZ*dt
@@ -464,6 +503,9 @@ func (w *World) moveProjectiles(dt float64) {
 }
 
 func (w *World) damagePlayer(killer, victim *player, damage float64, cause string) bool {
+	if victim.island == CookieRingIsland {
+		return w.damageCookieRing(killer, victim, damage, 1)
+	}
 	if victim.island != "" || w.active(victim, "spawn_shield") || w.insideSafe(victim.x, victim.z) {
 		return false
 	}

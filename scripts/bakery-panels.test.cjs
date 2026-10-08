@@ -3,7 +3,7 @@ const root=path.resolve(__dirname,'..'),load=file=>import('data:text/javascript;
 const modulePromise=load('web/bakery-panels.js');
 const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function fixture(createBakeryPanels){
- const state={snapshot:{me:{id:'owner',coins:500,inventory:{sugar:10,dough:7,berry:2},bakeryDisplay:{sugar:5},bakeryPantry:{berry:3},bakeryStaff:{},bakeryChefRecipe:'sugar',discovered:{berry_cookie:true},bakeryBusiness:{displayCapacity:100,pantryCapacity:1000,customers:[]}},recipes:[{id:'sugar',name:'Sugar cookie',cost:{dough:1}},{id:'berry_cookie',name:'Berry burst',cost:{dough:1,berry:2}},{id:'cake',name:'Cake',cost:{dough:3,berry:2,nut:2}}]}};
+ const state={snapshot:{me:{id:'owner',coins:500,inventory:{sugar:10,dough:7,berry:2},bakeryDisplay:{sugar:5},bakeryPantry:{berry:3},bakeryStaff:{},bakeryChefRecipe:'sugar',discovered:{berry_cookie:true},bakeryBusiness:{displayCapacity:300,pantryCapacity:1000,customers:[]}},recipes:[{id:'sugar',name:'Sugar cookie',cost:{dough:1}},{id:'berry_cookie',name:'Berry burst',cost:{dough:1,berry:2}},{id:'cake',name:'Cake',cost:{dough:3,berry:2,nut:2}}]}};
  const button=(label,kind,data={},disabled=false)=>`<button data-action="${kind}" data-payload='${JSON.stringify(data)}'${disabled?' disabled':''}>${escapeHTML(label)}</button>`;
  const panel=createBakeryPanels({state,button,escapeHTML,insideOwnBakery:()=>!!state.snapshot.me.insideBakery,pretty:value=>String(value).replaceAll('_',' '),itemName:id=>id,shopRow:(_icon,title,description,buttons)=>`<article><h3>${escapeHTML(title)}</h3><p>${escapeHTML(description)}</p>${buttons}</article>`,renderModal:()=>{}});
  return {state,p:state.snapshot.me,panel};
@@ -24,7 +24,7 @@ function assertCatalogStructure(html){
 test('display controls transfer real stock and offer only waiting, fulfillable orders',async()=>{
  const {createBakeryPanels}=await modulePromise,{p,panel}=fixture(createBakeryPanels),node={id:'plot_display'};
  let html=panel.display(node);assert.doesNotMatch(html,/data-action="trade"|Sell one/);let stock=buttons(html,'bakery_stock').find(b=>b.data.item==='sugar');assert.deepEqual(stock.data,{target:'plot_display',item:'sugar',amount:5});assert.equal(stock.disabled,false);
- p.bakeryDisplay.sugar=99;html=panel.display(node);assert.equal(buttons(html,'bakery_stock').find(b=>b.data.item==='sugar').data.amount,1);p.bakeryDisplay.sugar=100;assert.equal(buttons(panel.display(node),'bakery_stock').find(b=>b.data.item==='sugar').disabled,true);
+ p.bakeryDisplay.sugar=299;html=panel.display(node);assert.equal(buttons(html,'bakery_stock').find(b=>b.data.item==='sugar').data.amount,1);p.bakeryDisplay.sugar=300;assert.equal(buttons(panel.display(node),'bakery_stock').find(b=>b.data.item==='sugar').disabled,true);
  p.bakeryDisplay.sugar=5;p.bakeryBusiness.customers=[{id:'one',item:'sugar',amount:5,phase:'waiting',price:17},{id:'two',item:'sugar',amount:1,phase:'arriving',price:3},{id:'gone',item:'sugar',amount:0,phase:'leaving',price:0}];
  let serve=buttons(panel.display(node),'bakery_serve');assert.equal(serve.length,1);assert.deepEqual(serve[0].data,{target:'one'});assert.match(serve[0].label,/17 coins/);assert.equal(serve[0].disabled,false);
  p.bakeryDisplay.sugar=4;html=panel.display(node);assert.equal(buttons(html,'bakery_serve')[0].disabled,true);assert.match(html,/Needs 1 more on the display/);
@@ -33,7 +33,7 @@ test('display controls transfer real stock and offer only waiting, fulfillable o
 
 test('bakery furnishing catalog separates core limits, coin purchases, painted packed items and build permission',async()=>{
  const {createBakeryPanels}=await modulePromise,{state,p,panel}=fixture(createBakeryPanels);p.bakeryPlot='plot';p.insideBakery=true;p.bakeryBuildMode=true;p.bakeryFurniture=[{id:'oven1',kind:'oven',color:'teal'},{id:'chair1',kind:'chair'}];p.inventory['bakery_chair:blue']=1;p.inventory.paint_red=1;p.editingBakeryFurnitureId='chair1';state.snapshot.bakeryFurnitureCatalog=[{id:'oven',name:'Bakery oven',width:2.2,depth:1.4,room:'kitchen',cost:120,core:true},{id:'chair',name:'Cafe chair',width:.9,depth:.9,room:'cafe',cost:12}];
- let html=panel.building(),choices=buttons(html,'bakery-place-choice');assert.equal(choices[0].disabled,true);assert.equal(choices[1].disabled,false);assert.deepEqual(choices[2].data,{item:'chair',packed:'bakery_chair:blue'});assert.equal(choices[2].disabled,false);assert.match(html,/Packed ovens, mixers, or displays pause/);assert.equal(buttons(html,'bakery_paint').find(b=>b.data.item==='red').disabled,false);
+ let html=panel.building(),choices=buttons(html,'bakery-place-choice');assert.equal(choices[0].disabled,true);assert.equal(choices[1].disabled,false);assert.deepEqual(choices[2].data,{item:'chair',packed:'bakery_chair:blue'});assert.equal(choices[2].disabled,false);assert.match(html,/active or queued station batches before packing/);assert.equal(buttons(html,'bakery_paint').find(b=>b.data.item==='red').disabled,false);
  assertCatalogStructure(html);p.editingBakeryFurnitureId='';assertCatalogStructure(panel.building());
  p.coins=0;choices=buttons(panel.building(),'bakery-place-choice');assert.equal(choices[1].disabled,true);assert.equal(choices[2].disabled,false);
  p.insideBakery=false;assert.ok(buttons(panel.building(),'bakery-place-choice').every(b=>b.disabled));p.insideBakery=true;p.bakeryBuildMode=false;assert.ok(buttons(panel.building(),'bakery-place-choice').every(b=>b.disabled));
@@ -41,10 +41,25 @@ test('bakery furnishing catalog separates core limits, coin purchases, painted p
 
 test('pantry capacity, persistent hires and discovered chef recipes have separate controls',async()=>{
  const {createBakeryPanels}=await modulePromise,{p,panel}=fixture(createBakeryPanels);
- const deposit=buttons(panel.pantry({id:'plot_mixer'}),'bakery_pantry_deposit').find(b=>b.data.item==='dough');assert.deepEqual(deposit.data,{target:'plot_mixer',item:'dough',amount:5});assert.equal(deposit.disabled,false);
- p.bakeryPantry={berry:1000};assert.ok(buttons(panel.pantry({id:'plot_mixer'}),'bakery_pantry_deposit').every(b=>b.disabled));
- let hires=buttons(panel.staff({id:'plot'}),'bakery_hire');assert.deepEqual(hires.map(b=>b.data),[{target:'plot',item:'chef'},{target:'plot',item:'cashier'}]);assert.ok(hires.every(b=>!b.disabled));
+ const deposit=buttons(panel.pantry({id:'plot_fridge'}),'bakery_fridge_deposit').find(b=>b.data.item==='dough');assert.deepEqual(deposit.data,{target:'plot_fridge',item:'dough',amount:5});assert.equal(deposit.disabled,false);
+ p.inventory.prepared_berry_cookie=3;assert.equal(buttons(panel.pantry({id:'plot_fridge'}),'bakery_fridge_deposit').find(b=>b.data.item==='prepared_berry_cookie').data.amount,3);
+ p.bakeryPantry={berry:1000};assert.ok(buttons(panel.pantry({id:'plot_fridge'}),'bakery_fridge_deposit').every(b=>b.disabled));
+ let hires=buttons(panel.staff({id:'plot'}),'bakery_hire');assert.deepEqual(hires.map(b=>b.data),[{target:'plot',item:'chef'},{target:'plot',item:'server'},{target:'plot',item:'cashier'}]);assert.ok(hires.every(b=>!b.disabled));
  p.coins=199;p.bakeryStaff.chef=true;hires=buttons(panel.staff({id:'plot'}),'bakery_hire');assert.ok(hires.every(b=>b.disabled));
  const choices=buttons(panel.chef({id:'plot_oven'}),'bakery_chef_recipe');assert.deepEqual(choices.map(b=>b.data.item),['sugar','berry_cookie']);assert.equal(choices[0].disabled,true);assert.deepEqual(choices[1].data,{target:'plot_oven',item:'berry_cookie'});
- assert.match(panel.staff({id:'plot'}),/pause when you disconnect/);assert.match(panel.pantry({id:'plot_mixer'}),/personal inventory stay there/);
+ assert.match(panel.staff({id:'plot'}),/pause when you disconnect/);assert.match(panel.pantry({id:'plot_fridge'}),/personal inventory stay there/);
+});
+test('repeatable ovens and mixers remain purchasable and packed appliances can be placed alongside existing ones',async()=>{
+ const {createBakeryPanels}=await modulePromise,{state,p,panel}=fixture(createBakeryPanels);Object.assign(p,{bakeryPlot:'plot',insideBakery:true,bakeryBuildMode:true,bakeryFurniture:[{id:'oven1',kind:'oven'},{id:'mixer1',kind:'mixer'},{id:'display',kind:'display'}]});p.inventory.bakery_oven=1;
+ state.snapshot.bakeryFurnitureCatalog=[{id:'oven',name:'Oven',width:2.2,depth:1.4,cost:120,room:'kitchen',core:false},{id:'mixer',name:'Mixer',width:1.6,depth:1.6,cost:90,room:'kitchen',core:false},{id:'display',name:'Display',width:2.8,depth:.8,cost:100,room:'cafe',core:true}];
+ const choices=buttons(panel.building(),'bakery-place-choice');assert.deepEqual(choices.map(b=>b.disabled),[false,false,true,false]);assert.deepEqual(choices[3].data,{item:'oven',packed:'bakery_oven'});assert.match(panel.building(),/1 placed/);
+});
+test('compact customer popup uses the authoritative order and price, with ownership, stock, and reach checks',async()=>{
+ const {createBakeryPanels}=await modulePromise,{p,panel}=fixture(createBakeryPanels),node={id:'customer',owner:'owner',x:2,z:0};Object.assign(p,{x:0,z:0});p.bakeryBusiness.customers=[{id:node.id,item:'sugar',amount:5,phase:'waiting',price:17}];
+ let html=panel.customer(node),serve=buttons(html,'bakery-serve-customer')[0];assert.deepEqual(serve.data,{target:'customer'});assert.equal(serve.label,'Serve · 17 coins');assert.equal(serve.disabled,false);assert.doesNotMatch(html,/shop-list|STOCK YOUR DISPLAY/);
+ p.bakeryDisplay.sugar=4;assert.equal(buttons(panel.customer(node),'bakery-serve-customer')[0].disabled,true);p.bakeryDisplay.sugar=5;node.x=4.1;assert.equal(buttons(panel.customer(node),'bakery-serve-customer')[0].disabled,true);node.x=4;node.y=2.6;assert.equal(buttons(panel.customer(node),'bakery-serve-customer')[0].disabled,true);node.y=0;node.owner='other';assert.equal(buttons(panel.customer(node),'bakery-serve-customer').length,0);node.owner='owner';p.bakeryBusiness.customers[0].phase='leaving';assert.equal(buttons(panel.customer(node),'bakery-serve-customer').length,0);
+});
+test('bakery roles, physical fridge, display capacity and additive achievement formula are explicit',async()=>{
+ const {createBakeryPanels}=await modulePromise,{p,panel}=fixture(createBakeryPanels);p.bakeryBusiness.achievementCount=3;p.bakeryBusiness.achievementMultiplier=1.3;
+ assert.match(panel.staff({id:'plot'}),/Hire server/);assert.match(panel.staff({id:'plot'}),/carries up to 20/);assert.match(panel.staff({id:'plot'}),/1\.3× original order base/);assert.match(panel.staff({id:'plot'}),/1 \+ 0\.10 × N/);assert.match(panel.display({id:'plot_display'}),/5 \/ 300 on display/);assert.match(panel.pantry({id:'plot_fridge'}),/KITCHEN FRIDGE/);assert.match(panel.pantry({id:'plot_fridge'}),/physical fridge/);
 });

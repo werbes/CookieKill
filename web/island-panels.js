@@ -29,6 +29,9 @@ export function createIslandPanels(deps) {
   const afford = cost => Object.entries(cost || {}).every(([item, amount]) => count(item) >= amount);
   const now = () => state.snapshot?.serverTime || Date.now()/1000;
   function travelButtons() {
+    if(['cookie_ring','cookie_practice'].includes(me().island))return button('Return to treehut','cookie_arena_leave');
+    if(me().island==='camel_training')return button('Training / return','tab',{tab:'training'});
+    if(me().island==='camel_race')return `<div class="item-actions">${button('Race standings / return','tab',{tab:'race'})}</div>`;
     return `<div class="item-actions">${ownIsland() && me().island !== me().id ? button('Go to my island','teleport_home',{},false,true) : ''}${me().island ? button('Return to main island','teleport_main') : ''}</div>`;
   }
   function pink() {
@@ -73,11 +76,14 @@ export function createIslandPanels(deps) {
   const {building,buildObject,chest,storage}=buildingPanels;
   function animal() {
     const creature=state.snapshot?.animals?.find(animal=>animal.id===state.context?.id)||state.context||{};
-    const ponds=me().homeIsland?.objects?.filter(object=>object.kind==='pond'&&!object.adopted)||[];
+    const ponds=me().homeIsland?.objects?.filter(object=>object.kind==='pond'&&(object.adoptedAnimals?.length||(object.adopted?1:0))<(object.pondCapacity||1))||[];
     const eligible=['fish','turtle'].includes(creature.species)&&creature.need==='wounded'&&!creature.egg&&creature.health>0;
-    return `<p class="panel-intro">${esc(pretty(creature.species||'Ocean animal'))} · ${creature.need?'Needs help with '+esc(pretty(creature.need).toLowerCase()):'Healthy'}</p><div class="item-actions">${button('Help this animal','interact',{target:creature.id},!creature.need,true)}${button('Adopt into my pond','adopt_animal',{target:creature.id},!eligible||ponds.length<1)}</div><p class="field-hint">A wounded fish or turtle can be adopted into an empty pond on your home island. Each pond shelters one animal.</p>`;
+    return `<p class="panel-intro">${esc(pretty(creature.species||'Ocean animal'))} · ${creature.need?'Needs help with '+esc(pretty(creature.need).toLowerCase()):'Healthy'}</p><div class="item-actions">${button('Help this animal','interact',{target:creature.id},!creature.need,true)}${button('Adopt into my pond','adopt_animal',{target:creature.id},!eligible||ponds.length<1)}</div><p class="field-hint">A wounded fish or turtle can be adopted into a pond with room on your home island. Upgrade a pond to shelter up to four animals.</p>`;
   }
   function companion() {
+    if(['cookie_ring','cookie_practice'].includes(me().island))return `<div class="notice good"><p>Your companions wait safely outside this activity.</p>${button('Activity / return','tab',{tab:'cookie_activity'})}</div>`;
+    if(me().island==='camel_training')return `<div class="notice good"><p>Your camel is exercising in the Training Gardens.</p>${button('Exercises / return','tab',{tab:'training'})}</div>`;
+    if(me().island==='camel_race')return `<div class="notice good"><p>Your camel is riding in Dune Dash. Press E or R for standings and the return button.</p>${button('View race','tab',{tab:'race'})}</div>`;
     const p=me(), seconds=Math.max(0,(p.camelRentalUntil||0)-now()), owned=(p.camels||[]).filter(c=>!c.rentalUntil).length;
     if(!owned&&seconds<=0)return '';
     const nearby=(state.snapshot?.nodes||[]).filter(n=>n.kind==='camel'&&n.owner===p.id&&!!n.inCave===!!p.inCave&&Math.abs((n.y||0)-(p.y||0))<=2&&Math.hypot(n.x-p.x,n.z-p.z)<=5).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];
@@ -88,7 +94,7 @@ export function createIslandPanels(deps) {
     return type==='friends'?panel+camelNames():panel;
   }
   function shop(kind) {
-    return ({pink_lollipop:pink,blue_lollipop:blue,abu_fanous:camel})[kind]?.() ?? null;
+    return ({island_upgrade:buildingPanels.upgrade,pink_lollipop:pink,blue_lollipop:blue,abu_fanous:camel})[kind]?.() ?? null;
   }
   function handle(kind,data) {
     if(kind==='island-close'){closeModal();return true;}

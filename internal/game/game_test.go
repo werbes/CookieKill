@@ -144,8 +144,9 @@ func TestReconnectPreservesHealthPositionAndProductionJob(t *testing.T) {
 		t.Fatal("reconnect retained movement input")
 	}
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
-	if err := w.Act("one", Action{Action: "make_dough"}); err == nil {
-		t.Fatal("reconnect replaced the unfinished production job")
+	mustAct(t, w, Action{Action: "make_dough"})
+	if len(p.profile.Production["bakery_mixer"].Queue) != 1 {
+		t.Fatal("second paid batch was not queued behind the saved batch")
 	}
 	if job := p.profile.Production["bakery_mixer"].Job; job == nil || job.Remaining != 40 || p.profile.Inventory["dough"] != 0 {
 		t.Fatal("reconnect advanced or lost the paused dough batch")
@@ -156,7 +157,6 @@ func TestReconnectPreservesHealthPositionAndProductionJob(t *testing.T) {
 	advance(w, 40)
 	nodePosition(w, p, "bakery_plot_0_mixer")
 	mustAct(t, w, Action{Action: "production_collect", Target: "bakery_plot_0_mixer", Item: "dough", Amount: 40})
-	mustAct(t, w, Action{Action: "make_dough"})
 	if p.profile.Inventory["dough"] != 40 || p.profile.Production["bakery_mixer"].Job.Remaining != 40 {
 		t.Fatal("production did not resume with its original output and a new timed batch")
 	}
@@ -186,7 +186,7 @@ func TestGatherRangeAndRenewal(t *testing.T) {
 	if err := w.Act("one", Action{Action: "interact", Target: node.ID}); err == nil {
 		t.Fatal("depleted node could be gathered")
 	}
-	advance(w, 26)
+	advance(w, node.respawn+1)
 	if !node.Available {
 		t.Fatal("resource never renewed")
 	}
@@ -370,18 +370,12 @@ func TestGymLocationCapsAndProteinRecovery(t *testing.T) {
 	setItem(p, "protein_drink", 1)
 	mustAct(t, w, Action{Action: "consume_protein", Item: "protein_drink"})
 	for _, kind := range []string{"legs", "stamina", "arms", "swim"} {
-		mustAct(t, w, Action{Action: "train", Item: kind})
 		if err := w.Act("one", Action{Action: "train", Item: kind}); err == nil {
-			t.Fatal("training recovery bypassed")
+			t.Fatal("old city menu still grants instant exercise levels")
 		}
-		advance(w, 1.6)
 	}
-	if p.profile.Coins != 92 || p.profile.Levels["swim"] != 1 {
-		t.Fatal("gym accounting incorrect")
-	}
-	p.profile.Levels["arms"] = 10
-	if err := w.Act("one", Action{Action: "train", Item: "arms"}); err == nil {
-		t.Fatal("training exceeded stat cap")
+	if p.profile.Coins != 100 || p.profile.Levels["arms"] != 0 || !w.active(p, "protein") {
+		t.Fatal("retired gym spent coins, granted levels, or lost protein benefit")
 	}
 }
 

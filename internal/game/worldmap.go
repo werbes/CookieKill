@@ -82,7 +82,17 @@ type Collider struct {
 	resource                           *Node
 }
 
-func coastZ(x float64) float64  { return 32 + 11*math.Sin((x+240)*.021) + 5*math.Sin(x*.057) }
+func coastZ(x float64) float64 { return 32 + 11*math.Sin((x+240)*.021) + 5*math.Sin(x*.057) }
+
+// Keep approaches and interiors clear before adding randomized resources and
+// scenery; roof colliders alone cannot reserve a walkable ground-level room.
+func specialPlaceReserved(x, z, radius float64) bool {
+	radius = max(radius, .001)
+	return circleRect(x, z, radius, -225.5, 17.5, 29, 29) ||
+		circleRect(x, z, radius, TreeHutX, TreeHutZ, 22, 28) ||
+		circleRect(x, z, radius, 222, -236.5, 10, 17) ||
+		circleRect(x, z, radius, 163.5, 156, 89, 42)
+}
 func waterAt(x, z float64) bool { return x < 0 && z > coastZ(x) }
 func area(x, z float64) string {
 	if x < 0 {
@@ -102,7 +112,9 @@ func area(x, z float64) string {
 	}
 	return "city"
 }
-func inWater(p *player) bool { return p.island == "" && waterAt(p.x, p.z) }
+func inWater(p *player) bool {
+	return p.island == "" && waterAt(p.x, p.z) || p.island == CookiePracticeIsland && cookiePracticeWater(p)
+}
 func groundY(p *player) float64 {
 	if p.island != "" {
 		return p.y
@@ -113,7 +125,7 @@ func groundY(p *player) float64 {
 	if p.inCave {
 		return caveGroundY(p.x, p.z)
 	}
-	return 0
+	return p.y
 }
 
 // Construction now belongs to private home islands; city bakeries remain businesses.
@@ -198,7 +210,7 @@ func (w *World) StaticLayout() Layout {
 	return l
 }
 func (w *World) seedMap() {
-	w.layout = Layout{Version: 9, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
+	w.layout = Layout{Version: 12, MinX: MinX, MaxX: MaxX, MinZ: MinZ, MaxZ: MaxZ, Zones: append([]BuildZone{}, buildingZones...), Props: []WorldProp{}, Plots: []BakeryPlot{}}
 	for x := MinX; x <= 0; x += 3 {
 		w.layout.Coast = append(w.layout.Coast, Point{x, coastZ(x)})
 	}
@@ -224,14 +236,16 @@ func (w *World) seedMap() {
 	addNode("abu_fanous", "abu_fanous", "Abu Fanous · camel keeper", 226, -126, 0, 0)
 	w.seedCave()
 	w.seedClub()
+	w.seedRace()
+	w.seedCamelTraining()
+	w.seedTreeHut()
+	w.seedJohnHut()
 	building("saffron_house", "desert_building", "SAFFRON • BARTER", 32, -30, 8, 7, 4)
 	building("juniper_house", "desert_building", "JUNIPER • BARTER", 150, -55, 9, 8, 4)
 	building("clove_house", "desert_building", "CLOVE • BARTER", 55, -195, 9, 8, 4)
 	for i, p := range []Point{{51, -48}, {15, -52}, {146, -91}, {175, -68}, {77, -210}, {36, -220}} {
 		building(fmt.Sprintf("village_house_%d", i), "desert_building", "", p.X, p.Z, 8, 7, 4)
 	}
-	addNode("gym", "gym", "The Rolling Pin Gym", 45, 20, 0, 0)
-	building("gym_building", "gym", "ROLLING PIN GYM", 45, 20, 12, 10, 6)
 	addNode("kitchen_shop", "kitchen_shop", "The Kitchen Workshop", 80, 22, 0, 0)
 	building("kitchen_store", "kitchen_shop", "KITCHEN WORKSHOP", 80, 22, 12, 9, 5)
 	addNode("ingredient_shop", "ingredient_shop", "Baker's Pantry", 145, 22, 0, 0)
@@ -255,6 +269,7 @@ func (w *World) seedMap() {
 		}
 	}
 	addNode("dummy", "dummy", "Practice dummy", -35, -47, 0, 0)
+	w.seedTown()
 	labels := map[string]string{"wood": "Tree · chop for wood", "stick": "Dry sticks", "stone": "Loose stones", "berry": "Wild berries", "nut": "Forest nuts", "cactus": "Cactus fruit", "sea_salt": "Sea salt", "trash": "Beach litter • kilograms", "shell": "Washed-up seashell", "chest": "Forgotten chest"}
 	starters := []struct {
 		kind  string
@@ -272,7 +287,7 @@ func (w *World) seedMap() {
 		kind := []string{"wood", "stick", "stone", "chest", "berry", "nut", "chest"}[i%7]
 		x := -12 - rng.Float64()*220
 		z := -15 - rng.Float64()*233
-		if w.staticBlocked(x, z, 2) || buildZone(x, z) != "" || caveReserved(x, z) {
+		if w.staticBlocked(x, z, 2) || buildZone(x, z) != "" || caveReserved(x, z) || specialPlaceReserved(x, z, 2) {
 			continue
 		}
 		addNode(fmt.Sprintf("forest_%d", i), kind, labels[kind], x, z, 2, 35)
@@ -284,7 +299,7 @@ func (w *World) seedMap() {
 		kind := []string{"cactus", "chest", "stone", "chest"}[i%4]
 		x := 12 + rng.Float64()*218
 		z := -16 - rng.Float64()*232
-		if w.staticBlocked(x, z, 3) || buildZone(x, z) != "" || caveReserved(x, z) || distance(x, z, 226, -126) < 8 {
+		if w.staticBlocked(x, z, 3) || buildZone(x, z) != "" || caveReserved(x, z) || specialPlaceReserved(x, z, 3) || distance(x, z, 226, -126) < 8 {
 			continue
 		}
 		addNode(fmt.Sprintf("desert_%d", i), kind, labels[kind], x, z, 2, 40)
@@ -298,6 +313,9 @@ func (w *World) seedMap() {
 		kind := []string{"trash", "trash", "shell", "stone", "sea_salt", "chest", "chest"}[i%7]
 		x := -8 - rng.Float64()*225
 		z := coastZ(x) - 3 - rng.Float64()*12
+		if specialPlaceReserved(x, z, 2) {
+			continue
+		}
 		amount := 1
 		if kind == "trash" {
 			amount = 2
@@ -408,7 +426,7 @@ func (w *World) safeSpace(x, z, r float64) bool {
 }
 func (w *World) seedDecor(rng *rand.Rand) {
 	clear := func(x, z, r float64) bool {
-		if distance(x, z, -35, -35) < 15 || buildZone(x, z) != "" || w.staticBlocked(x, z, r+1.3) || caveReserved(x, z) || distance(x, z, 226, -126) < 8 {
+		if distance(x, z, -35, -35) < 15 || buildZone(x, z) != "" || w.staticBlocked(x, z, r+1.3) || caveReserved(x, z) || specialPlaceReserved(x, z, r) || distance(x, z, 226, -126) < 8 {
 			return false
 		}
 		for _, b := range buildingZones {
@@ -562,12 +580,7 @@ func (w *World) staticShotHit(x, y, z, nx, ny, nz float64) (float64, bool) {
 		if c.resource != nil && !c.resource.Available {
 			continue
 		}
-		width, depth := c.Width, c.Depth
-		if c.Radius > 0 {
-			width = 2 * c.Radius
-			depth = width
-		}
-		t, hit := slabHit(x, y, z, nx, ny, nz, c.X-width/2, c.Y, c.Z-depth/2, c.X+width/2, c.Y+c.Height, c.Z+depth/2)
+		t, hit := colliderSegmentHit(c, x, y, z, nx, ny, nz)
 		if hit && t < nearest {
 			nearest = t
 		}

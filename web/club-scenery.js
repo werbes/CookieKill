@@ -66,6 +66,48 @@ export function buildForestClub({THREE,parent,flatLabel,makePerson}){
   label('NIGHT CAPS & MILKSHAKES','#f1d5ab',-216.75,-7.92,-232,5.8,.48,Math.PI/2);
   if(makePerson){const bartender=makePerson('','#405c62');bartender.position.set(-217,-12,-231);bartender.rotation.y=Math.PI/2;group.add(bartender);}
   glow('#e7ba84',-214.9,-8.8,-232,74,15);
+  // Disco Duke brings his purple tailoring and rainbow cake stand out at night.
+  // Keep everything in one group so dawn removes the vendor and his wares.
+  const cakeSeller=new THREE.Group();cakeSeller.name='club-cake-seller';cakeSeller.position.set(-191,CLUB_FLOOR,-245);cakeSeller.rotation.y=2.25;cakeSeller.visible=false;group.add(cakeSeller);
+  const sellerMaterials=new Map(),sellerGeometry={box:new THREE.BoxGeometry(1,1,1),post:new THREE.CylinderGeometry(1,1,1,12),ball:new THREE.IcosahedronGeometry(1,1)};
+  function sellerPart(shape,shade,x,y,z,sx,sy,sz,name=''){
+    if(!sellerMaterials.has(shade))sellerMaterials.set(shade,new THREE.MeshStandardMaterial({color:shade,roughness:.55,metalness:shade==='#ecc46a'?.5:0}));
+    const o=new THREE.Mesh(sellerGeometry[shape],sellerMaterials.get(shade));o.position.set(x,y,z);o.scale.set(sx,sy,sz);o.name=name;cakeSeller.add(o);return o;
+  }
+  if(makePerson)cakeSeller.add(makePerson('','#9954bd',false,{pantsColor:'black'}));
+  else{sellerPart('ball','#deb889',0,1.68,0,.25,.25,.25);for(const side of [-1,1])sellerPart('box','#352c42',side*.16,.36,0,.18,.65,.2);}
+  const coat=sellerPart('post','#8f43ad',0,.93,0,.43,1.05,.32,'club-cake-seller-coat');
+  coat.geometry=new THREE.CylinderGeometry(.7,1,1,8);
+  for(const side of [-1,1]){
+    sellerPart('post','#9b50ba',side*.36,1.13,0,.14,.6,.14);
+    const lapel=sellerPart('box','#e8c797',side*.17,1.27,-.29,.12,.49,.045);lapel.rotation.z=-side*.28;
+    sellerPart('box','#ecc46a',side*.17,.11,-.09,.24,.11,.38);
+    sellerPart('box','#211d39',side*.125,1.71,-.235,.2,.105,.05);
+  }
+  sellerPart('box','#ecc46a',0,1.71,-.265,.06,.035,.025);
+  sellerPart('post','#773a91',0,1.94,0,.64,.09,.52,'club-cake-seller-hat');
+  sellerPart('post','#9b50ba',0,2.08,0,.31,.26,.28);
+  sellerPart('post','#ecc46a',0,2,0,.32,.065,.29);
+  const feather=sellerPart('ball','#59ddd2',.4,2.24,.025,.09,.38,.045,'club-cake-seller-feather');feather.rotation.z=-.35;
+  sellerPart('ball','#f4b2d7',.49,2.47,.025,.075,.16,.04);
+  const chain=new THREE.Mesh(new THREE.TorusGeometry(.19,.025,6,16,Math.PI),sellerMaterials.get('#ecc46a'));chain.name='club-cake-seller-chain';chain.position.set(0,1.36,-.325);chain.rotation.z=Math.PI;cakeSeller.add(chain);
+  sellerPart('ball','#ecc46a',0,1.11,-.33,.065,.09,.03);
+  sellerPart('post','#ecc46a',-.66,.6,-.13,.036,1.13,.036,'club-cake-seller-cane');
+  sellerPart('ball','#ecc46a',-.66,1.19,-.13,.105,.09,.075);
+  sellerPart('post','#352c42',-.66,.06,-.13,.052,.09,.052);
+  // A low brass stand keeps the cakes visible without hiding the outfit.
+  sellerPart('post','#ecc46a',0,.45,-1.13,.065,.84,.065);
+  sellerPart('post','#554361',0,.055,-1.13,.55,.1,.45);
+  sellerPart('box','#ecc46a',0,.88,-1.13,1.8,.09,.9,'club-funny-cake-tray');
+  sellerPart('box','#efe0ba',0,.937,-1.13,1.68,.03,.79);
+  for(let i=0;i<5;i++){
+    const x=-.64+i*.32,z=-1.13+(i%2?-.15:.14);
+    sellerPart('post','#c18a54',x,1.04,z,.125,.18,.125);
+    sellerPart('post',['#c589e3','#6ed9c0','#e6bd70','#e8a3be','#88bce6'][i],x,1.155,z,.14,.065,.14,'club-funny-cake');
+    sellerPart('ball','#fff1cf',x,1.22,z,.035,.04,.035);
+  }
+  const sellerSign=flatLabel('DISCO DUKE / FUNNY CAKES','#f8d791','#392442',768,128);sellerSign.name='club-cake-seller-sign';sellerSign.position.set(0,2.94,-.1);sellerSign.rotation.y=Math.PI;sellerSign.scale.set(3.8,.63,1);cakeSeller.add(sellerSign);
+  const sellerLight=new THREE.PointLight('#e8b8d7',15,5,2);sellerLight.position.set(-.8,2.8,-1.6);cakeSeller.add(sellerLight);
   // Each sector has the same proportional width as its server probability.
   box(2,1.2,2,'#514650',-188.5,-11.4,-237);box(2.12,.12,2.12,'#b79464',-188.5,-10.75,-237);
   label('FORTUNE WHEEL','#efc794',-186.5,-7.12,-237,5,.55,-Math.PI/2);
@@ -91,7 +133,8 @@ export function buildForestClub({THREE,parent,flatLabel,makePerson}){
   // The many steps, bottles, chairs and trim become six draw calls at most.
   for(const [key,items] of batches){const shape=key.split('-')[0],geometry=shape==='box'?new THREE.BoxGeometry(1,1,1):shape==='ball'?new THREE.IcosahedronGeometry(1,1):new THREE.CylinderGeometry(1,1,1,10),material=key.endsWith('glow')?new THREE.MeshBasicMaterial({color:0xffffff}):new THREE.MeshStandardMaterial({color:0xffffff,roughness:.78});const batch=new THREE.InstancedMesh(geometry,material,items.length);batch.name='club-static-'+key;items.forEach((p,i)=>{pose.position.set(p.x,p.y,p.z);pose.rotation.set(0,p.ry,0);pose.scale.set(p.sx,p.sy,p.sz);pose.updateMatrix();batch.setMatrixAt(i,pose.matrix);batch.setColorAt(i,color.set(p.shade));});batch.computeBoundingSphere();batch.receiveShadow=true;group.add(batch);}
   let lastReduced=null,lastColorTime=-Infinity,lastResult=0,wheelFrom=0,wheelTo=0,wheelStart=0;
-  function update(time,active=true,result=null){
+  function update(time,active=true,result=null,night=false){
+    cakeSeller.visible=!!night;sellerLight.visible=!!active;
     const reduced=clubReducedFlashing();for(const l of lights){l.visible=active;l.intensity=active?l.userData.clubIntensity:0;}
     if(!active)return;
     if(lastReduced!==reduced||!reduced&&time-lastColorTime>.1){for(let i=0;i<80;i++){color.setHSL((i*.137+(reduced?0:time*.025))%1,.45,.36);floor.setColorAt(i,color);}floor.instanceColor.needsUpdate=true;lastColorTime=time;lastReduced=reduced;}

@@ -8,12 +8,18 @@ type bakeryWorker struct {
 	path      []Point
 	hasRoute  bool
 	status    string
+	retryAt   float64
+	readyAt   float64
+	chefJobKey string
+	chefReady float64
+	displayID string
 }
 
 // Furniture edits invalidate paths while preserving waiting orders and stock.
 func (w *World) bakeryFurnitureChanged(p *player) {
 	if p.bakery != nil {
 		p.bakery.routesDirty = true
+		p.bakery.fridgeAccessChecked = false
 	}
 }
 
@@ -32,9 +38,14 @@ func (w *World) bakeryNPCPositions(p *player) []Point {
 }
 
 func (w *World) bakeryChefStationStatus(p *player) string {
-	for _, kind := range []string{"oven", "mixer", "display", "cooling_table"} {
+	for _, kind := range []string{"oven", "mixer", "fridge", "cooling_table"} {
 		if _, _, placed := w.bakeryStationPosition(p, kind); !placed {
 			return "Place the " + kind + " to resume baking"
+		}
+		for _, f := range p.profile.BakeryFurniture {
+			if f.Kind == kind && f.ID == p.editingBakeryFurnitureID {
+				return "Finish editing the " + kind + " to resume baking"
+			}
 		}
 	}
 	return ""

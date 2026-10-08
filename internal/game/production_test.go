@@ -89,7 +89,7 @@ func TestTimedProductionRequiresCollectionHeldDoughAndCoolingTable(t *testing.T)
 
 func TestProductionPermissionsReplayCapacityAndPackingAreAtomic(t *testing.T) {
 	w, p := businessWorld(t)
-	baseBakingIngredients(p, 2)
+	baseBakingIngredients(p, 1)
 	nodePosition(w, p, "bakery_plot_0_mixer")
 	w.Join("two", "Visitor")
 	v := w.players["two"]
@@ -101,7 +101,7 @@ func TestProductionPermissionsReplayCapacityAndPackingAreAtomic(t *testing.T) {
 	mustAct(t, w, Action{Action: "production_mix", Target: "bakery_plot_0_mixer", Item: "dough"})
 	before := cloneProfile(p.profile)
 	if err := w.Act("one", Action{Action: "production_mix", Target: "bakery_plot_0_mixer", Item: "dough"}); err == nil || !reflect.DeepEqual(before, p.profile) {
-		t.Fatal("replayed start charged or duplicated a job")
+		t.Fatal("unpaid repeated start charged or duplicated a job")
 	}
 	mustAct(t, w, Action{Action: "bakery_build_mode", Enabled: true})
 	mustAct(t, w, Action{Action: "bakery_edit", Target: "mixer"})
@@ -109,6 +109,7 @@ func TestProductionPermissionsReplayCapacityAndPackingAreAtomic(t *testing.T) {
 		t.Fatal("active mixer was packed with its ingredients")
 	}
 	mustAct(t, w, Action{Action: "bakery_cancel_edit"})
+	mustAct(t, w, Action{Action: "bakery_build_mode", Enabled: false})
 	advance(w, 40)
 	for i := range p.profile.BagSlots {
 		p.profile.BagSlots[i] = Stack{"stone", inventoryLimit}
@@ -208,7 +209,7 @@ func TestCoolingTableMigrationPreservesCustomLayoutAndPackedStations(t *testing.
 	custom := []BakeryFurniture{{ID: "counter", Kind: "counter", X: -1.8, Z: -5.5, Color: "teal"}, {ID: "display", Kind: "display", X: 5, Z: 3}}
 	p := Profile{Bakery: true, BakeryFurnitureVersion: 1, BakeryFurniture: append([]BakeryFurniture{}, custom...)}
 	normalizeBakeryFurniture(&p)
-	if p.BakeryFurnitureVersion != 2 || len(p.BakeryFurniture) != 3 || !reflect.DeepEqual(p.BakeryFurniture[:2], custom) {
+	if p.BakeryFurnitureVersion != 4 || len(p.BakeryFurniture) != 4 || !reflect.DeepEqual(p.BakeryFurniture[:2], custom) {
 		t.Fatal("migration moved furnishings or restored an intentionally packed station")
 	}
 	cooling := p.BakeryFurniture[2]
@@ -240,10 +241,18 @@ func TestCoolingTableMigrationKeepsNarrowKitchenRouteOpen(t *testing.T) {
 	}
 	p := Profile{Bakery: true, BakeryFurnitureVersion: 1, BakeryFurniture: append([]BakeryFurniture{}, custom...)}
 	normalizeBakeryFurniture(&p)
+	custom[0].ProductionKey = "bakery_oven"
+	custom[1].ProductionKey = "bakery_mixer"
 	if !reflect.DeepEqual(p.BakeryFurniture[:len(custom)], custom) || !bakeryLayoutReachable(p.BakeryFurniture) {
 		t.Fatal("table migration changed the existing layout or sealed its kitchen aisle")
 	}
-	if len(p.BakeryFurniture) != len(custom)+1 && p.Recovery["bakery_cooling_table"] != 1 {
+	found := false
+	for _, f := range p.BakeryFurniture {
+		if f.Kind == "cooling_table" {
+			found = true
+		}
+	}
+	if !found && p.Recovery["bakery_cooling_table"] != 1 {
 		t.Fatal("migration neither placed an accessible table nor preserved it as a packed item")
 	}
 }
@@ -268,7 +277,7 @@ func TestChefUsesTheSameTimedPaidProductionWithoutPersonalInventory(t *testing.T
 		t.Fatal("chef bypassed the mixer timer")
 	}
 	advance(w, 7)
-	if p.profile.BakeryDisplay["sugar"] < 1 || p.profile.BagSlots != bag || p.profile.Hotbar != hotbar {
+	if p.profile.Production["bakery_cooling_table"].Output["sugar"] < 1 || p.profile.BakeryDisplay["sugar"] != 0 || p.profile.BagSlots != bag || p.profile.Hotbar != hotbar {
 		t.Fatal("chef failed to bake through table output or used the player's bag")
 	}
 	total := p.profile.BakeryPantry["dough"] + p.profile.BakeryDisplay["sugar"] + p.profile.Production["bakery_cooling_table"].Output["sugar"] + p.profile.Production["bakery_mixer"].Output["dough"]

@@ -1,21 +1,29 @@
+import {createCamelView} from './camel-view.js';
 // Procedural home-island scenery and furniture. Dimensions come from the server.
 export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, mat, textSprite, disposeObject, makeAnimal}) {
   const terrain = new THREE.Group(), buildings = new THREE.Group();
+  terrain.name='home-island-terrain';buildings.name='home-island-buildings';
   scene.add(terrain, buildings); terrain.visible = buildings.visible = false;
   const sea = mesh(new THREE.PlaneGeometry(800,800), '#559baa',0,-.35,0,terrain);
   sea.rotation.x=-Math.PI/2; sea.castShadow=false;
-  cylinder(45,48,2.5,'#c9b48a',0,-1.45,0,terrain,64);
-  cylinder(40,44,.3,'#e8d5a6',0,-.1,0,terrain,64);
-  cylinder(34,39,.12,'#91a66d',0,.015,0,terrain,64);
+  const shore=cylinder(45,48,2.5,'#c9b48a',0,-1.45,0,terrain,64);
+  const sand=cylinder(40,44,.3,'#e8d5a6',0,-.1,0,terrain,64);
+  const grass=cylinder(34,39,.12,'#91a66d',0,.015,0,terrain,64);
+  const coastDecor=new THREE.Group();coastDecor.name='island-coast-decoration';terrain.add(coastDecor);
   for(let i=0;i<16;i++) {
     const angle=i*2.4, radius=35+(i%3)*1.5, x=Math.sin(angle)*radius,z=Math.cos(angle)*radius;
     if(z>24&&Math.abs(x)<10)continue;
-    cylinder(.13,.25,3.6,'#a18459',x,1.8,z,terrain);
-    for(let j=0;j<5;j++) {const leaf=sphere(1.4,'#6d925d',x+Math.sin(j*1.26),3.8,z+Math.cos(j*1.26),terrain);leaf.scale.set(.7,.2,1);leaf.rotation.y=-j*1.26;}
-    sphere(.5,'#b1b294',x+1,.25,z-.8,terrain).scale.y=.6;
+    cylinder(.13,.25,3.6,'#a18459',x,1.8,z,coastDecor);
+    for(let j=0;j<5;j++) {const leaf=sphere(1.4,'#6d925d',x+Math.sin(j*1.26),3.8,z+Math.cos(j*1.26),coastDecor);leaf.scale.set(.7,.2,1);leaf.rotation.y=-j*1.26;}
+    sphere(.5,'#b1b294',x+1,.25,z-.8,coastDecor).scale.y=.6;
   }
-  box(4,.18,9,'#b49b6b',0,.13,37,terrain);
-  const sign=textSprite('HOME ISLAND','#fff3d6','#3d6655',512,100);sign.position.set(0,2.3,36);sign.scale.set(4.8,.94,1);terrain.add(sign);
+  box(4,.18,9,'#b49b6b',0,.13,37,coastDecor);
+  const sign=textSprite('HOME ISLAND','#fff3d6','#3d6655',512,100);sign.position.set(0,2.3,36);sign.scale.set(4.8,.94,1);coastDecor.add(sign);
+  const upgradeSign=new THREE.Group();upgradeSign.name='island-upgrade-sign';upgradeSign.position.set(-5,0,24);terrain.add(upgradeSign);
+  for(const x of [-1.2,1.2])box(.12,2.1,.12,'#8b7352',x,1.05,0,upgradeSign);
+  box(3.6,1.15,.16,'#cfb785',0,1.95,0,upgradeSign);
+  const upgradeHeading=textSprite('ISLAND EXPANSIONS','#fff1cf','#536e53',768,90);upgradeHeading.position.set(0,2.22,.11);upgradeHeading.scale.set(3.35,.4,1);upgradeSign.add(upgradeHeading);
+  let upgradeLabel=null,upgradeSignature='';
   const portal=new THREE.Group();portal.position.set(0,0,28);terrain.add(portal);
   cylinder(2.4,2.5,.1,'#a7aaa0',0,.035,0,portal,12);
   cylinder(2.08,2.15,.035,'#678e91',0,.102,0,portal,24);
@@ -32,7 +40,8 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
   let editingID='';
   function objectView(object, catalog=[]) {
     const g=new THREE.Group(), recipe=catalog.find(r=>r.id===object.kind)||{};
-    const w=recipe.width||2,d=recipe.depth||1,h=recipe.height||1;
+    const capacity=object.kind==='pond'?Math.max(1,Math.min(4,object.pondCapacity||1)):1;
+    const w=(recipe.width||2)+(object.kind==='pond'?capacity-1:0),d=(recipe.depth||1)+(object.kind==='pond'?capacity-1:0),h=recipe.height||1;
     const palette={teal:'#478b82',blue:'#607fa8',red:'#b75e50',purple:'#9177a7',sand:'#c9b88b',black:'#39403d',white:'#ece7d5'};
     const wood=palette[object.color]||'#b78c61', dark='#775a42', cream='#eee1c2';
     const legs=(width,depth,height)=>{for(const x of [-1,1])for(const z of [-1,1])box(.12,height,.12,dark,x*(width/2-.15),height/2,z*(depth/2-.15),g);};
@@ -71,8 +80,25 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
         box(w,h*.65,d,'#735d46',0,h*.325,0,g);for(const z of [-1,1])box(w,.2,.1,wood,0,h*.6,z*d/2,g);for(const x of [-1,1])box(.1,.2,d,wood,x*w/2,h*.6,0,g);
         if(object.planted)for(let i=0;i<4;i++){const x=(i%2-.5)*w*.5,z=(Math.floor(i/2)-.5)*d*.5;sphere(.25,'#799956',x,h+.1,z,g);sphere(.09,object.planted==='berry'?'#b85d68':'#a47a52',x+.1,h+.24,z+.1,g);}break;
       case 'pond':
-        cylinder(w*.5,w*.52,.22,'#a2a38a',0,.11,0,g,20);cylinder(w*.44,w*.44,.04,'#74b6bb',0,.24,0,g,20);
-        if(object.adopted){const pet=makeAnimal({species:object.adopted,need:'',health:100});pet.scale.setScalar(.6);pet.position.y=.32;const label=pet.userData.label;if(label)label.visible=false;g.add(pet);}break;
+        cylinder(w*.5,w*.5,.22,'#a2a38a',0,.11,0,g,20).scale.z=d/w;cylinder(w*.44,w*.44,.04,'#74b6bb',0,.24,0,g,20).scale.z=d/w;
+        g.userData.pondCapacity=capacity;
+        for(const [i,species] of (object.adoptedAnimals?.length?object.adoptedAnimals:object.adopted?[object.adopted]:[]).slice(0,capacity).entries()){
+          const pet=makeAnimal({species,need:'',health:100});pet.name='pond-rescue-'+i;pet.scale.setScalar(species==='fish'?.52:.46);
+          pet.position.set(capacity===1?0:(i%2?1:-1)*w*.22,.32,capacity===1?0:(i<2?-1:1)*d*.22);pet.rotation.y=i*.8;
+          const label=pet.userData.label;if(label)label.visible=false;g.add(pet);
+        }break;
+      case 'camel_pen': {
+        box(w-.3,.045,d-.3,'#bdba83',0,.023,0,g);
+        const rail=(rw,rd,x,z)=>{for(const y of [.3,.82,1.32])box(rw,.13,rd,wood,x,y,z,g);};
+        for(const side of [-1,1])rail(.14,d,side*(w/2-.07),0);
+        rail(w,.14,0,-d/2+.07);
+        const wing=(w-3.2)/2;for(const side of [-1,1])rail(wing,.14,side*(1.6+wing/2),d/2-.07);
+        for(const x of [-w/2+.09,0,w/2-.09])for(const z of [-d/2+.09,d/2-.09]){if(z>0&&x===0)continue;box(.18,h,.18,dark,x,h/2,z,g);}
+        for(const x of [-1.6,1.6])box(.18,h,.18,dark,x,h/2,d/2-.09,g);
+        for(const side of [-1,1])box(.18,h,.18,dark,side*(w/2-.09),h/2,0,g);
+        const plaque=textSprite('CAMEL HOME / 4 PLACES','#f9e9c6','#806d4b',512,90);plaque.position.set(0,1.95,-d/2);plaque.scale.set(3.8,.62,1);g.add(plaque);
+        g.userData.camelPen=true;break;
+      }
       case 'fire':
         for(let i=0;i<7;i++)sphere(.2,'#96947c',Math.sin(i*6.28/7)*.6,.12,Math.cos(i*6.28/7)*.6,g);
         for(let i=0;i<3;i++){const log=box(.15,.15,1,dark,0,.16,0,g);log.rotation.y=i*2.1;}
@@ -83,7 +109,12 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
     return g;
   }
   function sync(snapshot) {
-    const active=!!snapshot.me.island;terrain.visible=buildings.visible=active;
+    const active=!!snapshot.me.island&&!['camel_race','camel_training','cookie_ring','cookie_practice'].includes(snapshot.me.island);terrain.visible=buildings.visible=active;
+    const home=snapshot.island||snapshot.me.homeIsland,level=Math.max(0,Math.min(5,home?.upgradeLevel||0)),buildRadius=home?.buildRadius||32+level*5,walkRadius=home?.walkRadius||40+level*5;
+    shore.scale.set((walkRadius+5)/45,1,(walkRadius+5)/45);sand.scale.set(walkRadius/40,1,walkRadius/40);grass.scale.set((buildRadius+2)/34,1,(buildRadius+2)/34);coastDecor.scale.set(walkRadius/40,1,walkRadius/40);
+    terrain.userData.buildRadius=buildRadius;terrain.userData.walkRadius=walkRadius;
+    const upgradeText='LEVEL '+level+' / 5'+(level<5?' · '+(home?.nextUpgradeCost||[150,300,500,750,1000][level])+' COINS':' · FULLY EXPANDED');
+    if(upgradeText!==upgradeSignature){upgradeSignature=upgradeText;if(upgradeLabel){upgradeSign.remove(upgradeLabel);disposeObject(upgradeLabel);}upgradeLabel=textSprite(upgradeText,'#4d5c43','#e8d9ae',768,90);upgradeLabel.position.set(0,1.74,.12);upgradeLabel.scale.set(3.35,.38,1);upgradeSign.add(upgradeLabel);}
     const present=new Set();
     for(const object of snapshot.island?.objects||[]) {
       present.add(object.id);const signature=JSON.stringify(object),old=objects.get(object.id);
@@ -102,10 +133,7 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
     return null;
   }
   function camel() {
-    const g=new THREE.Group();sphere(.85,'#caa370',0,1.5,0,g,1).scale.set(.6,.8,1.3);sphere(.5,'#b78e5c',0,2.12,.15,g);
-    for(const x of [-.35,.35])for(const z of [-.65,.65])cylinder(.1,.12,1.3,'#c09a66',x,.7,z,g);
-    const neck=cylinder(.18,.28,1.5,'#cba573',0,2,-.95,g);neck.rotation.x=-.4;sphere(.33,'#d3ad7b',0,2.7,-1.35,g).scale.set(.7,.75,1.4);
-    box(.9,.12,.75,'#997374',0,2.27,.35,g);return g;
+    return createCamelView({THREE,sphere,box,cylinder});
   }
   function animate(now){arrow.position.y=.8+Math.sin(now*.002)*.12;arrow.rotation.y=now*.0004;portalMaterial.emissiveIntensity=.5+Math.sin(now*.0015)*.12;}
   return {sync,objectView,camel,animate,setEditing,pickObject};

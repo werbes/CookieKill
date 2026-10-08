@@ -38,6 +38,33 @@ func (e *stateEncoder) encode(snapshot game.Snapshot) ([]byte, error) {
 		"type": "delta", "seq": e.sequence + 1, "base": e.sequence,
 		"time": snapshot.Time, "serverTime": snapshot.ServerTime,
 	}
+	if previous.DayCycle != snapshot.DayCycle {
+		frame["dayCycle"] = snapshot.DayCycle
+	}
+	if !reflect.DeepEqual(previous.JohnPork, snapshot.JohnPork) {
+		frame["johnPork"] = snapshot.JohnPork
+	}
+	if !reflect.DeepEqual(previous.CamelRace, snapshot.CamelRace) {
+		frame["camelRace"] = snapshot.CamelRace
+	}
+	if !reflect.DeepEqual(previous.CamelTraining, snapshot.CamelTraining) {
+		frame["camelTraining"] = snapshot.CamelTraining
+	}
+	if !reflect.DeepEqual(previous.CookieArena, snapshot.CookieArena) {
+		frame["cookieArena"] = snapshot.CookieArena
+	}
+	if !reflect.DeepEqual(previous.CookiePractice, snapshot.CookiePractice) {
+		frame["cookiePractice"] = snapshot.CookiePractice
+	}
+	if !reflect.DeepEqual(previous.AchievementCatalog, snapshot.AchievementCatalog) {
+		frame["achievementCatalog"] = snapshot.AchievementCatalog
+	}
+	if !reflect.DeepEqual(previous.HatCatalog, snapshot.HatCatalog) {
+		frame["hatCatalog"] = snapshot.HatCatalog
+	}
+	if !reflect.DeepEqual(previous.Town, snapshot.Town) {
+		frame["town"] = snapshot.Town
+	}
 	if patch := changedFields(&previous.Me, &snapshot.Me); len(patch) != 0 {
 		frame["me"] = patch
 	}
@@ -66,6 +93,9 @@ func (e *stateEncoder) encode(snapshot game.Snapshot) ([]byte, error) {
 	}
 	if !reflect.DeepEqual(previous.ClubDrinks, snapshot.ClubDrinks) {
 		frame["clubDrinks"] = snapshot.ClubDrinks
+	}
+	if !reflect.DeepEqual(previous.ClubCakes, snapshot.ClubCakes) {
+		frame["clubCakes"] = snapshot.ClubCakes
 	}
 	if !reflect.DeepEqual(previous.Friends, snapshot.Friends) {
 		frame["friends"] = snapshot.Friends

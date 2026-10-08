@@ -57,7 +57,7 @@ func TestBuildModeExclusiveControlAndCancel(t *testing.T) {
 		t.Fatal("another builder destroyed locked object")
 	}
 	mustAct(t, w, Action{Action: "cancel_build"})
-	if p.profile.HomeIsland.Objects[1] != original {
+	if !reflect.DeepEqual(p.profile.HomeIsland.Objects[1], original) {
 		t.Fatal("cancel changed original object")
 	}
 	if err := w.Act("two", Action{Action: "edit_build", Target: original.ID}); err != nil {

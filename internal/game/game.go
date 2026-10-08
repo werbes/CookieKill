@@ -14,6 +14,21 @@ func (w *World) Act(id string, a Action) (err error) {
 	if !ok {
 		return errors.New("Join the game before taking an action.")
 	}
+	if a.Action == "race_leave" {
+		return w.leaveCamelRace(p)
+	}
+	if p.island == CamelRaceIsland {
+		return errors.New("Finish or leave the camel race before taking other actions.")
+	}
+	if p.island == CamelTrainingIsland && !validChoice(a.Action, "training_leave", "training_select", "feed_camel") {
+		return errors.New("Leave the training grounds before taking other actions.")
+	}
+	if isCookieArena(p.island) && !validChoice(a.Action, "throw", "interact", "cookie_arena_leave", "cookie_ring_leave", "cookie_practice_leave", "practice_exercise", "practice_stop", "practice_rep", "consume_protein") {
+		return errors.New("Return to the tree hut before taking that action.")
+	}
+	if p.island == CookieRingIsland && a.Action == "consume_protein" {
+		return errors.New("Save protein drinks for a workout in the silver-cookie practice center.")
+	}
 	if a.Action == "stand" {
 		return w.stand(p)
 	}
@@ -24,6 +39,8 @@ func (w *World) Act(id string, a Action) (err error) {
 	defer func() {
 		if err != nil {
 			p.profile = before
+		} else {
+			awardAchievements(&p.profile)
 		}
 	}()
 	if a.Action == "move_item" {
@@ -38,7 +55,9 @@ func (w *World) Act(id string, a Action) (err error) {
 	if a.Action == "club_gamble" {
 		return w.gambleClub(p, a)
 	}
-	if validChoice(a.Action,"production_mix","production_bake","production_collect") { return w.productionAction(p,a) }
+	if validChoice(a.Action, "production_mix", "production_bake", "production_collect") {
+		return w.productionAction(p, a)
+	}
 	if a.Amount == 0 {
 		a.Amount = 1
 	}
@@ -46,14 +65,34 @@ func (w *World) Act(id string, a Action) (err error) {
 		return errors.New("Choose an amount between 1 and 20.")
 	}
 	switch a.Action {
+	case "cookie_arena_enter", "cookie_ring_enter", "cookie_practice_enter", "cookie_arena_leave", "cookie_ring_leave", "cookie_practice_leave":
+		return w.cookieArenaAction(p, a)
+	case "practice_exercise", "practice_stop", "practice_rep":
+		return w.cookiePracticeAction(p, a)
+	case "training_enter", "training_select", "training_leave":
+		return w.camelTrainingAction(p, a)
+	case "hang_achievement", "unhang_achievement":
+		return w.achievementAction(p, a)
+	case "camel_call", "camel_house", "camel_unhouse":
+		return w.camelCompanionAction(p, a)
+	case "upgrade_island", "upgrade_pond":
+		return w.homeUpgradeAction(p, a)
+	case "race_enter":
+		return w.enterCamelRace(p, a.Target)
+	case "sell_flower", "buy_bouquet", "give_bouquet":
+		return w.townAction(p, a)
+	case "buy_camel_treat", "feed_camel":
+		return w.camelTreatAction(p, a)
 	case "bakery_build_mode", "bakery_edit", "bakery_cancel_edit", "bakery_place", "bakery_move", "bakery_pack", "bakery_destroy", "bakery_paint":
 		return w.bakeryFurnitureAction(p, a)
 	case "bakery_sit":
 		return w.sitBakery(p, a.Target)
-	case "bakery_stock", "bakery_unstock", "bakery_pantry_deposit", "bakery_pantry_withdraw", "bakery_hire", "bakery_chef_recipe", "bakery_serve":
+	case "bakery_stock", "bakery_unstock", "bakery_pantry_deposit", "bakery_pantry_withdraw", "bakery_fridge_deposit", "bakery_fridge_withdraw", "bakery_hire", "bakery_staff_break", "bakery_chef_recipe", "bakery_chef_recipe_set", "bakery_serve":
 		return w.bakeryBusinessAction(p, a)
 	case "buy_drink":
 		return w.buyClubDrink(p, a)
+	case "buy_club_cake":
+		return w.buyClubCake(p, a)
 	case "drink":
 		return w.drink(p, a.Item)
 	case "club_sit":
@@ -106,6 +145,11 @@ func (w *World) Act(id string, a Action) (err error) {
 			if err := w.requireBakeryStation(p, "oven", a.Target); err != nil {
 				return err
 			}
+			item := "prepared_" + a.Item
+			if a.Item == "sugar" {
+				item = "dough"
+			}
+			return w.productionAction(p, Action{Action: "production_bake", Target: a.Target, Item: item, Amount: a.Amount})
 		}
 		return w.craft(p, a.Item, a.Amount)
 	case "trade":
@@ -119,7 +163,7 @@ func (w *World) Act(id string, a Action) (err error) {
 	case "upgrade":
 		return w.upgradeBakery(p)
 	case "make_dough":
-		return w.productionAction(p,Action{Action:"production_mix",Target:a.Target,Item:"dough",Amount:1})
+		return w.productionAction(p, Action{Action: "production_mix", Target: a.Target, Item: "dough", Amount: 1})
 	case "order_dough":
 		return errors.New("Buy ingredients inside a desert village house, or prepare dough at your bakery mixer.")
 	case "consume_protein":
@@ -144,18 +188,26 @@ func (w *World) Act(id string, a Action) (err error) {
 
 func addCoins(p *player, count int) {
 	if count > 0 {
-		p.profile.Coins += min(count, max(0, coinLimit-p.profile.Coins))
+		credited := min(count, max(0, coinLimit-p.profile.Coins))
+		p.profile.Coins += credited
+		recordCoinsEarned(p, credited)
 	}
 }
 
 func (w *World) near(p *player, id string, radius float64) bool {
+	if f, ok := w.bakeryFurnitureForTarget(p, "", id); id != "" && ok && p.island == "" && !p.inCave {
+		plot, _ := w.bakeryPlot(p)
+		return distance(p.x, p.z, plot.X+f.X, plot.Z+f.Z) <= radius
+	}
 	for _, n := range w.nodes {
 		if n.ID == id && sameNodeLayer(p, n) {
 			if n.PlotID != "" {
 				owner := w.players[w.plotOwner(n.PlotID)]
-				if owner == nil { return false }
+				if owner == nil {
+					return false
+				}
 				position, _, ok := w.bakeryStationPosition(owner, strings.TrimPrefix(n.Kind, "bakery_"))
-				return ok && distance(p.x,p.z,position.X,position.Z) <= radius
+				return ok && distance(p.x, p.z, position.X, position.Z) <= radius
 			}
 			return n.Available && distance(p.x, p.z, n.X, n.Z) <= radius
 		}
@@ -177,6 +229,9 @@ func (w *World) requireBakery(p *player) error {
 }
 
 func (w *World) throw(p *player, item string) error {
+	if isCookieArena(p.island) {
+		return w.throwCookieArena(p)
+	}
 	if p.island != "" {
 		return errors.New("Home islands are peaceful. Return to the main island to throw cookies.")
 	}
@@ -229,6 +284,9 @@ func (w *World) eat(p *player, item string) error {
 	if _, ok := clubDrinkFor(item); ok {
 		return w.drink(p, item)
 	}
+	if cake, ok := clubCakeFor(item); ok {
+		return w.eatClubCake(p, cake)
+	}
 	r, ok := recipeFor(item)
 	if !ok {
 		return errors.New("Choose a cookie to eat.")
@@ -257,6 +315,35 @@ func (w *World) eat(p *player, item string) error {
 }
 
 func (w *World) interact(p *player, target string) error {
+	if validChoice(target, "tree_golden_cookie", "tree_silver_cookie") {
+		return w.cookieArenaAction(p, Action{Action: "cookie_arena_enter", Target: target})
+	}
+	if isCookieArena(p.island) {
+		if validChoice(target, "cookie_ring_exit", "cookie_practice_exit") {
+			return w.leaveCookieArena(p)
+		}
+		return w.cookiePracticeAction(p, Action{Action: "practice_exercise", Target: target})
+	}
+	if target == "camel_training_lollipop" {
+		return w.camelTrainingAction(p, Action{Action: "training_enter", Target: target})
+	}
+	if target == "camel_race_lollipop" {
+		return w.enterCamelRace(p, target)
+	}
+	if target == "club_cake_seller" {
+		if _, err := w.requireClubNode(p, target, "club_cake_seller", 5); err != nil {
+			return err
+		}
+		w.eventActor("Disco Duke's funny cakes bring curious colors and wavy sights. Open his menu to buy one.", "hint", p.x, p.z, p.profile.ID)
+		return nil
+	}
+	if f, ok := w.bakeryFurnitureForTarget(p, "", target); target != "" && ok {
+		if err := w.requireBakeryStation(p, f.Kind, target); err != nil {
+			return err
+		}
+		w.event("Open this station to manage its cooking queue or collect finished output.", "hint", p.x, p.z)
+		return nil
+	}
 	if strings.HasPrefix(target, "club_seat_") {
 		return w.sitClub(p, target)
 	}
@@ -265,6 +352,9 @@ func (w *World) interact(p *player, target string) error {
 	}
 	for _, c := range p.profile.Camels {
 		if c.ID == target {
+			if treat := heldCamelTreat(p); treat != "" {
+				return w.camelTreatAction(p, Action{Action: "feed_camel", Target: target, Item: treat, From: "hotbar"})
+			}
 			return w.mountCamel(p, target)
 		}
 	}
@@ -294,9 +384,11 @@ func (w *World) interact(p *player, target string) error {
 		}
 		if n.PlotID != "" {
 			station := strings.TrimPrefix(n.Kind, "bakery_")
-			if err := w.requireBakeryStation(p, station, n.ID); err != nil { return err }
-			messages := map[string]string{"oven":"Load held dough into this oven, then collect the baked goods from its cooling table.","mixer":"Load ingredients to mix dough, and collect each finished batch from this mixer.","cooling_table":"Collect the oven's finished cookies and cakes from this table.","display":"Stock this display before serving customers."}
-			w.event(messages[station],"hint",p.x,p.z)
+			if err := w.requireBakeryStation(p, station, n.ID); err != nil {
+				return err
+			}
+			messages := map[string]string{"oven": "Load held dough into this oven, then collect the baked goods from its cooling table.", "mixer": "Load ingredients to mix dough, and collect each finished batch from this mixer.", "cooling_table": "Collect the oven's finished cookies and cakes from this table.", "display": "Stock this display before serving customers."}
+			w.event(messages[station], "hint", p.x, p.z)
 			return nil
 		}
 		if distance(p.x, p.z, n.X, n.Z) > 5 {
@@ -411,13 +503,15 @@ func (w *World) craft(p *player, item string, amount int) error {
 	}
 	atBakery := w.requireBakeryStation(p, "oven", "") == nil
 	atHomeOven := w.nearIslandAppliance(p, "oven")
-	if plot,owned := w.bakeryPlot(p); owned && p.island == "" && !p.inCave && math.Abs(p.x-plot.X) < 10 && math.Abs(p.z-plot.Z) < 8 && !atBakery {
+	if plot, owned := w.bakeryPlot(p); owned && p.island == "" && !p.inCave && math.Abs(p.x-plot.X) < 10 && math.Abs(p.z-plot.Z) < 8 && !atBakery {
 		return errors.New("Load held dough into your bakery oven to start a timed batch.")
 	}
 	if atBakery || atHomeOven {
-		input := "prepared_"+item
-		if item == "sugar" { input = "dough" }
-		return w.productionAction(p,Action{Action:"production_bake",Item:input,Amount:amount})
+		input := "prepared_" + item
+		if item == "sugar" {
+			input = "dough"
+		}
+		return w.productionAction(p, Action{Action: "production_bake", Item: input, Amount: amount})
 	}
 	if item == "cake" && !atBakery && !atHomeOven {
 		return errors.New("This recipe needs the oven in your own bakery.")
@@ -578,30 +672,7 @@ func (w *World) trade(p *player, target, item string, amount int) error {
 }
 
 func (w *World) train(p *player, kind string) error {
-	if kind != "legs" && kind != "stamina" && kind != "arms" && kind != "swim" {
-		return errors.New("Train legs, stamina, arms, or swimming.")
-	}
-	if !w.near(p, "gym", 8) {
-		return errors.New("Visit the gym in the city to train.")
-	}
-	if p.profile.Levels[kind] >= 10 {
-		return errors.New("You have reached the maximum level in that workout.")
-	}
-	if p.cooldowns["train"] > w.time {
-		return errors.New("Catch your breath before your next workout.")
-	}
-	if p.profile.Coins < 2 {
-		return errors.New("A gym workout costs 2 coins.")
-	}
-	p.profile.Coins -= 2
-	p.profile.Levels[kind]++
-	rest := 4.0
-	if w.active(p, "protein") {
-		rest = 1.5
-	}
-	p.cooldowns["train"] = w.time + rest
-	w.event(fmt.Sprintf("%s training reached level %d.", kind, p.profile.Levels[kind]), "train", p.x, p.z)
-	return nil
+	return errors.New("The gym has moved. Climb the south tree and taste its silver cookie, then exercise on the equipment or swim laps.")
 }
 
 func (w *World) helpAnimal(p *player, a *Animal) error {
