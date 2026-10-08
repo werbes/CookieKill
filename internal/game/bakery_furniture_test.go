@@ -96,12 +96,15 @@ func TestBakeryInvalidPlacementIsAtomic(t *testing.T) {
 func TestBakeryPackingPreservesColorStockAndDynamicStation(t *testing.T) {
 	w, p := businessWorld(t)
 	p.profile.BakeryDisplay["sugar"], p.profile.BakeryPantry["dough"] = 7, 8
+	inventorySugar := p.profile.Inventory["sugar"]
+	nodePosition(w, p, "bakery_plot_0_display")
+	mustAct(t, w, Action{Action: "bakery_unstock", Target: "bakery_plot_0_display", Item: "sugar", Amount: 7})
 	setItem(p, "paint_teal", 1)
 	mustAct(t, w, Action{Action: "bakery_build_mode", Enabled: true})
 	mustAct(t, w, Action{Action: "bakery_edit", Target: "display"})
 	mustAct(t, w, Action{Action: "bakery_paint", Target: "display", Item: "teal"})
 	mustAct(t, w, Action{Action: "bakery_pack", Target: "display"})
-	if p.profile.Inventory["bakery_display:teal"] != 1 || p.profile.BakeryDisplay["sugar"] != 7 || p.profile.BakeryPantry["dough"] != 8 {
+	if p.profile.Inventory["bakery_display:teal"] != 1 || p.profile.Inventory["sugar"] != inventorySugar+7 || p.profile.BakeryDisplay["sugar"] != 0 || p.profile.BakeryPantry["dough"] != 8 {
 		t.Fatal("packing lost contents or paint")
 	}
 	if _, _, ok := w.bakeryStationPosition(p, "display"); ok {
@@ -125,6 +128,7 @@ func TestBakeryPackingPreservesColorStockAndDynamicStation(t *testing.T) {
 	if err := w.requireBakeryStation(p, "display", "bakery_plot_0_display"); err != nil {
 		t.Fatal(err)
 	}
+	mustAct(t, w, Action{Action: "bakery_stock", Target: "bakery_plot_0_display", Item: "sugar", Amount: 7})
 	saved := w.Profiles()
 	restarted := New(saved)
 	restarted.Join("one", "Baker")

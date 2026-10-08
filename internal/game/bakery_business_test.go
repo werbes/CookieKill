@@ -197,6 +197,7 @@ func TestBakeryBusinessPersistenceDetachmentAndDisconnectPause(t *testing.T) {
 	p.profile.BakeryStaff["chef"] = true
 	p.profile.Discovered["berry_cookie"] = true
 	p.profile.BakeryChefRecipe = "berry_cookie"
+	p.profile.BakeryChefRecipes = nil // A legacy save predates multiple selections.
 	saved := cloneProfile(p.profile)
 	snapshot := w.Snapshot("one")
 	snapshot.Me.BakeryDisplay["sugar"] = 100

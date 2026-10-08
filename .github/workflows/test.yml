@@ -42,6 +42,7 @@ jobs:
       - run: node --check web/camel-training-panels.js
       - run: node --check web/camel-training-scene.js
       - run: node --check web/achievement-panels.js
+      - run: node --check web/achievement-painting-art.js
       - run: node --check web/achievement-scenery.js
       - run: node --check web/bouquet-view.js
       - run: node --check web/camel-care-panels.js

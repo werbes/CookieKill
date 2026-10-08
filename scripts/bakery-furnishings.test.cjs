@@ -23,3 +23,8 @@ test('persisted furniture moves between plots without stale meshes and picks sto
  renderer.setEditing('one');assert.equal(view.visible,false);renderer.setEditing('');assert.equal(view.visible,true);
  plot.bakeryFurniture=[];renderer.sync(snapshot,scenery);assert.equal(building.getObjectByName('bakery-furniture-one'),undefined);renderer.dispose();
 });
+
+test('display preview allows the second case, rejects a third, and permits moving either existing case',async()=>{
+ const [,{bakeryPlacementValid}]=await modules,displayCatalog=[{id:'display',width:4.2,depth:1.1,room:'cafe',maxCount:2,core:false}],first={id:'first',kind:'display',x:-5,z:3},second={id:'second',kind:'display',x:5,z:3},third={id:'third',kind:'display',x:5,z:6};
+ assert.equal(bakeryPlacementValid(second,displayCatalog,[first]),true);assert.equal(bakeryPlacementValid(third,displayCatalog,[first,second]),false);assert.equal(bakeryPlacementValid({...second,z:6},displayCatalog,[first,second]),true);
+});

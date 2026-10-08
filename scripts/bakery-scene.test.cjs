@@ -4,7 +4,7 @@ const modules=Promise.all([load('web/vendor/three.core.js'),load('web/bakery-sce
 function fixture(THREE,createBakeryScene){
  const parent=new THREE.Group(),building=new THREE.Group(),scenery=new Map([['plot',building]]);parent.add(building);
  const box=(w,h,d,color,x,y,z,group)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshBasicMaterial({color}));m.position.set(x,y,z);group.add(m);return m;};
- const makePerson=(_name,_color,_peace,avatar)=>{const body=new THREE.Group();body.userData.avatar=avatar;for(const side of [-1,1]){box(.18,.65,.2,'#aaa',side*.16,.38,0,body);box(.2,.1,.3,'#aaa',side*.16,.1,0,body);box(.12,.6,.15,'#aaa',side*.35,1.1,0,body);}const sample=new THREE.Group();sample.name='sample-cookie';sample.position.set(.37,.97,-.2);body.add(sample);return body;};
+ const makePerson=(name,_color,_peace,avatar)=>{const body=new THREE.Group();body.userData.avatar=avatar;body.userData.name=name;for(const side of [-1,1]){box(.18,.65,.2,'#aaa',side*.16,.38,0,body);box(.2,.1,.3,'#aaa',side*.16,.1,0,body);box(.12,.6,.15,'#aaa',side*.35,1.1,0,body);}const sample=new THREE.Group();sample.name='sample-cookie';sample.position.set(.37,.97,-.2);body.add(sample);return body;};
  const scene=createBakeryScene({THREE,parent,box,makePerson,makeCookie:item=>{const g=new THREE.Group();g.userData.item=item;return g;},flatLabel:()=>new THREE.Group(),disposeObject:()=>{}});
  return {scene,building,scenery};
 }
@@ -42,4 +42,17 @@ test('server walks with actual baked goods on a tray and clears it after deliver
  scene.sync(snapshot,scenery);const actor=scene.group.children[0],tray=actor.getObjectByName('server-bake-tray');assert.equal(tray.visible,true);assert.equal(tray.children.filter(c=>c.name==='carried-berry_cookie').length,6);assert.equal(actor.userData.body.userData.avatar.shirtColor,'blue');
  server.z=3;scene.sync(snapshot,scenery);scene.update(1,.1);assert.ok(actor.position.z>-5&&actor.position.z<3);assert.equal(actor.userData.arms[0].rotation.x,.85);
  server.item='';server.amount=0;server.phase='Display stocked';scene.sync(snapshot,scenery);assert.equal(tray.visible,false);assert.equal(tray.children.length,1);scene.dispose();
+});
+
+test('two physical display cases render separate partitioned stock and move or disappear independently',async()=>{
+ const [THREE,{createBakeryScene}]=await modules,{scene,building,scenery}=fixture(THREE,createBakeryScene),left={id:'left',kind:'display',x:-5,z:3,rotation:0},right={id:'right',kind:'display',x:5,z:3,rotation:90},a={id:'plot_display',kind:'bakery_display',furnitureId:'left',plotId:'plot',owner:'owner',stock:{sugar:2}},b={id:'plot_furniture_right',kind:'bakery_display',furnitureId:'right',plotId:'plot',owner:'owner',stock:{cake:3}},plot={id:'plot',kind:'bakery_plot',bakeryFurniture:[left,right]},snapshot={me:{},nodes:[plot,b,a]};scene.sync(snapshot,scenery);
+ const cases=()=>building.children.filter(o=>o.name==='bakery-stock-display');assert.equal(cases().length,2);const find=id=>cases().find(o=>o.userData.nodeId===id),items=id=>find(id).children.filter(o=>o.name.startsWith('stocked-')).map(o=>o.userData.item);
+ assert.deepEqual(items(a.id),['sugar','sugar']);assert.deepEqual(items(b.id),['cake','cake','cake']);assert.equal(find(a.id).position.x,-5);assert.equal(find(b.id).rotation.y,Math.PI/2);const first=find(a.id);right.z=5;scene.sync(snapshot,scenery);assert.equal(find(a.id),first);assert.equal(find(b.id).position.z,5);snapshot.me.editingBakeryFurnitureId='right';scene.sync(snapshot,scenery);assert.equal(find(a.id).visible,true);assert.equal(find(b.id).visible,false);
+ snapshot.me.editingBakeryFurnitureId='';snapshot.nodes=[plot,a];plot.bakeryFurniture=[left];scene.sync(snapshot,scenery);assert.equal(cases().length,1);assert.equal(find(b.id),undefined);assert.equal(find(a.id),first);scene.dispose();assert.equal(cases().length,0);
+});
+
+test('two staff members retain individual labels and only the working chef animates cooking',async()=>{
+ const [THREE,{createBakeryScene}]=await modules,{scene,scenery}=fixture(THREE,createBakeryScene),one={id:'chef_one',kind:'bakery_chef',label:'Chef 1',x:-5,z:-3,phase:'Mixing sugar cookies'},two={id:'chef_two',kind:'bakery_chef',label:'Chef 2',x:5,z:-3,phase:'On break'},snapshot={me:{},nodes:[one,two]};scene.sync(snapshot,scenery);scene.update(.2,.1);
+ const first=scene.group.children.find(o=>o.userData.node.id===one.id),second=scene.group.children.find(o=>o.userData.node.id===two.id);assert.equal(first.userData.body.userData.name,'Chef 1');assert.equal(second.userData.body.userData.name,'Chef 2');assert.notEqual(first.userData.arms[0].rotation.x,0);assert.equal(Math.abs(second.userData.arms[0].rotation.x),0);
+ one.phase='On break';two.phase='Baking berry cookies';scene.sync(snapshot,scenery);scene.update(.4,.1);assert.equal(Math.abs(first.userData.arms[0].rotation.x),0);assert.notEqual(second.userData.arms[0].rotation.x,0);scene.dispose();
 });

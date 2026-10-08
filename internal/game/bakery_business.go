@@ -12,11 +12,11 @@ const bakeryCustomerInterval = 20.0
 const bakeryChefInterval = .5
 
 type BakeryCustomerView struct {
-	ID     string `json:"id"`
-	Item   string `json:"item"`
-	Amount int    `json:"amount"`
-	Price  int    `json:"price"`
-	Phase  string `json:"phase"`
+	ID        string `json:"id"`
+	Item      string `json:"item"`
+	Amount    int    `json:"amount"`
+	Price     int    `json:"price"`
+	Phase     string `json:"phase"`
 	DisplayID string `json:"displayId"`
 }
 type BakeryBusinessView struct {
@@ -31,8 +31,8 @@ type BakeryBusinessView struct {
 	DisplayCapacity       int                  `json:"displayCapacity"`
 	PantryCapacity        int                  `json:"pantryCapacity"`
 	Customers             []BakeryCustomerView `json:"customers"`
-	Workers               []BakeryWorkerView `json:"workers"`
-	StaffLimit            int `json:"staffLimit"`
+	Workers               []BakeryWorkerView   `json:"workers"`
+	StaffLimit            int                  `json:"staffLimit"`
 }
 type bakeryCustomer struct {
 	BakeryCustomerView
@@ -52,6 +52,7 @@ type bakeryBusiness struct {
 	workers                               map[string]*bakeryWorker
 	routesDirty                           bool
 	chefRecipeCursor                      int
+	customerDisplayCursor                 int
 }
 
 func bakeryPantryItem(item string) bool {
@@ -95,7 +96,7 @@ func normalizeBakeryBusiness(p *Profile) {
 	}
 	// Stable recipe order makes malformed over-capacity saves deterministic.
 	// Packed furniture must not destroy stock when the profile is reloaded.
-	remaining := bakeryDisplayCapacity*2
+	remaining := bakeryDisplayCapacity * 2
 	for _, r := range recipes {
 		n := min(remaining, p.BakeryDisplay[r.ID])
 		if n > 0 {
@@ -161,8 +162,12 @@ func (w *World) bakeryBusinessAction(p *player, a Action) error {
 			return errors.New("Choose a chef, server, or cashier.")
 		}
 		workerID := a.Item
-		if p.profile.BakeryStaff[workerID] { workerID += "_2" }
-		if p.profile.BakeryStaff[workerID] { return errors.New("You can hire at most two of each staff role.") }
+		if p.profile.BakeryStaff[workerID] {
+			workerID += "_2"
+		}
+		if p.profile.BakeryStaff[workerID] {
+			return errors.New("You can hire at most two of each staff role.")
+		}
 		if p.profile.Coins < price {
 			return fmt.Errorf("Hiring a %s costs %d coins.", a.Item, price)
 		}
@@ -173,21 +178,32 @@ func (w *World) bakeryBusinessAction(p *player, a Action) error {
 		}
 		return nil
 	case "bakery_staff_break":
-		if err := w.requireBakery(p); err != nil { return err }
-		if a.Target != p.profile.BakeryPlot || bakeryStaffRole(a.Item)=="" || !p.profile.BakeryStaff[a.Item] {
+		if err := w.requireBakery(p); err != nil {
+			return err
+		}
+		if a.Target != p.profile.BakeryPlot || bakeryStaffRole(a.Item) == "" || !p.profile.BakeryStaff[a.Item] {
 			return errors.New("Manage a hired worker at your own bakery sign.")
 		}
-		if a.Enabled { p.profile.BakeryStaffBreaks[a.Item]=true } else { delete(p.profile.BakeryStaffBreaks,a.Item) }
+		if a.Enabled {
+			p.profile.BakeryStaffBreaks[a.Item] = true
+		} else {
+			delete(p.profile.BakeryStaffBreaks, a.Item)
+		}
 		if p.bakery != nil {
-			if worker:=p.bakery.workers[a.Item]; worker!=nil {
-				if a.Enabled { worker.status="On break" } else { worker.status="Returning to work"; worker.hasRoute=false }
+			if worker := p.bakery.workers[a.Item]; worker != nil {
+				if a.Enabled {
+					worker.status = "On break"
+				} else {
+					worker.status = "Returning to work"
+					worker.hasRoute = false
+				}
 			}
 		}
 		return nil
 	case "bakery_chef_recipe":
-		return w.bakeryChefRecipeAction(p,a)
-	case "bakery_chef_recipes":
-		return w.bakeryChefRecipeAction(p,a)
+		return w.bakeryChefRecipeAction(p, a)
+	case "bakery_chef_recipe_set":
+		return w.bakeryChefRecipeAction(p, a)
 	case "bakery_stock", "bakery_unstock":
 		if err := w.requireBakeryStation(p, "display", a.Target); err != nil {
 			return err
@@ -265,7 +281,13 @@ func (w *World) leaveBakeryCustomer(p *player, c *bakeryCustomer, bought bool) {
 	w.routeBakeryCustomer(p, c)
 }
 func (w *World) serveBakeryCustomer(p *player, c *bakeryCustomer) error {
-	if _, _, ok := w.bakeryStationPosition(p, "display"); !ok || p.bakery != nil && p.bakery.routesDirty {
+	if c.DisplayID == "" {
+		if displays := bakeryDisplays(&p.profile); len(displays) > 0 {
+			c.DisplayID = displays[0].ID
+		}
+	}
+	display, ok := bakeryFurnitureByID(&p.profile, c.DisplayID)
+	if !ok || display.Kind != "display" || display.ID == p.editingBakeryFurnitureID || p.bakery != nil && p.bakery.routesDirty {
 		return errors.New("Place the display and let customers reach its counter before serving.")
 	}
 	if c.Phase != "waiting" {
@@ -324,7 +346,8 @@ func (w *World) tickBakeries(dt float64) {
 				}
 				if c.Phase == "arriving" {
 					c.Phase = "waiting"
-					center, _, _ := w.bakeryStationPosition(p, "display")
+					display, _ := bakeryFurnitureByID(&p.profile, c.DisplayID)
+					center := Point{plot.X + display.X, plot.Z + display.Z}
 					c.yaw = math.Atan2(-(center.X - c.x), -(center.Z - c.z))
 					if c.expires == 0 {
 						c.expires = w.time + 60
@@ -339,49 +362,15 @@ func (w *World) tickBakeries(dt float64) {
 		b.customers = kept
 		if w.time >= b.nextCustomer {
 			b.nextCustomer = w.time + bakeryCustomerInterval
-			_, _, displayPlaced := w.bakeryStationPosition(p, "display")
-			if displayPlaced && len(b.customers) < 3 && bakeryStockCount(p.profile.BakeryDisplay) > 0 {
-				choices := []string{}
-				for _, r := range recipes {
-					if p.profile.BakeryDisplay[r.ID] > 0 {
-						choices = append(choices, r.ID)
-					}
-				}
-				w.sequence++
-				item := choices[int(w.sequence%uint64(len(choices)))]
-				used := [3]bool{}
-				for _, other := range b.customers {
-					used[other.slot] = true
-				}
-				slot := 0
-				for slot < len(used)-1 && used[slot] {
-					slot++
-				}
-				c := &bakeryCustomer{BakeryCustomerView: BakeryCustomerView{ID: fmt.Sprintf("customer_%d", w.sequence), Item: item, Amount: min(5, p.profile.BakeryDisplay[item]), Phase: "arriving"}, x: plot.X, z: plot.Z + 9.5}
-				c.slot = slot
-				w.routeBakeryCustomer(p, c)
-				if c.hasRoute && c.Phase == "arriving" {
-					b.customers = append(b.customers, c)
-				}
-			}
+			w.admitBakeryCustomer(p)
 		}
-		if p.profile.BakeryStaff["cashier"] && w.bakeryWorkerReady(p, "cashier") && w.time >= b.cashierReady {
-			b.cashierReady = w.time + 3
-			for _, c := range b.customers {
-				if c.Phase == "waiting" && p.profile.BakeryDisplay[c.Item] >= c.Amount {
-					if w.serveBakeryCustomer(p, c) == nil {
-						break
-					}
-				}
-			}
-		}
+		w.workBakeryCashiers(p)
 	}
 }
-
 func (w *World) bakeryBusinessSnapshot(viewer *player, out *Snapshot) {
 	if viewer != nil && viewer.profile.Bakery {
 		count := hungAchievementCount(&viewer.profile)
-		v := &BakeryBusinessView{DisplayCapacity: bakeryDisplayCapacity, PantryCapacity: bakeryPantryCapacity, Customers: []BakeryCustomerView{}, ChefStatus: "Bakery closed", ServerStatus: "Bakery closed", AchievementCount: count, AchievementMultiplier: 1 + .1*float64(count), AchievementFormula: "1 + 0.10 × N"}
+		v := &BakeryBusinessView{DisplayCapacity: bakeryTotalDisplayCapacity(&viewer.profile), PantryCapacity: bakeryPantryCapacity, Customers: []BakeryCustomerView{}, Workers: bakeryWorkerViews(viewer), StaffLimit: bakeryStaffLimit, ChefStatus: "Bakery closed", ServerStatus: "Bakery closed", AchievementCount: count, AchievementMultiplier: 1 + .1*float64(count), AchievementFormula: "1 + 0.10 × N"}
 		if b := viewer.bakery; b != nil {
 			v.NextCustomerIn = max(0, b.nextCustomer-w.time)
 			v.ChefReadyIn = max(0, b.chefReady-w.time)
@@ -406,23 +395,18 @@ func (w *World) bakeryBusinessSnapshot(viewer *player, out *Snapshot) {
 		if !ok {
 			continue
 		}
-		for _, role := range []string{"chef", "cashier", "server"} {
-			if !p.profile.BakeryStaff[role] {
-				continue
-			}
+		for _, view := range bakeryWorkerViews(p) {
+			role, id := view.Role, view.ID
 			x, z, yaw := plot.X, plot.Z+9.5, 0.0
-			phase := "Starting shift"
-			if p.bakery != nil && p.bakery.workers[role] != nil {
-				worker := p.bakery.workers[role]
-				x, z, yaw, phase = worker.x, worker.z, worker.yaw, worker.status
+			if p.bakery != nil && p.bakery.workers[id] != nil {
+				worker := p.bakery.workers[id]
+				x, z, yaw = worker.x, worker.z, worker.yaw
 			}
-			if role == "chef" && p.bakery != nil {
-				phase = p.bakery.chefStatus
-			}
-			node := Node{ID: plot.ID + "_" + role, Kind: "bakery_" + role, Owner: p.profile.ID, PlotID: plot.ID, Label: "Bakery " + role, X: x, Z: z, Yaw: yaw, Phase: phase}
+			node := Node{ID: plot.ID + "_" + id, Kind: "bakery_" + role, Owner: p.profile.ID, PlotID: plot.ID, Label: view.Label, X: x, Z: z, Yaw: yaw, Phase: view.Status}
 			if role == "server" {
+				tray := bakeryServerTray(&p.profile, id)
 				for _, r := range recipes {
-					if n := p.profile.BakeryCarry[r.ID]; n > 0 {
+					if n := tray[r.ID]; n > 0 {
 						node.Item, node.Amount = r.ID, n
 						break
 					}

@@ -162,3 +162,80 @@ func TestAchievementPlaytimeAwardOccursDuringPlay(t *testing.T) {
 		t.Fatal("playtime goal waits for reconnect or an unrelated action")
 	}
 }
+
+func TestAchievementPaintingsPriceManualAndBothCashierSales(t *testing.T) {
+	w, p, _ := workforceWorld(t)
+	p.profile.Cleaned, p.profile.Rescues = 10, 3
+	p.profile.Discovered["sugar"] = true
+	for _, id := range []string{"chef", "builder", "recycler", "ocean"} {
+		mustAct(t, w, Action{Action: "hang_achievement", Item: id})
+	}
+	if hungAchievementCount(&p.profile) != 4 {
+		t.Fatal("fixture did not hang four distinct earned paintings")
+	}
+	p.profile.BakeryDisplay["sugar"] = 50
+	p.bakery.nextCustomer = w.time + 1000
+	w.admitBakeryCustomer(p)
+	advance(w, 12)
+	manual := p.bakery.customers[0]
+	if manual.Phase != "waiting" || manual.Amount != 5 {
+		t.Fatal("manual-sale customer did not reach the counter")
+	}
+	p.x, p.z = manual.x, manual.z+1
+	before := p.profile.Coins
+	mustAct(t, w, Action{Action: "bakery_serve", Target: manual.ID})
+	if p.profile.Coins != before+14 {
+		t.Fatal("manual five-cookie sale must pay original10 plus four additive bonuses=14")
+	}
+	plot, _ := w.bakeryPlot(p)
+	p.x, p.z = plot.X, plot.Z
+	for _, id := range []string{"cashier", "cashier_2"} {
+		mustAct(t, w, Action{Action: "bakery_hire", Item: "cashier"})
+		mustAct(t, w, Action{Action: "bakery_staff_break", Target: plot.ID, Item: id, Enabled: true})
+	}
+	w.admitBakeryCustomer(p)
+	w.admitBakeryCustomer(p)
+	advance(w, 12)
+	if len(p.bakery.customers) != 2 || p.bakery.customers[0].DisplayID == p.bakery.customers[1].DisplayID {
+		t.Fatal("cashier-sale customers did not queue at separate displays")
+	}
+	for _, id := range []string{"cashier", "cashier_2"} {
+		mustAct(t, w, Action{Action: "bakery_staff_break", Target: plot.ID, Item: id, Enabled: false})
+	}
+	before = p.profile.Coins
+	advance(w, 12)
+	if p.profile.Coins != before+28 || p.profile.BakeryDisplay["sugar"] != 35 {
+		t.Fatal("both physical cashiers must each pay14 and consume exactly five cookies")
+	}
+	for _, id := range []string{"cashier", "cashier_2"} {
+		mustAct(t, w, Action{Action: "bakery_staff_break", Target: plot.ID, Item: id, Enabled: true})
+	}
+	mustAct(t, w, Action{Action: "unhang_achievement", Item: "recycler"})
+	w.admitBakeryCustomer(p)
+	advance(w, 12)
+	manual = p.bakery.customers[0]
+	p.x, p.z = manual.x, manual.z+1
+	before = p.profile.Coins
+	mustAct(t, w, Action{Action: "bakery_serve", Target: manual.ID})
+	if p.profile.Coins != before+13 || !p.profile.Achievements["recycler"] {
+		t.Fatal("removing one painting must lower the next payment without revoking the achievement")
+	}
+	w.Join("visitor", "Painting visitor")
+	visible := false
+	for _, node := range w.Snapshot("visitor").Nodes {
+		if node.ID != plot.ID {
+			continue
+		}
+		visible = reflect.DeepEqual(node.HungAchievements, []string{"chef", "builder", "ocean"})
+		if len(node.HungAchievements) > 0 {
+			node.HungAchievements[0] = "changed by visitor"
+		}
+	}
+	if !visible || p.profile.HungAchievements[0] != "chef" {
+		t.Fatal("visitor snapshot omitted paintings or exposed mutable saved state")
+	}
+	restored := New(w.Profiles()).Profiles()["one"]
+	if !reflect.DeepEqual(restored.HungAchievements, p.profile.HungAchievements) || 10+achievementPriceBonus(&restored, 10) != 13 {
+		t.Fatal("saved paintings did not preserve the adjusted price after reload")
+	}
+}

@@ -12,7 +12,7 @@ export function createBakeryScene({THREE,parent,makePerson,makeCookie,box,cylind
   function actor(node){
     const object=new THREE.Group(),chef=node.kind==='bakery_chef',cashier=node.kind==='bakery_cashier',server=node.kind==='bakery_server',seed=hash(node.id);
     const avatar={skin:seed%5,shirt:'tee',shirtColor:chef?'white':cashier?'teal':server?'blue':['sand','purple','blue','red','teal'][seed%5],pantsColor:chef?'black':'sand',hat:chef?'chef':''};
-    const body=makePerson(chef?'Chef':cashier?'Cashier':server?'Server':'',chef?'#efe6ce':'#7c9380',false,avatar);object.add(body);
+    const body=makePerson(chef||cashier||server?node.label||(chef?'Chef':cashier?'Cashier':'Server'):'',chef?'#efe6ce':'#7c9380',false,avatar);object.add(body);
     if(chef)for(const child of body.children)if(child.isSprite)child.position.y=2.65;
     // The general character builder includes a sample cookie. Customers arrive
     // empty-handed and only carry a purchase once their real order is served.
@@ -35,15 +35,15 @@ export function createBakeryScene({THREE,parent,makePerson,makeCookie,box,cylind
     object.position.set(node.x,node.y||0,node.z);object.rotation.y=node.yaw||0;object.userData={node,body,legs,arms,purchase,tray,seed,target:new THREE.Vector3(node.x,node.y||0,node.z)};group.add(object);return object;
   }
   function stockDisplay(node,building,hasCashier,furniture){
-    let record=displays.get(node.plotId);const signature=JSON.stringify([node.owner,node.stock||{},hasCashier,furniture]);
+    let record=displays.get(node.id);const signature=JSON.stringify([node.owner,node.stock||{},hasCashier,furniture]);
     if(record?.building===building&&record.signature===signature)return;
     if(record)remove(record.object);
-    const object=new THREE.Group();object.name='bakery-stock-display';object.position.set(furniture.x,0,furniture.z);object.rotation.y=(furniture.rotation||0)*Math.PI/180;object.visible=furniture.id!==snapshotEditing;building.add(object);
+    const object=new THREE.Group();object.name='bakery-stock-display';object.userData.nodeId=node.id;object.userData.furnitureId=furniture.id;object.position.set(furniture.x,0,furniture.z);object.rotation.y=(furniture.rotation||0)*Math.PI/180;object.visible=furniture.id!==snapshotEditing;building.add(object);
     const stock=node.stock||{},items=bakeryDisplayItems(stock,24),count=Object.values(stock).reduce((sum,n)=>sum+n,0);
     items.forEach((item,i)=>{const cookie=makeCookie(item,.33);cookie.name='stocked-'+item;cookie.position.set(-1.65+(i%8)*.47,1.1,-.31+Math.floor(i/8)*.3);object.add(cookie);});
     const label=flatLabel(count?count+' / 300 fresh bakes':'DISPLAY EMPTY · 300 PLACES','#674d35','#eee0be',512,70);label.position.set(0,.58,.575);label.scale.set(3.3,.32,1);object.add(label);
     if(hasCashier){const till=new THREE.Group();till.name='bakery-till';till.position.set(.97,1.74,.05);box(.43,.2,.4,'#456964',0,0,0,till);const screen=box(.3,.23,.055,'#b8d6bb',0,.18,-.1,till);screen.rotation.x=-.25;for(let i=0;i<6;i++)box(.045,.018,.045,'#e4d9b4',(i%3-1)*.075,.113,.02+Math.floor(i/3)*.075,till);object.add(till);}
-    record={building,object,signature};displays.set(node.plotId,record);
+    record={building,object,signature};displays.set(node.id,record);
   }
   let snapshotEditing='';
   function sync(snapshot,scenery){
@@ -54,7 +54,7 @@ export function createBakeryScene({THREE,parent,makePerson,makeCookie,box,cylind
     for(const node of nodes){if(!BAKERY_ACTOR_KINDS.includes(node.kind))continue;alive.add(node.id);let object=actors.get(node.id);if(!object){object=actor(node);actors.set(node.id,object);}object.userData.node=node;object.userData.target.set(node.x,node.y||0,node.z);object.userData.purchase.visible=node.kind==='bakery_customer'&&node.phase==='leaving'&&node.amount>0;const tray=object.userData.tray,signature=node.item+'|'+node.amount;tray.visible=node.kind==='bakery_server'&&node.amount>0;if(tray.userData.signature!==signature){for(const child of [...tray.children].slice(1))remove(child);if(tray.visible)for(let i=0;i<Math.min(6,node.amount);i++){const cookie=makeCookie(node.item,.18);cookie.name='carried-'+node.item;cookie.position.set((i%3-1)*.23,.08,Math.floor(i/3)*.21-.105);tray.add(cookie);}tray.userData.signature=signature;}}
     for(const [id,object] of actors)if(!alive.has(id)){remove(object);actors.delete(id);}
     const activeDisplays=new Set();
-    for(const node of nodes){if(node.kind!=='bakery_display'||!node.owner||node.available===false)continue;const building=scenery.get(node.plotId),furniture=nodes.find(n=>n.id===node.plotId)?.bakeryFurniture?.find(o=>o.kind==='display');if(!building||!furniture)continue;activeDisplays.add(node.plotId);stockDisplay(node,building,nodes.some(n=>n.kind==='bakery_cashier'&&n.plotId===node.plotId),furniture);displays.get(node.plotId).object.visible=furniture.id!==snapshotEditing;}
+    for(const node of nodes){if(node.kind!=='bakery_display'||!node.owner||node.available===false)continue;const building=scenery.get(node.plotId),cases=nodes.find(n=>n.id===node.plotId)?.bakeryFurniture?.filter(o=>o.kind==='display')||[],furniture=node.furnitureId?cases.find(o=>o.id===node.furnitureId):cases.length===1?cases[0]:null;if(!building||!furniture)continue;activeDisplays.add(node.id);stockDisplay(node,building,nodes.some(n=>n.kind==='bakery_cashier'&&n.plotId===node.plotId),furniture);displays.get(node.id).object.visible=furniture.id!==snapshotEditing;}
     for(const [id,record] of displays)if(!activeDisplays.has(id)){remove(record.object);displays.delete(id);}
   }
   function pickCustomer(camera,snapshot,maxDistance=4){

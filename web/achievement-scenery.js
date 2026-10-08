@@ -1,3 +1,5 @@
+import {achievementPaintingDataURL} from './achievement-painting-art.js';
+
 // Head-local cosmetics: the same hat rig is used by players and bakery staff.
 export function buildAchievementHat({THREE,parent,box,sphere,cylinder},id){
   if(!id||id==='none')return null;
@@ -34,8 +36,12 @@ export function buildAchievementHat({THREE,parent,box,sphere,cylinder},id){
 }
 
 export function createAchievementScenery({THREE,parent,box,cylinder,flatLabel,disposeObject}){
-  const root=new THREE.Group();root.name='bakery-achievement-galleries';parent.add(root);const galleries=new Map();
-  const remove=object=>{object.removeFromParent();disposeObject?.(object);};
+  const root=new THREE.Group();root.name='bakery-achievement-galleries';parent.add(root);const galleries=new Map(),paintings=new Map();
+  const remove=object=>{object.traverse(part=>{const id=part.userData.achievementPaintingId;if(!id)return;part.material.dispose();if(!disposeObject)part.geometry.dispose();const art=paintings.get(id);if(art&&--art.references===0){art.texture.dispose();paintings.delete(id);}});object.removeFromParent();disposeObject?.(object);};
+  function painting(id){
+    let art=paintings.get(id);if(!art){const texture=typeof document==='undefined'?new THREE.Texture():new THREE.TextureLoader().load(achievementPaintingDataURL(id));texture.colorSpace=THREE.SRGBColorSpace;texture.userData.achievementPaintingId=id;art={texture,references:0};paintings.set(id,art);}art.references++;
+    const picture=new THREE.Mesh(new THREE.PlaneGeometry(1.02,.57375),new THREE.MeshBasicMaterial({map:art.texture}));picture.name='achievement-painting-'+id;picture.userData.achievementPaintingId=id;picture.position.set(0,.112,.102);return picture;
+  }
   function sync(snapshot){
     root.visible=!snapshot?.me?.island;const catalog=new Map((snapshot?.achievementCatalog||[]).map(a=>[a.id,a])),present=new Set();
     for(const node of snapshot?.nodes||[]){
@@ -45,12 +51,12 @@ export function createAchievementScenery({THREE,parent,box,cylinder,flatLabel,di
       const gallery=new THREE.Group();gallery.name='achievement-gallery-'+node.id;gallery.position.set(node.x,0,node.z);root.add(gallery);
       ids.forEach((id,i)=>{
         const achievement=catalog.get(id),frame=new THREE.Group();frame.name='hung-achievement-'+id;frame.position.set(9.73,2+(Math.floor(i/5))*1.12,.45+(i%5)*1.44);frame.rotation.y=-Math.PI/2;gallery.add(frame);
-        box(1.2,.94,.11,'#b5985e',0,0,0,frame);box(1.08,.82,.035,'#f1e6c9',0,0,.07,frame);
-        const medal=cylinder(.18,.18,.045,achievement.color,0,.14,.105,frame,12);medal.rotation.x=Math.PI/2;
-        for(const x of [-.09,.09]){const ribbon=box(.1,.18,.02,achievement.color,x,-.03,.11,frame);ribbon.rotation.z=x>0?-.2:.2;}
-        const icon=flatLabel(achievement.icon,'#fff6dc',null,128,100);icon.position.set(0,.14,.14);icon.scale.set(.27,.23,1);frame.add(icon);
-        const name=flatLabel(achievement.name,'#665039',null,512,90);name.position.set(0,-.2,.12);name.scale.set(1.02,.19,1);frame.add(name);
-        const bonus=flatLabel('+10% original price','#7e7759',null,384,70);bonus.position.set(0,-.36,.12);bonus.scale.set(.9,.13,1);frame.add(bonus);
+        box(1.2,.94,.11,'#94774f',0,0,0,frame);box(1.08,.82,.035,'#f1e6c9',0,0,.07,frame);
+        for(const y of [-.4375,.4375])box(1.2,.065,.055,'#b99a64',0,y,.07,frame);
+        for(const x of [-.5675,.5675])box(.065,.81,.055,'#b99a64',x,0,.07,frame);
+        frame.add(painting(id));
+        const name=flatLabel(achievement.name,'#665039',null,512,90);name.position.set(0,-.25,.12);name.scale.set(1.02,.13,1);frame.add(name);
+        const bonus=flatLabel('+10% original price','#7e7759',null,384,70);bonus.position.set(0,-.365,.12);bonus.scale.set(.9,.105,1);frame.add(bonus);
       });
       galleries.set(node.id,{object:gallery,signature});
     }

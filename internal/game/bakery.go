@@ -40,6 +40,9 @@ func bakeryProductionKey(f BakeryFurniture) string {
 	return "bakery_" + f.Kind
 }
 func bakeryFurnitureNodeID(plot string, f BakeryFurniture) string {
+	if f.Kind == "display" && f.ID != "display" {
+		return plot + "_station_" + f.ID
+	}
 	if validChoice(f.Kind, "oven", "mixer") && bakeryProductionKey(f) != "bakery_"+f.Kind {
 		return plot + "_station_" + f.ID
 	}
@@ -57,6 +60,9 @@ func (w *World) bakeryFurnitureForTarget(p *player, kind, target string) (Bakery
 			continue
 		}
 		if target != "" {
+			if f.Kind == "display" && target == bakeryStationID(plot.ID, "display") {
+				return f, true
+			}
 			if bakeryFurnitureNodeID(plot.ID, f) == target {
 				return f, true
 			}
@@ -195,6 +201,9 @@ func (w *World) bakeryNodeView(n Node, owners map[string]*player) Node {
 			}
 		} else {
 			f, available := w.bakeryFurnitureForTarget(p, strings.TrimPrefix(n.Kind, "bakery_"), n.ID)
+			if n.Kind == "bakery_display" && available && bakeryFurnitureNodeID(plot, f) != n.ID {
+				available = false
+			}
 			n.Available = available
 			if available {
 				location, _ := w.bakeryPlot(p)
@@ -212,8 +221,8 @@ func (w *World) bakeryNodeView(n Node, owners map[string]*player) Node {
 			}
 		}
 		if n.Kind == "bakery_display" {
-			n.Stock = cloneMap(p.profile.BakeryDisplay)
-			n.Amount = bakeryStockCount(p.profile.BakeryDisplay)
+			n.Stock = bakeryDisplayStock(&p.profile, n.FurnitureID)
+			n.Amount = bakeryStockCount(n.Stock)
 		}
 	}
 	return n

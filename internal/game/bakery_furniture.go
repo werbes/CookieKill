@@ -19,32 +19,33 @@ type BakeryFurniture struct {
 	ProductionKey string  `json:"productionKey,omitempty"`
 }
 type BakeryFurnitureRecipe struct {
-	ID     string  `json:"id"`
-	Name   string  `json:"name"`
-	Width  float64 `json:"width"`
-	Depth  float64 `json:"depth"`
-	Height float64 `json:"height"`
-	Y      float64 `json:"y"`
-	Cost   int     `json:"cost"`
-	Room   string  `json:"room"`
-	Core   bool    `json:"core"`
-	Solid  bool    `json:"solid"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Width    float64 `json:"width"`
+	Depth    float64 `json:"depth"`
+	Height   float64 `json:"height"`
+	Y        float64 `json:"y"`
+	Cost     int     `json:"cost"`
+	Room     string  `json:"room"`
+	Core     bool    `json:"core"`
+	Solid    bool    `json:"solid"`
+	MaxCount int     `json:"maxCount,omitempty"`
 }
 
 var bakeryFurnitureCatalog = []BakeryFurnitureRecipe{
-	{"oven", "Bakery oven", 2.2, 1.4, 1.8, 0, 120, "kitchen", false, true},
-	{"mixer", "Dough mixer", 1.6, 1.6, 1.8, 0, 90, "kitchen", false, true},
-	{"cooling_table", "Cooling table", 2.4, 1.2, .9, 0, 40, "kitchen", true, true},
-	{"display", "Large cookie display", 4.2, 1.1, 1.65, 0, 100, "cafe", true, true},
-	{"fridge", "Kitchen fridge", 1.4, 1.3, 2.4, 0, 80, "kitchen", true, true},
-	{"chair", "Cafe chair", .9, .9, 1.4, 0, 12, "cafe", false, true},
-	{"table", "Cafe table", 1.8, 1.4, .85, 0, 30, "cafe", false, true},
-	{"counter", "Kitchen counter", 3, .9, 1.1, 0, 45, "any", false, true},
-	{"bread_rack", "Bread rack", 2, .7, 2.4, 0, 40, "cafe", false, true},
-	{"plant", "Potted plant", .8, .8, 1.5, 0, 15, "any", false, true},
-	{"pendant", "Pendant light", .8, .8, 1.1, 4.4, 25, "any", false, false},
-	{"rug", "Cafe rug", 3, 2, .04, 0, 15, "any", false, false},
-	{"menu_board", "Menu board", 1.3, .3, 1.8, 0, 20, "cafe", false, true},
+	{"oven", "Bakery oven", 2.2, 1.4, 1.8, 0, 120, "kitchen", false, true, 0},
+	{"mixer", "Dough mixer", 1.6, 1.6, 1.8, 0, 90, "kitchen", false, true, 0},
+	{"cooling_table", "Cooling table", 2.4, 1.2, .9, 0, 40, "kitchen", true, true, 1},
+	{"display", "Large cookie display", 4.2, 1.1, 1.65, 0, 100, "cafe", true, true, 2},
+	{"fridge", "Kitchen fridge", 1.4, 1.3, 2.4, 0, 80, "kitchen", true, true, 1},
+	{"chair", "Cafe chair", .9, .9, 1.4, 0, 12, "cafe", false, true, 0},
+	{"table", "Cafe table", 1.8, 1.4, .85, 0, 30, "cafe", false, true, 0},
+	{"counter", "Kitchen counter", 3, .9, 1.1, 0, 45, "any", false, true, 0},
+	{"bread_rack", "Bread rack", 2, .7, 2.4, 0, 40, "cafe", false, true, 0},
+	{"plant", "Potted plant", .8, .8, 1.5, 0, 15, "any", false, true, 0},
+	{"pendant", "Pendant light", .8, .8, 1.1, 4.4, 25, "any", false, false, 0},
+	{"rug", "Cafe rug", 3, 2, .04, 0, 15, "any", false, false, 0},
+	{"menu_board", "Menu board", 1.3, .3, 1.8, 0, 20, "cafe", false, true, 0},
 }
 
 func bakeryFurnitureRecipeFor(kind string) (BakeryFurnitureRecipe, bool) {
@@ -161,11 +162,11 @@ func normalizeBakeryFurniture(p *Profile) {
 	}
 	kept := make([]BakeryFurniture, 0, len(p.BakeryFurniture))
 	ids := map[string]bool{}
-	core := map[string]bool{}
+	core := map[string]int{}
 	keys := map[string]bool{}
 	for _, f := range p.BakeryFurniture {
 		r, ok := bakeryFurnitureRecipeFor(f.Kind)
-		if !ok || f.ID == "" || len(f.ID) > 100 || ids[f.ID] || r.Core && core[f.Kind] || !finite(f.Rotation) || !finite(f.X) || !finite(f.Z) || math.Abs(f.X) > 10 || math.Abs(f.Z) > 8 || len(kept) >= 120 {
+		if !ok || f.ID == "" || len(f.ID) > 100 || ids[f.ID] || r.MaxCount > 0 && core[f.Kind] >= r.MaxCount || !finite(f.Rotation) || !finite(f.X) || !finite(f.Z) || math.Abs(f.X) > 10 || math.Abs(f.Z) > 8 || len(kept) >= 120 {
 			continue
 		}
 		f.Rotation = math.Mod(math.Round(f.Rotation/45)*45+360, 360)
@@ -188,7 +189,7 @@ func normalizeBakeryFurniture(p *Profile) {
 			continue
 		}
 		ids[f.ID] = true
-		core[f.Kind] = r.Core
+		core[f.Kind]++
 		kept = append(kept, f)
 	}
 	p.BakeryFurniture = kept
@@ -481,7 +482,7 @@ func (w *World) bakeryFurnitureColliders(p *player) []Collider {
 		}
 		id := "bakery_furniture_" + p.profile.ID + "_" + f.ID
 		if f.Kind == "display" {
-			id = "display_" + p.profile.ID
+			id = "display_" + p.profile.ID + "_" + f.ID
 		}
 		out = append(out, Collider{ID: id, X: plot.X + f.X, Z: plot.Z + f.Z, Width: r.Width, Depth: r.Depth, Y: r.Y, Height: r.Height, Rotation: f.Rotation})
 	}
@@ -493,7 +494,7 @@ func (w *World) bakeryFurnitureVisible(p *player, f BakeryFurniture, plot Bakery
 	owner := w.plotOwner(plot.ID)
 	targetID := "bakery_furniture_" + owner + "_" + f.ID
 	if f.Kind == "display" {
-		targetID = "display_" + owner
+		targetID = "display_" + owner + "_" + f.ID
 	}
 	for _, colliders := range [][]Collider{w.colliders, w.propertyColliders} {
 		for _, c := range colliders {
@@ -578,13 +579,13 @@ func (w *World) validateBakeryFurniture(p *player, candidate []BakeryFurniture, 
 			}
 		}
 	}
-	core := map[string]bool{}
+	core := map[string]int{}
 	for _, f := range candidate {
 		fr, _ := bakeryFurnitureRecipeFor(f.Kind)
-		if fr.Core && core[f.Kind] {
-			return errors.New("A bakery can have one display, one fridge, and one shared cooling table.")
+		core[f.Kind]++
+		if fr.MaxCount > 0 && core[f.Kind] > fr.MaxCount {
+			return errors.New("A bakery can have two displays, one fridge, and one shared cooling table.")
 		}
-		core[f.Kind] = fr.Core || core[f.Kind]
 		if f.ID != changed.ID && bakeryFurnitureOverlaps(changed, f) {
 			return errors.New("Leave space between furnishings.")
 		}
@@ -738,6 +739,9 @@ func (w *World) bakeryFurnitureAction(p *player, a Action) error {
 		if p.editingBakeryFurnitureID != f.ID {
 			return errors.New("Look at the furnishing and press E to take edit control first.")
 		}
+		if f.Kind == "display" && validChoice(a.Action, "bakery_pack", "bakery_destroy") && bakeryStockCount(p.profile.BakeryDisplay) > bakeryTotalDisplayCapacity(&p.profile)-bakeryDisplayCapacity {
+			return errors.New("Withdraw enough display stock to fit the remaining counters before removing this display.")
+		}
 		switch a.Action {
 		case "bakery_move":
 			f.X, f.Z, f.Rotation = a.X, a.Z, a.Rotation
@@ -869,7 +873,7 @@ func (w *World) bakeryFurnitureSnapshot(viewer *player, out *Snapshot) {
 			continue
 		}
 		for _, f := range owner.profile.BakeryFurniture {
-			if validChoice(f.Kind, "oven", "mixer") && bakeryFurnitureNodeID(plot.ID, f) != bakeryStationID(plot.ID, f.Kind) {
+			if validChoice(f.Kind, "oven", "mixer", "display") && bakeryFurnitureNodeID(plot.ID, f) != bakeryStationID(plot.ID, f.Kind) {
 				recipe, _ := bakeryFurnitureRecipeFor(f.Kind)
 				n := Node{ID: bakeryFurnitureNodeID(plot.ID, f), Kind: "bakery_" + f.Kind, PlotID: plot.ID, Label: recipe.Name}
 				out.Nodes = append(out.Nodes, w.bakeryNodeView(n, map[string]*player{plot.ID: owner}))

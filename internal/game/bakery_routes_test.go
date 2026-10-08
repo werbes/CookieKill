@@ -123,6 +123,8 @@ func TestPackedStationsPauseStaffAndCustomersUntilReplaced(t *testing.T) {
 	p.profile.BakeryDisplay["sugar"] = 10
 	c := firstWaitingCustomer(t, w, p)
 	plot, _ := w.bakeryPlot(p)
+	nodePosition(w, p, "bakery_plot_0_display")
+	mustAct(t, w, Action{Action: "bakery_unstock", Target: "bakery_plot_0_display", Item: "sugar", Amount: 10})
 	p.x, p.z = plot.X, plot.Z
 	mustAct(t, w, Action{Action: "bakery_build_mode", Enabled: true})
 	mustAct(t, w, Action{Action: "bakery_edit", Target: "display"})
@@ -137,6 +139,9 @@ func TestPackedStationsPauseStaffAndCustomersUntilReplaced(t *testing.T) {
 		t.Fatal("packed station kept attracting customers or processing stock")
 	}
 	mustAct(t, w, Action{Action: "bakery_place", Item: "display", From: "bakery_display", X: 5, Z: 3})
+	mustAct(t, w, Action{Action: "bakery_build_mode", Enabled: false})
+	nodePosition(w, p, "bakery_plot_0_display")
+	mustAct(t, w, Action{Action: "bakery_stock", Target: "bakery_plot_0_display", Item: "sugar", Amount: 10})
 	advance(w, 30)
 	if !w.bakeryWorkerReady(p, "chef") || len(p.bakery.customers) == 0 || strings.Contains(p.bakery.chefStatus, "Place") {
 		t.Fatal("replacing the display did not resume staff and customers")

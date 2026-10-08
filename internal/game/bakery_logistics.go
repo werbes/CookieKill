@@ -103,25 +103,55 @@ func (w *World) bakeryLogisticsPoint(p *player, kind string, back bool) (Point, 
 // Delivery reverses that transfer only after physically reaching the counter.
 // Edits, a full display, leaving the plot, or logout keep every carried bake.
 func (w *World) workBakeryServer(p *player, dt float64) {
-	b := p.bakery
-	if !p.profile.BakeryStaff["server"] {
-		b.serverStatus = "Not hired"
+	ids := bakeryWorkerIDs(&p.profile, "server")
+	if len(ids) == 0 {
+		p.bakery.serverStatus = "Not hired"
 		return
 	}
-	worker := b.workers["server"]
+	for _, id := range ids {
+		w.workBakeryServerID(p, id, dt)
+	}
+	p.bakery.serverStatus = p.bakery.workers[ids[0]].status
+}
+
+func (w *World) bakeryServerPoint(p *player, id, kind string, back bool) (BakeryFurniture, Point, bool) {
+	f, ok := bakeryWorkerStation(p, id, kind)
+	if !ok {
+		return BakeryFurniture{}, Point{}, false
+	}
+	goal, ok := w.bakeryFurnitureServicePoint(p, f, back)
+	if id == "server_2" {
+		first, _ := bakeryWorkerStation(p, "server", kind)
+		if first.ID == f.ID {
+			a := f.Rotation * math.Pi / 180
+			goal.X -= .8 * math.Cos(a)
+			goal.Z += .8 * math.Sin(a)
+		}
+	}
+	return f, goal, ok
+}
+
+func (w *World) workBakeryServerID(p *player, id string, dt float64) {
+	b := p.bakery
+	worker := b.workers[id]
 	fresh := worker == nil
 	if fresh {
 		plot, _ := w.bakeryPlot(p)
 		worker = &bakeryWorker{x: plot.X, z: plot.Z + 9.5}
-		b.workers["server"] = worker
+		b.workers[id] = worker
 	}
-	carrying := bakeryStockCount(p.profile.BakeryCarry) > 0
+	if bakeryWorkerOnBreak(&p.profile, id) {
+		worker.status = "On break"
+		return
+	}
+	tray := bakeryServerTray(&p.profile, id)
+	carrying := bakeryStockCount(tray) > 0
 	kind := "cooling_table"
 	if carrying {
 		kind = "display"
 	}
-	goal, placed := w.bakeryLogisticsPoint(p, kind, carrying)
-	setStatus := func(status string) { worker.status = status; b.serverStatus = status }
+	station, goal, placed := w.bakeryServerPoint(p, id, kind, carrying)
+	setStatus := func(status string) { worker.status = status }
 	if !placed {
 		worker.path = nil
 		worker.hasRoute = false
@@ -146,23 +176,24 @@ func (w *World) workBakeryServer(p *player, dt float64) {
 		}
 		return
 	}
-	center, _, _ := w.bakeryStationPosition(p, kind)
-	worker.yaw = math.Atan2(-(center.X - worker.x), -(center.Z - worker.z))
+	plot, _ := w.bakeryPlot(p)
+	worker.yaw = math.Atan2(-(plot.X + station.X - worker.x), -(plot.Z + station.Z - worker.z))
+	capacity := bakeryTotalDisplayCapacity(&p.profile)
 	if carrying {
-		space := bakeryDisplayCapacity - bakeryStockCount(p.profile.BakeryDisplay)
+		space := max(0, capacity-bakeryStockCount(p.profile.BakeryDisplay))
 		for _, r := range recipes {
-			n := min(space, p.profile.BakeryCarry[r.ID])
+			n := min(space, tray[r.ID])
 			if n <= 0 {
 				continue
 			}
 			p.profile.BakeryDisplay[r.ID] += n
-			p.profile.BakeryCarry[r.ID] -= n
+			tray[r.ID] -= n
 			space -= n
-			if p.profile.BakeryCarry[r.ID] == 0 {
-				delete(p.profile.BakeryCarry, r.ID)
+			if tray[r.ID] == 0 {
+				delete(tray, r.ID)
 			}
 		}
-		if bakeryStockCount(p.profile.BakeryCarry) > 0 {
+		if bakeryStockCount(tray) > 0 {
 			setStatus("Display full: keeping bakes safe on the tray")
 		} else {
 			setStatus("Display stocked")
@@ -170,7 +201,7 @@ func (w *World) workBakeryServer(p *player, dt float64) {
 		}
 		return
 	}
-	if bakeryStockCount(p.profile.BakeryDisplay) >= bakeryDisplayCapacity {
+	if bakeryStockCount(p.profile.BakeryDisplay) >= capacity {
 		setStatus("Waiting for display space")
 		return
 	}
@@ -179,7 +210,7 @@ func (w *World) workBakeryServer(p *player, dt float64) {
 		setStatus("Waiting for finished bakes")
 		return
 	}
-	display, available := w.bakeryLogisticsPoint(p, "display", true)
+	_, display, available := w.bakeryServerPoint(p, id, "display", true)
 	if !available {
 		setStatus("Place and finish editing the display")
 		return
@@ -194,7 +225,7 @@ func (w *World) workBakeryServer(p *player, dt float64) {
 		return
 	}
 	for _, r := range recipes {
-		n := min(cooling.Output[r.ID], bakeryServerTrayCapacity, bakeryDisplayCapacity-bakeryStockCount(p.profile.BakeryDisplay))
+		n := min(cooling.Output[r.ID], bakeryServerTrayCapacity, capacity-bakeryStockCount(p.profile.BakeryDisplay))
 		if n <= 0 {
 			continue
 		}
@@ -202,7 +233,7 @@ func (w *World) workBakeryServer(p *player, dt float64) {
 		if cooling.Output[r.ID] == 0 {
 			delete(cooling.Output, r.ID)
 		}
-		p.profile.BakeryCarry[r.ID] += n
+		tray[r.ID] += n
 		worker.hasRoute = false
 		setStatus("Collecting fresh bakes")
 		return

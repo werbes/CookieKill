@@ -3,16 +3,17 @@ package game
 import "math"
 
 type bakeryWorker struct {
-	x, z, yaw float64
-	goal      Point
-	path      []Point
-	hasRoute  bool
-	status    string
-	retryAt   float64
-	readyAt   float64
+	x, z, yaw  float64
+	goal       Point
+	path       []Point
+	hasRoute   bool
+	status     string
+	retryAt    float64
+	readyAt    float64
 	chefJobKey string
-	chefReady float64
-	displayID string
+	chefReady  float64
+	displayID  string
+	stationID  string
 }
 
 // Furniture edits invalidate paths while preserving waiting orders and stock.
@@ -38,24 +39,19 @@ func (w *World) bakeryNPCPositions(p *player) []Point {
 }
 
 func (w *World) bakeryChefStationStatus(p *player) string {
-	for _, kind := range []string{"oven", "mixer", "fridge", "cooling_table"} {
-		if _, _, placed := w.bakeryStationPosition(p, kind); !placed {
-			return "Place the " + kind + " to resume baking"
-		}
-		for _, f := range p.profile.BakeryFurniture {
-			if f.Kind == kind && f.ID == p.editingBakeryFurnitureID {
-				return "Finish editing the " + kind + " to resume baking"
-			}
+	for _, kind := range []string{"oven", "fridge", "cooling_table"} {
+		if _, placed := bakeryWorkerStation(p, "chef", kind); !placed {
+			return "Place and finish editing the " + kind + " to resume baking"
 		}
 	}
 	return ""
 }
 
-func (w *World) bakeryWorkerReady(p *player, role string) bool {
-	if p.bakery == nil {
+func (w *World) bakeryWorkerReady(p *player, id string) bool {
+	if p.bakery == nil || bakeryWorkerOnBreak(&p.profile, id) {
 		return false
 	}
-	worker := p.bakery.workers[role]
+	worker := p.bakery.workers[id]
 	return worker != nil && worker.hasRoute && len(worker.path) == 0 && distance(worker.x, worker.z, worker.goal.X, worker.goal.Z) < .05
 }
 
@@ -66,57 +62,96 @@ func (w *World) updateBakeryWorkers(p *player, dt float64) {
 		b.workers = map[string]*bakeryWorker{}
 	}
 	for _, role := range []string{"chef", "cashier"} {
-		if !p.profile.BakeryStaff[role] {
-			continue
+		second := "chef_2"
+		if role == "cashier" {
+			second = "cashier_2"
 		}
-		worker := b.workers[role]
-		fresh := worker == nil
-		if fresh {
-			worker = &bakeryWorker{x: plot.X, z: plot.Z + 9.5, status: "Starting shift"}
-			b.workers[role] = worker
-		}
-		kind := "display"
-		if role == "chef" {
-			kind = "oven"
-		}
-		goal, placed := w.bakeryStationServicePoint(p, kind, role == "cashier")
-		reason := ""
-		if role == "chef" {
-			reason = w.bakeryChefStationStatus(p)
-		} else if !placed {
-			reason = "Place the display to resume serving"
-		}
-		if !placed || reason != "" {
-			worker.path, worker.hasRoute = nil, false
-			worker.status = reason
-			if role == "chef" {
-				b.chefStatus = reason
+		for _, id := range []string{role, second} {
+			if !p.profile.BakeryStaff[id] {
+				continue
 			}
-			continue
-		}
-		if fresh || b.routesDirty || goal != worker.goal {
-			worker.goal = goal
-			worker.path, worker.hasRoute = w.bakeryRoute(p, Point{worker.x, worker.z}, goal)
-		}
-		if !worker.hasRoute {
-			worker.status = "Clear a route to the " + kind
-		} else {
-			advanceBakeryPath(&worker.x, &worker.z, &worker.yaw, &worker.path, dt*2.4)
-			worker.status = "Walking to the display"
-			if role == "chef" {
-				worker.status = "Walking to the oven"
+			worker := b.workers[id]
+			fresh := worker == nil
+			if fresh {
+				worker = &bakeryWorker{x: plot.X, z: plot.Z + 9.5, status: "Starting shift"}
+				b.workers[id] = worker
 			}
-			if len(worker.path) == 0 {
-				center, _, _ := w.bakeryStationPosition(p, kind)
-				worker.yaw = math.Atan2(-(center.X - worker.x), -(center.Z - worker.z))
-				worker.status = "Ready to serve"
-				if role == "chef" {
-					worker.status = "Ready to bake"
+			if bakeryWorkerOnBreak(&p.profile, id) {
+				worker.status = "On break"
+				continue
+			}
+			kind := "display"
+			if role == "chef" {
+				kind = "oven"
+			}
+			station, placed := bakeryWorkerStation(p, id, kind)
+			if role == "chef" && !fresh && !b.routesDirty && worker.stationID != "" {
+				if cached, ok := bakeryFurnitureByID(&p.profile, worker.stationID); ok && cached.Kind == kind && cached.ID != p.editingBakeryFurnitureID {
+					station, placed = cached, true
 				}
 			}
-		}
-		if role == "chef" && !w.bakeryWorkerReady(p, role) {
-			b.chefStatus = worker.status
+			reason := ""
+			if role == "chef" {
+				reason = w.bakeryChefStationStatus(p)
+			} else if !placed {
+				reason = "Place and finish editing the display to resume serving"
+			}
+			if !placed || reason != "" {
+				worker.path, worker.hasRoute = nil, false
+				worker.status = reason
+				continue
+			}
+			goal, _ := w.bakeryFurnitureServicePoint(p, station, role == "cashier")
+			if role == "cashier" {
+				worker.displayID = station.ID
+			}
+			if id == role+"_2" {
+				first, _ := bakeryWorkerStation(p, role, kind)
+				if first.ID == station.ID {
+					a := station.Rotation * math.Pi / 180
+					goal.X += .8 * math.Cos(a)
+					goal.Z -= .8 * math.Sin(a)
+				}
+			}
+			if fresh || b.routesDirty || goal != worker.goal || !worker.hasRoute && w.time >= worker.retryAt {
+				worker.goal = goal
+				worker.path, worker.hasRoute = w.bakeryRoute(p, Point{worker.x, worker.z}, goal)
+				if role == "chef" && !worker.hasRoute {
+					for _, alternate := range p.profile.BakeryFurniture {
+						if alternate.Kind != kind || alternate.ID == station.ID || alternate.ID == p.editingBakeryFurnitureID {
+							continue
+						}
+						alternateGoal, _ := w.bakeryFurnitureServicePoint(p, alternate, false)
+						path, reachable := w.bakeryRoute(p, Point{worker.x, worker.z}, alternateGoal)
+						if reachable {
+							station, goal = alternate, alternateGoal
+							worker.goal = goal
+							worker.path, worker.hasRoute = path, true
+							break
+						}
+					}
+				}
+				worker.stationID = station.ID
+				worker.retryAt = w.time + .5
+			}
+			if !worker.hasRoute {
+				worker.status = "Clear a route to the " + kind
+			} else {
+				advanceBakeryPath(&worker.x, &worker.z, &worker.yaw, &worker.path, dt*2.4)
+				if len(worker.path) > 0 {
+					worker.status = "Walking to the " + kind
+				} else {
+					worker.yaw = math.Atan2(-(plot.X + station.X - worker.x), -(plot.Z + station.Z - worker.z))
+					if role == "cashier" {
+						worker.status = "Ready to serve"
+					} else if worker.chefJobKey == "" {
+						worker.status = "Ready to bake"
+					}
+				}
+			}
+			if role == "chef" && id == "chef" && !w.bakeryWorkerReady(p, id) {
+				b.chefStatus = worker.status
+			}
 		}
 	}
 }
@@ -124,13 +159,23 @@ func (w *World) updateBakeryWorkers(p *player, dt float64) {
 // Queue points rotate with the counter. If furniture occupies the next place,
 // use another reachable point along its front instead of clipping through it.
 func (w *World) bakeryQueuePoint(p *player, slot int) (Point, bool) {
-	front, placed := w.bakeryStationServicePoint(p, "display", false)
-	_, rotation, _ := w.bakeryStationPosition(p, "display")
+	displays := bakeryDisplays(&p.profile)
+	if len(displays) == 0 {
+		return Point{}, false
+	}
+	return w.bakeryDisplayQueuePoint(p, displays[0].ID, slot)
+}
+func (w *World) bakeryDisplayQueuePoint(p *player, displayID string, slot int) (Point, bool) {
+	f, placed := bakeryFurnitureByID(&p.profile, displayID)
+	if !placed || f.Kind != "display" || f.ID == p.editingBakeryFurnitureID {
+		return Point{}, false
+	}
+	front, placed := w.bakeryFurnitureServicePoint(p, f, false)
 	plot, ok := w.bakeryPlot(p)
 	if !placed || !ok {
 		return Point{}, false
 	}
-	rad := rotation * math.Pi / 180
+	rad := f.Rotation * math.Pi / 180
 	for _, offset := range []Point{{0, 0}, {-1.1, 0}, {1.1, 0}, {0, 1.1}, {-1.1, 1.1}, {1.1, 1.1}} {
 		goal := Point{front.X + offset.X*math.Cos(rad) + offset.Z*math.Sin(rad), front.Z - offset.X*math.Sin(rad) + offset.Z*math.Cos(rad)}
 		if _, reachable := w.bakeryRoute(p, Point{plot.X, plot.Z + 9.5}, goal); reachable {
@@ -142,7 +187,6 @@ func (w *World) bakeryQueuePoint(p *player, slot int) (Point, bool) {
 	}
 	return Point{}, false
 }
-
 func (w *World) routeBakeryCustomer(p *player, c *bakeryCustomer) {
 	plot, ok := w.bakeryPlot(p)
 	if !ok {
@@ -151,7 +195,12 @@ func (w *World) routeBakeryCustomer(p *player, c *bakeryCustomer) {
 	}
 	goal := Point{plot.X, plot.Z + 9.5}
 	if c.Phase != "leaving" {
-		if queue, reachable := w.bakeryQueuePoint(p, c.slot); reachable {
+		if c.DisplayID == "" {
+			if displays := bakeryDisplays(&p.profile); len(displays) > 0 {
+				c.DisplayID = displays[0].ID
+			}
+		}
+		if queue, reachable := w.bakeryDisplayQueuePoint(p, c.DisplayID, c.slot); reachable {
 			goal = queue
 		} else {
 			c.Phase, c.Amount = "leaving", 0
