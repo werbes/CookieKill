@@ -188,7 +188,7 @@ func TestJohnSpeedIsNinetyPercentAcrossMovementModes(t *testing.T) {
 	}
 }
 
-func TestJohnRoutesAroundWallsAndCannotPassClosedIslandDoor(t *testing.T) {
+func TestJohnRoutesAroundMainlandWalls(t *testing.T) {
 	w, p := johnTestWorld()
 	p.x, p.z = 14, -20
 	j := placeTestJohn(w, p, 6, -20)
@@ -202,21 +202,9 @@ func TestJohnRoutesAroundWallsAndCannotPassClosedIslandDoor(t *testing.T) {
 	if !w.johnCanEat(&j.actor, p) {
 		t.Fatalf("failed to route around wall: %+v", j.actor)
 	}
-	w, p = johnTestWorld()
-	p.profile.HomeIsland = &Island{Owner: "one", Objects: []BuildObject{{ID: "door", Kind: "door", X: 0, Z: 0}, {ID: "wall_left", Kind: "wall", X: -2.7, Z: 0}, {ID: "wall_right", Kind: "wall", X: 2.7, Z: 0}}}
-	p.island = "one"
-	p.x, p.z = 0, -2
-	j = placeTestJohn(w, p, 0, 2)
-	if _, ok := w.johnSegment(j.actor, Point{0, -2}); ok {
-		t.Fatal("John walked through the closed island door")
-	}
-	p.profile.HomeIsland.Objects[0].Open = true
-	if _, ok := w.johnSegment(j.actor, Point{0, -2}); !ok {
-		t.Fatal("John could not walk through an open island door")
-	}
 }
 
-func TestJohnUsesCaveStairsAndFollowsRealTeleportWithDelay(t *testing.T) {
+func TestJohnUsesCaveStairsAndLeavesHomeIslandAlone(t *testing.T) {
 	w, p := testWorld()
 	w.time = DayDuration + 10
 	p.x, p.z = 120, -94
@@ -236,18 +224,110 @@ func TestJohnUsesCaveStairsAndFollowsRealTeleportWithDelay(t *testing.T) {
 	p.island = "one"
 	p.inCave = false
 	p.x, p.z, p.y = 0, 0, 0
+	before := bakedFoodCount(p)
+	w.leaveJohnPorkBehind(p)
 	tickTestJohn(w, .05)
 	if w.johnPorkSnapshot(p) != nil {
-		t.Fatal("world transition moved John instantly onto the target")
+		t.Fatal("world transition moved John onto the home island")
 	}
 	tickTestJohn(w, 1.9)
 	if w.johnPorkSnapshot(p) != nil {
-		t.Fatal("teleport pursuit delay ended early")
+		t.Fatal("John appeared on a home island after teleport")
 	}
 	tickTestJohn(w, .15)
-	view := w.johnPorkSnapshot(p)
-	if view == nil || view.Island != "one" || view.InCave || distance(view.X, view.Z, p.x, p.z) < 3 {
-		t.Fatal("John did not follow to a clear island arrival at a fair distance")
+	if w.johnPork != nil || w.johnPorkSnapshot(p) != nil || w.johnIgnored[p.profile.ID] || bakedFoodCount(p) != before {
+		t.Fatal("John followed home, took cookies, or marked the escaped player depleted")
+	}
+}
+
+func TestJohnNeverTargetsVisitsOrNavigatesAnyHomeIsland(t *testing.T) {
+	for _, island := range []string{"one", "friend"} {
+		t.Run(island, func(t *testing.T) {
+			w, p := johnTestWorld()
+			p.island = island
+			p.profile.HomeIsland = &Island{Owner: "one", Objects: []BuildObject{{ID: "door", Kind: "door", Open: true}}}
+			setItem(p, "sugar", 20)
+			j := placeTestJohn(w, p, p.x, p.z+.4)
+			if w.johnEligible(p) || w.richestJohnTarget() != nil || w.johnCanEat(&j.actor, p) || w.spawnJohnNear(j, p) {
+				t.Fatal("home owner or visitor remained eligible for John")
+			}
+			if _, ok := w.johnStep(j.actor, p.x, p.z); ok {
+				t.Fatal("John could take a step on a home island")
+			}
+			if _, ok := w.johnSegment(j.actor, Point{p.x + 1, p.z}); ok {
+				t.Fatal("John could cross an open island doorway")
+			}
+			if len(w.johnRoute(j.actor, Point{p.x + 1, p.z})) > 0 {
+				t.Fatal("John planned a path on a home island")
+			}
+			before := Point{j.actor.x, j.actor.z}
+			w.moveJohnPork(j, p, 10)
+			if j.actor.x != before.X || j.actor.z != before.Z {
+				t.Fatal("obsolete island actor kept chasing")
+			}
+			if w.johnPorkSnapshot(p) != nil || w.johnPorkSnapshot(nil) != nil {
+				t.Fatal("obsolete island actor leaked into snapshot")
+			}
+			w.tickJohnPork(.25)
+			if w.johnPork != nil || w.johnIgnored[p.profile.ID] || p.profile.Inventory["sugar"] != 20 {
+				t.Fatal("island target lost cookies or was marked depleted")
+			}
+			setItem(p, "sugar", 0)
+			placeTestJohn(w, p, p.x, p.z+.4)
+			w.tickJohnPork(.05)
+			if w.johnIgnored[p.profile.ID] {
+				t.Fatal("an empty-handed island visitor was falsely marked robbed")
+			}
+		})
+	}
+}
+
+func TestJohnDropsChaseImmediatelyOnOwnOrFriendTeleport(t *testing.T) {
+	for _, friend := range []bool{false, true} {
+		w, p := johnTestWorld()
+		p.profile.HomeIsland = &Island{Owner: p.profile.ID, Objects: []BuildObject{}}
+		setItem(p, "sugar", 20)
+		a := Action{Action: "teleport_home"}
+		if friend {
+			w.Join("friend", "Island owner")
+			owner := w.players["friend"]
+			owner.profile.HomeIsland = &Island{Owner: "friend", Visitors: true, Objects: []BuildObject{}}
+			owner.island = "friend"
+			p.profile.Friends["friend"] = true
+			p.friendsTeleport = true
+			a = Action{Action: "visit_island", Target: "friend"}
+		}
+		j := placeTestJohn(w, p, p.x, p.z+.5)
+		j.eatProgress, j.eating = .99, true
+		mustAct(t, w, a)
+		if p.island == "" || w.johnPork != nil || w.Snapshot("one").JohnPork != nil {
+			t.Fatal("home teleport did not immediately drop pursuit")
+		}
+		tickTestJohn(w, 3)
+		if p.profile.Inventory["sugar"] != 20 || w.johnIgnored[p.profile.ID] {
+			t.Fatal("escaping home consumed cookies or marked player robbed")
+		}
+		mustAct(t, w, Action{Action: "teleport_main"})
+		p.buffs = map[string]float64{}
+		w.tickJohnPork(.05)
+		if w.johnPork == nil || w.johnPork.target != p.profile.ID {
+			t.Fatal("returning to the mainland did not restore normal eligibility")
+		}
+	}
+}
+
+func TestJohnRetargetsMainlandAfterWealthyPlayerGoesHome(t *testing.T) {
+	w, p := johnTestWorld()
+	p.profile.Coins = 1000
+	w.Join("outside", "Mainland player")
+	outside := w.players["outside"]
+	outside.buffs = map[string]float64{}
+	outside.x, outside.z = 40, -20
+	placeTestJohn(w, p, p.x, p.z+.5)
+	p.island = "one"
+	w.tickJohnPork(.05)
+	if w.johnPork == nil || w.johnPork.target != outside.profile.ID || w.johnPork.actor.island != "" || w.johnIgnored[p.profile.ID] {
+		t.Fatal("safe home resident prevented a valid mainland pursuit")
 	}
 }
 

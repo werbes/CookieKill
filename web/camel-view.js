@@ -1,3 +1,4 @@
+import {isCamelRaceIsland} from './camel-race-state.js';
 // Shared camel rig and held treats, built with the game's existing low-poly palette.
 export function heldCamelTreat(snapshot){
   const slot=snapshot?.me?.hotbar?.[snapshot?.me?.selectedSlot||0];
@@ -6,7 +7,7 @@ export function heldCamelTreat(snapshot){
 
 export function heldTreatTarget(snapshot){
   const me=snapshot?.me;
-  if(!me||me.ridingCamel||me.island==='camel_race'||!heldCamelTreat(snapshot))return null;
+  if(!me||me.ridingCamel||isCamelRaceIsland(me.island)||!heldCamelTreat(snapshot))return null;
   return (snapshot.nodes||[]).filter(n=>n.kind==='camel'&&n.owner===me.id&&n.available!==false&&!!n.inCave===!!me.inCave&&Math.abs((n.y||0)-(me.y||0))<=2)
     .map(n=>({...n,distance:Math.hypot(n.x-me.x,n.z-me.z),isAnimal:false})).filter(n=>n.distance<=5).sort((a,b)=>a.distance-b.distance)[0]||null;
 }

@@ -1,3 +1,4 @@
+import {isCamelRaceIsland} from './camel-race-state.js';
 import {createIslandBuildingPanels} from './island-building-panels.js';
 // Home, friendship and island controls share the game's authoritative snapshot.
 export function createIslandPanels(deps) {
@@ -31,7 +32,7 @@ export function createIslandPanels(deps) {
   function travelButtons() {
     if(['cookie_ring','cookie_practice'].includes(me().island))return button('Return to treehut','cookie_arena_leave');
     if(me().island==='camel_training')return button('Training / return','tab',{tab:'training'});
-    if(me().island==='camel_race')return `<div class="item-actions">${button('Race standings / return','tab',{tab:'race'})}</div>`;
+    if(isCamelRaceIsland(me().island))return `<div class="item-actions">${button('Race standings / return','tab',{tab:'race'})}</div>`;
     return `<div class="item-actions">${ownIsland() && me().island !== me().id ? button('Go to my island','teleport_home',{},false,true) : ''}${me().island ? button('Return to main island','teleport_main') : ''}</div>`;
   }
   function pink() {
@@ -44,7 +45,10 @@ export function createIslandPanels(deps) {
   }
   function blue() {
     if (!me().friendsTeleport) return `<div class="island-welcome"><span class="island-emblem blue" aria-hidden="true">◎</span><h3>The blue lollipop</h3><p>Eat this lollipop to open the friends teleport screen. Friends decide whether their islands welcome visitors.</p>${button('Eat the blue lollipop','eat_lollipop',{item:'blue'},false,true)}</div>`;
-    return `<p class="panel-intro">Choose a friend's home island. Only islands whose owners allow visitors can be entered.</p>${friendRows(true)}${travelButtons()}`;
+    return teleport();
+  }
+  function teleport() {
+    return `<p class="panel-intro">Travel home, visit a friend, or meet on the camel racing track.</p>${travelButtons()}${deps.renderNutTravel?.()||''}<div class="section-label island-section">FRIEND ISLANDS</div>${me().friendsTeleport?friendRows(true):'<p class="field-hint">Taste the blue lollipop in the desert cave to unlock visits to friends. Playful races are already available below.</p>'}${deps.renderCasualRaces?.()||''}`;
   }
   function camel() {
     const p=me(), price=p.camelDiscount ? 175 : 350, seconds=Math.max(0,(p.camelRentalUntil||0)-now()), owned=(p.camels||[]).filter(c=>!c.rentalUntil).length;
@@ -59,9 +63,9 @@ export function createIslandPanels(deps) {
     return `<div class="shop-list">${list.map(friend=>{
       const status=[friend.online?'Online':'Offline',friend.ownsIsland?(friend.visitors?'Visitors welcome':'Visitors closed'):'No home island'];
       let buttons='';
-      if(teleportOnly)buttons+=button('Visit island','visit_island',{target:friend.id},!friend.ownsIsland||!friend.visitors,true);
+      if(teleportOnly)buttons+=button('Visit island','visit_island',{target:friend.id},!friend.ownsIsland||!friend.visitors||isCamelRaceIsland(me().island),true);
       else {
-        if(me().friendsTeleport)buttons+=button('Visit island','visit_island',{target:friend.id},!friend.ownsIsland||!friend.visitors,true);
+        if(me().friendsTeleport)buttons+=button('Visit island','visit_island',{target:friend.id},!friend.ownsIsland||!friend.visitors||isCamelRaceIsland(me().island),true);
         if(ownIsland())buttons+=button(me().homeIsland?.builders?.[friend.id]?'Revoke building permission':'Allow this friend to build','island_builder',{target:friend.id,enabled:!me().homeIsland?.builders?.[friend.id]});
         buttons+=button('Remove friend','friend_remove',{target:friend.id});
       }
@@ -83,14 +87,14 @@ export function createIslandPanels(deps) {
   function companion() {
     if(['cookie_ring','cookie_practice'].includes(me().island))return `<div class="notice good"><p>Your companions wait safely outside this activity.</p>${button('Activity / return','tab',{tab:'cookie_activity'})}</div>`;
     if(me().island==='camel_training')return `<div class="notice good"><p>Your camel is exercising in the Training Gardens.</p>${button('Exercises / return','tab',{tab:'training'})}</div>`;
-    if(me().island==='camel_race')return `<div class="notice good"><p>Your camel is riding in Dune Dash. Press E or R for standings and the return button.</p>${button('View race','tab',{tab:'race'})}</div>`;
+    if(isCamelRaceIsland(me().island))return `<div class="notice good"><p>Your camel is riding in Dune Dash. Press E or R for standings and the return button.</p>${button('View race','tab',{tab:'race'})}</div>`;
     const p=me(), seconds=Math.max(0,(p.camelRentalUntil||0)-now()), owned=(p.camels||[]).filter(c=>!c.rentalUntil).length;
     if(!owned&&seconds<=0)return '';
     const nearby=(state.snapshot?.nodes||[]).filter(n=>n.kind==='camel'&&n.owner===p.id&&!!n.inCave===!!p.inCave&&Math.abs((n.y||0)-(p.y||0))<=2&&Math.hypot(n.x-p.x,n.z-p.z)<=5).sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0];
     return `<div class="section-label island-section">YOUR HERD <span>${owned} owned camel${owned===1?'':'s'}${seconds>0?` · ${Math.ceil(seconds/60)} rental minutes`:''}</span></div><div class="notice good"><p>${p.ridingCamel?'Press <strong>Q</strong> to dismount. Your mounted camel travels with you between islands and home.':'Parked camels wait where you leave them. Walk up to your camel and press <strong>E</strong> to mount.'}</p>${p.ridingCamel?button('Dismount · Q','camel_dismount',{},false,true):nearby?button('Mount nearby camel · E','camel_mount',{target:nearby.id},false,true):''}</div>`;
   }
   function render(type) {
-    const panel=({friends:friendsPanel,build:building,build_object:buildObject,chest,storage,animal})[type]?.() ?? null;
+    const panel=({friends:friendsPanel,teleport,build:building,build_object:buildObject,chest,storage,animal})[type]?.() ?? null;
     return type==='friends'?panel+camelNames():panel;
   }
   function shop(kind) {

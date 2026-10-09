@@ -48,7 +48,7 @@ On Windows, if Go is installed but absent from PATH:
 | W, on a treadmill | Run to train stamina |
 | Space, on a bench or leg press | Perform one repetition |
 | E, in build mode | Take control of the furnishing you are looking at |
-| T / F, while editing | Destroy for materials / pack into inventory (owner only) |
+| T / F, while editing | Destroy / pack into inventory (packing is owner only) |
 | Left click, while placing | Place the selected furnishing |
 | Page Up / Page Down, while placing | Raise / lower the selected build |
 | Escape | Open or close the game menu |
@@ -72,7 +72,7 @@ Mainland housing plots have been removed. Build homes on home islands and decora
 
 Day lasts **12 minutes** and night lasts **6 minutes**, shared by everyone on the server. A clock shows the current phase and time remaining, with dusk and dawn lighting transitions. A new server starts in daytime.
 
-At night, **John Pork** chooses the richest connected player carrying baked cookies or cakes. He pursues that player at **90% of their current movement speed**, including sprinting, training, buffs, swimming, and camel riding. Within **one metre**, he eats **eight baked items per second** from their bag and hotbar. Dough, ingredients, pantry/display stock, stored goods, and coins are unaffected. Walls block eating and he navigates around obstacles. After eating all a target's baked goods, he leaves that player alone for the rest of the night and seeks another eligible player. At dawn he sleeps in his hut in the far northeast near **(222, -239)**. His shirt carries the familiar John Pork meme portrait. He cannot enter or pursue players inside the disco cave, and racers are out of his reach in the racing ring. Portals give him a short delay before he follows into the destination world.
+At night, **John Pork** chooses the richest connected player carrying baked cookies or cakes. He pursues that player at **90% of their current movement speed**, including sprinting, training, buffs, swimming, and camel riding. Within **one metre**, he eats **eight baked items per second** from their bag and hotbar. Dough, ingredients, pantry/display stock, stored goods, and coins are unaffected. Walls block eating and he navigates around obstacles. After eating all a target's baked goods, he leaves that player alone for the rest of the night and seeks another eligible player. At dawn he sleeps in his hut in the far northeast near **(222, -239)**. His shirt carries the familiar John Pork meme portrait. He stays on the mainland: the disco cave, your home island, friends' home islands, and activity arenas are safe from his chase. Teleporting home immediately ends his pursuit of you.
 
 Within **100 metres**, a phone-call melody rings and a small **john pork is near** notice appears. If he is chasing you and gets within **10 metres**, it changes to **RUN FROM JOHN PORK**. Other nearby players receive the proximity notice. The ringing is synthesized locally, starts after a user gesture enables browser audio, and stops when John leaves range or your world; **Ring on/off** mutes it. Warnings remain visible when muted.
 
@@ -88,7 +88,9 @@ The fortune wheel uses **in-game coins**. Enter any affordable positive whole-co
 
 ### Dune Dash camel racing
 
-At the far western end of the beach, enter the aboveground cliff cave through its east-facing opening near **(-216, 21)**. Inside, press **E** at the camel-shaped lollipop near **(-227, 20)** and choose **Eat camel lollipop & enter**. The next available race starts **two minutes after sunrise**, once per **18-minute** day/night cycle. Registration closes **20 seconds before the start**, when connected entrants teleport to the grid. Eating a lollipop after that cutoff enters the following race. One taste registers one race; it does not charge coins.
+At the far western end of the beach, enter the aboveground cliff cave through its east-facing opening near **(-216, 21)**. Inside, press **E** at the camel-shaped lollipop near **(-227, 20)** and choose **Eat camel lollipop & enter**. The next available race starts **two minutes after sunrise**, once per **18-minute** day/night cycle. Registration closes **20 seconds before the start**, when connected entrants teleport to the grid. Eating a lollipop after that cutoff enters the following race. One taste registers one race; it does not charge coins. Everyone receives a reminder **two minutes before each scheduled race**, including players who have not registered and those on home islands.
+
+Open **Escape > Teleport** to host or join a **playful race** whenever you like. Each host has a separate lobby and starts a ten-second countdown when ready; solo practice is allowed. These races use the same three-lap course, provide a loan camel when needed, and award finishing places without coins or camel coins. Leaving restores your previous location and camel. Scheduled races keep their normal prizes and can gather registered players from a playful lobby.
 
 The arena is a **120 × 84 metre oval** with three laps and 16 ordered checkpoints per lap. Your mounted camel comes with you; otherwise one of your owned camels is chosen, or a loan camel is provided. Follow the arrows and golden next-checkpoint strip. Use **W A S D**, mouse look, **Shift** to sprint, and **Space** to jump. **E** or **R** opens standings and the return button. The grid stays still during the countdown. Reversing cannot earn extra laps, and the inner fence prevents shortcuts.
 
@@ -119,6 +121,10 @@ The **Call camel** button beside each camel's stats in Friends makes it run to y
 | Spring carrot | 25 coins | 2x jump progress for 120 work | 10 m/s takeoff |
 | Stamina oats | 25 coins | 2x stamina progress for 120 work | 200 |
 | Happy apple | 10 coins | 2x happiness progress for 120 work | 100% |
+
+### Desert rollercoaster
+
+Find the boarding station near **(165, -161)** in the northern desert. Press **E** and choose **Board on foot** for a free **48-second** ride over hills and banked turns reaching **24 metres** high. To bring a camel, mount your owned or rented camel first, then choose **Board with camel**. Separate cars let several players ride together. Look around with the mouse; the ride carries you automatically and returns you and your camel to the station. Press **E**, **R**, or **Q** during the ride to open its progress and **Return to station now** button.
 
 ### Betty's flowers and the records room
 
@@ -157,7 +163,9 @@ Your home island starts with a shared materials chest and a permanent **return p
 * **Building:** walls, floors, roofs, stairs, window walls, and doors.
 * **Decor:** tables, chairs, beds, potted plants, lanterns, shared materials chests, and personal storage chests.
 * **Garden:** trees and colorful flower beds.
-* **Appliances:** mixers, ovens, nut and berry garden beds, adoption ponds, and campfires.
+* **Appliances:** mixers, ovens, nut and berry garden beds, adoption ponds, camel pens, and campfires.
+
+**Decor, Garden, and Appliances cost coins** shown in their catalogs. The person placing a new item pays from their own wallet, including permitted guest builders. Coins are charged only after successful placement; cancelling, moving, and replacing packed items are free. Structural pieces in Building still use materials.
 
 Position pieces and rotate them in **45-degree steps**. Decor and furniture can overlap or stack; appliances cannot share a footprint, even at different heights. Built objects are solid. Floors and stairs provide walkable surfaces, doors can open, chairs can be sat in, and beds can be lain on. Home mixers and ovens use the same ingredients and timers as bakery equipment; making fresh dough requires owning a bakery. Place a table within **six metres** of a home oven at the same height to receive its finished bakes. Appliances and linked tables must finish their jobs and have their output collected before they can be packed or destroyed. Plant one nut or berry in a garden bed and harvest four after two minutes. Build a pond, then adopt a wounded fish or turtle from the ocean to give it a safe home.
 
@@ -167,11 +175,40 @@ Build a **camel pen**, then interact with it to assign up to **four permanently 
 
 Interact with a pond to grow its capacity from **one to four animals**, costing **75, 125, then 200 coins**. Each enlargement expands the water and its footprint, so leave room around it. Existing adopted animals and pond upgrades survive saving; an empty packed pond retains its capacity.
 
+### Nut Island and collectible wildlife
+
+A **green lollipop** at **(120, -126)** on the floor of the desert cave unlocks a permanent **nut island for 1,000 coins**. Press **E** to see the price before buying. Once unlocked, use the lollipop, the Nut island panel, or **Teleport** to return. The island is separate from your home island. Its return portal brings you back to the desert cave; a mounted camel travels with you.
+
+Press **H** near a wild animal to catch it. Most need to be within **five metres**, cactus mice within **three**, and beavers within **four**. Height, hiding, walls, and world boundaries count. Catching transfers exactly one animal into your real inventory; a full inventory leaves the animal in the world. Animals and inventory remain saved through disconnects.
+
+Gathering encounters are occasional: each felled forest tree has a **20%** animal chance, a gathered stick bundle **15%**, and a felled cactus **10%**. A tree can reveal at most one animal; most harvests reveal none. Nearby existing encounters can prevent another from appearing. The **Wildlife guide** lists animals from common through uncommon, rare, legendary, and mythic.
+
+On your nut island, open **Inventory**, select an animal, and choose **Release here**. Released pets wander across the island. The workshop near the arrival path sells **150-coin cages**, each holding **four pets**, with up to eight cages. Stand near a pet and press **E**, or press **6** for pet care, to assign it to a cage, let it roam, or return it to inventory. You can release directly into a nearby cage. The island supports up to 100 released pets; positions, cage assignments, and ownership persist.
+
+| Rarity | Animal | Where and how to find it |
+| --- | --- | --- |
+| Common | Wood mouse | Can emerge after gathering forest sticks or felling a tree; flees at the untrained walking speed of 6 m/s. |
+| Common | House mouse | Hides near home-island flowers and ponds; flees at 6 m/s. |
+| Common | Rat | Drop a Nut crunch or Berry burst cookie in a bakery kitchen to attract one. Matches its nearest chaser's current speed. |
+| Uncommon | Squirrel | Can jump out when a tree falls; runs faster in zigzags. |
+| Uncommon | Cactus mouse | Can emerge from a felled cactus; slower, with a shorter three-metre catching range. |
+| Uncommon | Chipmunk | Around fallen trees and forest groves; interested in dropped nut cookies. |
+| Uncommon | Mole rat | Briefly emerges in the forest; cannot be caught while underground. |
+| Rare | Blind albino rat | Forest at night. Sprinting alerts it; it flees until fifty metres from the runner. Walk quietly to approach. |
+| Rare | Flying squirrel | Glides from tree tops at 110 degrees from the upright trunk (20 degrees below horizontal), then runs at 6 m/s toward a tree to hide. |
+| Legendary | Beaver | Swims along the eastern ocean edge at night; nearby jumps make it dive. Catch within four metres while it is surfaced. |
+| Legendary | Hamster | One per day, appearing near Betty's flower shop during the last five minutes of daylight. Burrows and disappears at night if uncaught. |
+| Mythic | Otter | Appears somewhere on the map for one night every three to five days. Requires the food sequence below. |
+
+The otter treats the nearest eligible mainland player as its chaser and runs at **1.5 times that player's current speed**. Hit it with a thrown **Nut crunch cookie** to reduce this to **1.2 times**, then a **Cosmic cake** to make it circle at **0.9 times** for the rest of that night. It can then be caught with H. Throwing Cosmic cake first sends it into the sky and spreads rainbows across **every player's world for one minute**; another otter returns after three to five days.
+
+**Funny cakes and Cosmic cakes are throwable from the hotbar with left click**, and still edible with Q, right click, or Inventory. Their hits apply strange colors to other players without ordinary damage or coin rewards. The global otter rainbow respects reduced-effects settings.
+
 ### Sounds around the world
 
 Beach surf fades into forest birds, while jumping dolphins whistle nearby. The disco has upbeat music, city shops and bakeries play cozy music that carries outside, and the desert has flute and plucked banjo melodies. All music is original, synthesized locally, and starts after interacting with the game. Open **Escape → World sounds** to mute or adjust volume; preferences are saved in your browser. John Pork's phone keeps its separate control. Backgrounding or disconnecting silences the ambience.
 
-Enter **build mode** from the home menu before placing or editing anything. Look at a furnishing and press **E** to take control of it, then **R** to rotate, **T** to destroy, **F** to pack it into inventory, or **left click** to place it again. Packing is reserved for the owner and keeps the furnishing's colors. Destroying a piece returns **half of each material cost, rounded down**, to your inventory, or to the shared chest when a guest destroys it. Occupied storage and growing or inhabited garden pieces must be emptied first. Leaving build mode cancels an unfinished move. The island map shows furnishing shapes without name labels, and the home menu does not list every placed object.
+Enter **build mode** from the home menu before placing or editing anything. Look at a furnishing and press **E** to take control of it, then **R** to rotate, **T** to destroy, **F** to pack it into inventory, or **left click** to place it again. Packing is reserved for the owner and keeps the furnishing's colors. Destroying a structural piece returns **half of each material cost, rounded down**, to your inventory, or to the shared chest when a guest destroys it. Coin-bought furnishings do not refund coins or materials; pack them to reuse them. Occupied storage and growing or inhabited garden pieces must be emptied first. Leaving build mode cancels an unfinished move. The island map shows furnishing shapes without name labels, and the home menu does not list every placed object.
 
 Personal storage chests hold item stacks for the island owner. Shared materials chests hold construction supplies. Chest colors can be changed in their interaction panels. Plant trees and flowers from the home building catalog to decorate your garden. Island construction, stored contents, and permissions are saved.
 
@@ -191,6 +228,8 @@ Your first city bakery costs **250 coins**. Its plot becomes available immediate
 
 Buy the four basics at Baker's Pantry, then use your mixer: **one egg, one flour, one sugar, and one butter make 40 dough in 40 seconds**. Collect the finished dough, put it in your selected hotbar slot using **Hold**, and load it back into the mixer with recipe add-ins. Add-in mixing takes **one second per dough used**. Collect and hold the prepared dough, then load the oven. Baking takes **five seconds per cookie or cake**; plain dough makes basic sugar cookies. Finished bakes go onto the oven's **linked cooling table**, where you collect them before stocking the display. Each output station holds up to 200 items. Upgrades do not change these recipe quantities or timers. Production pauses while you are offline and resumes after you claim a bakery again. Before owning a bakery, chests are the only world source of dough; traders no longer sell it.
 
+Press **E** at a bakery oven or mixer to open a focused menu with only **Bakery**, **Cookbook**, and **This station** tabs. Switching tabs keeps the same appliance selected. Close the menu to access the other game menus again.
+
 Mixers and ovens now accept **queues**, including home appliances. Add another batch while one is working; its required ingredients or held dough are reserved immediately, and batches run in order. Each appliance supports one active batch and **32 waiting batches**, saved across reconnects. If its output storage fills, a completed batch waits safely until you collect goods. Appliances and linked tables cannot be packed or destroyed while they contain jobs, queued batches, or output.
 
 Buy **additional ovens for 120 coins** and **mixers for 90 coins** from the bakery building catalog. Place them in the kitchen in build mode. Each appliance has its own queue and runs independently; all bakery ovens deliver to the shared cooling table. Your chef uses the available appliances to prepare more batches in parallel. Moving or reopening a bakery preserves every appliance's work.
@@ -199,7 +238,7 @@ Stock cookies or cakes in your **display** before selling them. Each display hol
 
 Hire up to **two chefs**, **two servers**, and **two cashiers** at your bakery sign. Each chef costs **300 coins**, each server **250**, and each cashier **200**, paid once. Each worker has its own **Take a break / Resume work** button. Resting chefs start no new batches; batches already in appliances finish normally. Resting servers stop moving and keep their tray contents safe; resting cashiers stop selling. The other workers continue independently. Hires and break settings stay saved.
 
-At an oven, select **one or more discovered recipes** for your chefs. They rotate through the selection and skip recipes whose ingredients are unavailable, continuing with another selected recipe the fridge can supply. Multiple ovens and mixers can prepare different kinds at the same time, and a second chef can start another task while the first is occupied. Chefs use only the **1,000-item kitchen fridge** for ingredients, including plain and prepared dough; they never take items from your bag, hotbar, home, or display. They wait when no selected recipe can be supplied, then resume automatically after restocking. Already-started batches are preserved when selections change.
+At an oven, select **one or more discovered recipes** for your chefs. They rotate through the selection and skip recipes whose ingredients are unavailable, continuing with another selected recipe the fridge can supply. Chefs automatically choose the largest batch their ingredients and free cooling-table space allow, up to **40 cookies or cakes per oven batch**; fewer ingredients or less space means a smaller batch. Recipe preparation scales with the batch, and baking takes five seconds per cookie or cake. Multiple ovens and mixers can prepare different kinds at the same time, and a second chef can start another task while the first is occupied. Chefs use only the **1,000-item kitchen fridge** for ingredients, including plain and prepared dough; they never take items from your bag, hotbar, home, or display. They wait when no selected recipe can be supplied, then resume automatically after restocking. Already-started batches are preserved when selections change.
 
 Each server carries its own tray of up to **20 bakes** from the cooling table to a reachable display. Build up to **two displays** for **300 spaces each**, or **600 total**. Both counters use a shared bakery stock total, and each visible shelf shows its own portion without duplicating cookies. Before packing or removing a display, sell or withdraw enough stock to fit the remaining display capacity. Customers can queue at either counter, and the two cashiers serve independently. Full storage or inaccessible stations pause the work that needs them without discarding items. Staff work while you are connected with a claimed plot, even while you explore. Fridge contents, both trays, display stock, selected recipes, furnishings, and unfinished production persist between plots and reconnects.
 
@@ -390,6 +429,12 @@ The smoke check creates a local test account and checks rendering, login, author
 `node scripts/night-browser-smoke.cjs` checks nighttime lighting, John Pork's visible chase, unlocked phone audio, both distance warnings, eight baked items eaten per second, and leaving a depleted target. `--dawn-only` checks returning to his hut at dawn and restored daylight; `--hut-only` inspects the hut, sleeping pose, and portrait shirt. These scripts build isolated test servers with a Go overlay that changes only the initial world clock; no debug endpoint or production timing change is added.
 
 `node scripts/camel-race-browser-smoke.cjs` checks the cliff cave, lollipop registration, 20-second gathering countdown, three laps through ordered checkpoints, exact rewards, owned camel traits, and returning mounted to the beach. It runs an isolated server with a temporary initial-clock overlay and drives normal movement inputs around the course.
+
+`node scripts/casual-race-browser-smoke.cjs` checks universal race reminders, separate multiplayer lobbies, host-only countdowns, three real laps without prize farming, and return to the original home or mainland location.
+
+`node scripts/roller-coaster-browser-smoke.cjs` checks real on-foot and mounted-camel rides, elevated track movement, inventory and camel preservation, and safe return through Chrome.
+
+`node scripts/nut-island-browser-smoke.cjs` checks the green lollipop purchase, travel, inventory releases, cage purchase and assignments, return, and saved companions in Chrome. `node scripts/rodents-browser-smoke.cjs` checks real H catches and thrown cake interactions, including the otter sequence and shared rainbow effect.
 
 `node scripts/camel-training-browser-smoke.cjs` checks the pink training portal, all four course views, no idle or feeding-only stat gains, two real boosted laps, saved improvement, the training map, and return to the original beach position.
 

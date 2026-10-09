@@ -227,7 +227,7 @@ func TestDestructionRefundPartialCapacityIsAtomic(t *testing.T) {
 	for _, guest := range []bool{false, true} {
 		w, owner := buildingWorld(t)
 		p := owner
-		owner.profile.HomeIsland.Objects = append(owner.profile.HomeIsland.Objects, BuildObject{ID: "oven", Kind: "oven", X: 4})
+		owner.profile.HomeIsland.Objects = append(owner.profile.HomeIsland.Objects, BuildObject{ID: "wall", Kind: "wall", X: 4})
 		if guest {
 			p = addBuilder(t, w, owner)
 			owner.profile.HomeIsland.Chest = map[string]int{"wood": inventoryLimit - 2, "stone": inventoryLimit}
@@ -243,12 +243,12 @@ func TestDestructionRefundPartialCapacityIsAtomic(t *testing.T) {
 			syncInventory(&p.profile)
 			mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 		}
-		if err := w.Act(p.profile.ID, Action{Action: "edit_build", Target: "oven"}); err != nil {
+		if err := w.Act(p.profile.ID, Action{Action: "edit_build", Target: "wall"}); err != nil {
 			t.Fatal(err)
 		}
 		beforeInventory := cloneMap(p.profile.Inventory)
 		beforeChest := cloneMap(owner.profile.HomeIsland.Chest)
-		if err := w.Act(p.profile.ID, Action{Action: "destroy_build", Target: "oven"}); err == nil {
+		if err := w.Act(p.profile.ID, Action{Action: "destroy_build", Target: "wall"}); err == nil {
 			t.Fatal("partial refund capacity accepted")
 		}
 		if !reflect.DeepEqual(beforeInventory, p.profile.Inventory) || !reflect.DeepEqual(beforeChest, owner.profile.HomeIsland.Chest) || len(owner.profile.HomeIsland.Objects) != 2 {

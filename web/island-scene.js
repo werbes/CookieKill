@@ -1,3 +1,4 @@
+import {isCamelRaceIsland} from './camel-race-state.js';
 import {createCamelView} from './camel-view.js';
 // Procedural home-island scenery and furniture. Dimensions come from the server.
 export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, mat, textSprite, disposeObject, makeAnimal}) {
@@ -109,7 +110,7 @@ export function createIslandScene({THREE, scene, box, sphere, cylinder, mesh, ma
     return g;
   }
   function sync(snapshot) {
-    const active=!!snapshot.me.island&&!['camel_race','camel_training','cookie_ring','cookie_practice'].includes(snapshot.me.island);terrain.visible=buildings.visible=active;
+    const active=!!snapshot.me.island&&!snapshot.me.island.startsWith('nut:')&&!isCamelRaceIsland(snapshot.me.island)&&!['camel_training','cookie_ring','cookie_practice'].includes(snapshot.me.island);terrain.visible=buildings.visible=active;
     const home=snapshot.island||snapshot.me.homeIsland,level=Math.max(0,Math.min(5,home?.upgradeLevel||0)),buildRadius=home?.buildRadius||32+level*5,walkRadius=home?.walkRadius||40+level*5;
     shore.scale.set((walkRadius+5)/45,1,(walkRadius+5)/45);sand.scale.set(walkRadius/40,1,walkRadius/40);grass.scale.set((buildRadius+2)/34,1,(buildRadius+2)/34);coastDecor.scale.set(walkRadius/40,1,walkRadius/40);
     terrain.userData.buildRadius=buildRadius;terrain.userData.walkRadius=walkRadius;

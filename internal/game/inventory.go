@@ -7,10 +7,12 @@ import (
 
 // Ordinary supplies and packed furnishings share the same storage/drop rules.
 func isInventoryItem(item string) bool {
-	if isTownItem(item) {
+	if isTownItem(item) || rodentPetItem(item) {
 		return true
 	}
-	if _, ok := preparedRecipe(item); ok { return true }
+	if _, ok := preparedRecipe(item); ok {
+		return true
+	}
 	if itemSet[item] {
 		return true
 	}
@@ -20,7 +22,9 @@ func isInventoryItem(item string) bool {
 	if _, ok := clubCakeFor(item); ok {
 		return true
 	}
-	if _, _, ok := packedBakeryItem(item); ok { return true }
+	if _, _, ok := packedBakeryItem(item); ok {
+		return true
+	}
 	_, _, ok := packedBuildItem(item)
 	return ok
 }

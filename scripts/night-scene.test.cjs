@@ -21,6 +21,13 @@ test('John warnings use actual range, target and world with exact 100/10 metre b
   s.johnPork.inCave=false;s.dayCycle.phase='day';assert.equal(johnPorkWarning(s),null);
   s.dayCycle.phase='night';s.johnPork.sleeping=true;assert.equal(johnPorkWarning(s),null,'sleeping John must never trigger an alarm');
 });
+test('home owners and visitors never receive John warnings even from matching stale island data',async()=>{
+  const [,{johnPorkWarning}]=await modules;
+  for(const island of ['me','friend','camel_race','camel_casual:one','camel_training','cookie_ring','cookie_practice']){
+    const s={dayCycle:{phase:'night'},me:{id:'me',island,x:0,z:0},johnPork:{island,x:0,z:.5,target:'me',eating:true}};
+    assert.equal(johnPorkWarning(s),null,`${island} must suppress stale pursuit warnings`);
+  }
+});
 test('phone melody requires audio unlock, loops only in range, and stops on mute/departure',async()=>{
   const [,{createPhoneRinging,PHONE_MELODY}]=await modules,voices=[],contexts=[];
   const param=()=>({value:0,setValueAtTime(){},setTargetAtTime(){},cancelScheduledValues(){},exponentialRampToValueAtTime(){}});
@@ -41,7 +48,14 @@ test('John model wears the portrait, follows pursuit, and sleeps quietly at dawn
   view.sync({...s,johnPork:{...s.johnPork,target:'other',x:18}});assert.equal(view.root.position.x,18,'retargeting snaps instead of sliding through walls');
   s.dayCycle.phase='day';s.johnPork={x:220.2,y:1,z:-238.8,yaw:Math.PI,sleeping:true};view.sync(s);view.update(1,.05);assert.equal(view.root.visible,true);assert.equal(view.root.position.x,220.2);assert.equal(view.root.getObjectByName('john-pork-body').rotation.x,Math.PI/2);assert.equal(view.root.getObjectByName('john-pork-sleeping-zzz').visible,true);assert.equal(audio.enabled,false);assert.equal(view.root.getObjectByName('pig-head').rotation.x,0);
   s.dayCycle.phase='night';s.johnPork={x:12,y:0,z:0,yaw:0,target:'me'};view.sync(s);view.update(2,.05);assert.equal(view.root.getObjectByName('john-pork-body').rotation.x,0);assert.equal(view.root.getObjectByName('john-pork-sleeping-zzz').visible,false);assert.equal(audio.enabled,true);
-  s.me.island='private';view.sync(s);assert.equal(view.root.visible,false);view.clear();assert.equal(audio.stopped,true);view.dispose();assert.equal(parent.children.length,0);assert.equal(audio.disposed,true);
+  for(const island of ['me','friend','camel_casual:one']){
+    s.me.island=island;s.johnPork.island=island;view.sync(s);view.update(3,.05);
+    assert.equal(view.root.visible,false,'matching stale island data cannot render John');assert.equal(audio.enabled,false,'island arrival stops ringing');
+    s.dayCycle.phase='day';s.johnPork.sleeping=true;view.sync(s);assert.equal(view.root.visible,false,'island cannot show the sleeping mainland model');
+    s.dayCycle.phase='night';s.johnPork.sleeping=false;
+  }
+  s.me.island='';s.johnPork.island='';view.sync(s);assert.equal(view.root.visible,true,'mainland pursuit can resume after an island visit');
+  view.clear();assert.equal(audio.stopped,true);view.dispose();assert.equal(parent.children.length,0);assert.equal(audio.disposed,true);
 });
 
 test('John hut matches physical walls and leaves the south doorway and bed aisle open',async()=>{

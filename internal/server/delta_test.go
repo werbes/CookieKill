@@ -129,7 +129,7 @@ func (r *testDeltaReceiver) apply(t *testing.T, data []byte) game.Snapshot {
 		for key, value := range frame {
 			switch key {
 			case "type", "seq", "base":
-			case "me":
+			case "me", "rollerCoaster":
 				var current, changes map[string]json.RawMessage
 				decodeDeltaTest(t, r.state[key], &current)
 				decodeDeltaTest(t, value, &changes)
@@ -137,7 +137,7 @@ func (r *testDeltaReceiver) apply(t *testing.T, data []byte) game.Snapshot {
 					current[field] = replacement
 				}
 				r.state[key] = marshalDeltaTest(t, current)
-			case "players", "nodes", "animals", "projectiles", "homes":
+			case "players", "nodes", "animals", "projectiles", "homes", "rodents":
 				identity := "id"
 				if key == "homes" {
 					identity = "owner"
@@ -216,7 +216,7 @@ func assertDeltaSnapshot(t *testing.T, got, want game.Snapshot) {
 	normalize := func(snapshot game.Snapshot) map[string]any {
 		var value map[string]any
 		decodeDeltaTest(t, marshalDeltaTest(t, snapshot), &value)
-		for _, key := range []string{"players", "nodes", "animals", "projectiles", "homes"} {
+		for _, key := range []string{"players", "nodes", "animals", "projectiles", "homes", "rodents"} {
 			entities, _ := value[key].([]any)
 			if entities == nil {
 				entities = []any{}

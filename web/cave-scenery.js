@@ -192,6 +192,9 @@ export function buildCave({THREE,parent,layout,box,sphere,cylinder,mesh,mat,flat
     const plaque=flatLabel(text,color,'#3c251b',768,100);plaque.position.set(x,floor+2.5,-128.5);plaque.scale.set(5.1,.58,1);cave.add(plaque);
     for(let i=0;i<5;i++){const h=.3+(i%3)*.2,c=mesh(new THREE.ConeGeometry(.1,h,5),mat(color,{emissive:color,emissiveIntensity:.6}),x+(i-2)*.19,floor+h/2,-125.5,cave);c.rotation.z=(i-2)*.12;}
   }
+  cylinder(.7,.85,.2,'#98623c',120,floor+.1,-126,cave,10);
+  const nutPlaque=flatLabel('A HOME FOR LITTLE COMPANIONS','#b5dfa2','#3c251b',768,100);nutPlaque.position.set(120,floor+2.65,-128.5);nutPlaque.scale.set(5.8,.58,1);nutPlaque.name='green-lollipop-cave-plaque';cave.add(nutPlaque);
+  for(let i=0;i<5;i++){const h=.3+(i%3)*.17,crystal=mesh(new THREE.ConeGeometry(.1,h,5),mat('#9ac880',{emissive:'#a9d895',emissiveIntensity:.5}),120+(i-2)*.19,floor+h/2,-127.2,cave);crystal.rotation.z=(i-2)*.12;}
   const entrance=flatLabel('CLAY GROTTO','#f4dfbb','#78523a',512,90);entrance.position.set(126.5,1,-71.8);entrance.scale.set(2.2,.39,1);entrance.rotation.y=-.2;cave.add(entrance);cylinder(.045,.055,.8,'#80664d',126.5,.4,-71.8,cave);
   cave.userData.lights=lights;
   return cave;

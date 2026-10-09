@@ -99,7 +99,7 @@ func (w *World) camelTreatAction(p *player, a Action) error {
 	if a.Action != "feed_camel" {
 		return errors.New("Choose a treat to buy or feed to your camel.")
 	}
-	if p.island == CamelRaceIsland {
+	if isCamelRaceIsland(p.island) {
 		return errors.New("Save treats for after the race.")
 	}
 	w.expireCamels(p)

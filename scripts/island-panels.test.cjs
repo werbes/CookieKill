@@ -3,9 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 (async () => {
+  const raceStateURL = 'data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../web/camel-race-state.js'),'utf8')).toString('base64');
   const buildingSource = fs.readFileSync(path.join(__dirname, '../web/island-building-panels.js'), 'utf8');
   const buildingURL = `data:text/javascript;base64,${Buffer.from(buildingSource).toString('base64')}`;
-  const source = fs.readFileSync(path.join(__dirname, '../web/island-panels.js'), 'utf8').replace('./island-building-panels.js', buildingURL);
+  const source = fs.readFileSync(path.join(__dirname, '../web/island-panels.js'), 'utf8').replace('./island-building-panels.js', buildingURL).replaceAll('./camel-race-state.js',raceStateURL);
   const {createIslandPanels} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   const actions = [], placements = [];
   const state = {snapshot:{me:{id:'owner',username:'baker',coins:200,friendCode:'FERN1234',inventory:{wood:3,sugar:8}},recipes:[{id:'sugar',name:'Sugar cookie'}],friends:[],buildCatalog:[{id:'wall',name:'Wall',category:'building',cost:{wood:4},width:4,depth:.4,height:3},{id:'fire',name:'Campfire',category:'appliances',cost:{wood:2},width:1.4,depth:1.4,height:.7}]}};

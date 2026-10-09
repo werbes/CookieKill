@@ -95,7 +95,7 @@ func TestBakeryStaffHiresOnceAndAutomatesAwayFromOwner(t *testing.T) {
 	bag, hotbar := p.profile.BagSlots, p.profile.Hotbar
 	p.profile.BakeryPantry = map[string]int{"baking_sugar": 1, "butter": 1, "flour": 1, "egg": 1}
 	p.x, p.z = -35, -35
-	advance(w, 105)
+	advance(w, 290) // Mix 40 dough, bake the whole 40-cookie batch, then serve.
 	if p.profile.Coins <= 0 || !p.profile.Discovered["sugar"] {
 		t.Fatal("chef/cashier did not generate real customer sales")
 	}

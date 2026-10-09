@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{test}=require('node:test');
-const root=path.resolve(__dirname,'..'),url=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64'),read=file=>fs.readFileSync(path.join(root,file),'utf8');
+const root=path.resolve(__dirname,'..'),url=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64'),raceStateURL=url(fs.readFileSync(path.join(root,'web/camel-race-state.js'),'utf8')),read=file=>fs.readFileSync(path.join(root,file),'utf8').replaceAll('./camel-race-state.js',raceStateURL);
 test('home expansion and pond panels show exact costs, limits, reach, and housing capacity',async()=>{
  const {createIslandBuildingPanels}=await import(url(read('web/island-building-panels.js')));
  const home={owner:'me',upgradeLevel:0,buildRadius:32,walkRadius:40,nextUpgradeCost:150,maxUpgrades:5,objects:[]},me={id:'me',island:'me',x:-5,z:24,coins:1000,camels:[]},state={connected:true,snapshot:{me,island:home,buildCatalog:[]}};
@@ -21,5 +21,6 @@ test('expanded island terrain, physical upgrade sign, four pond residents and ho
  api.sync({me:{id:'me',island:'me'},island,buildCatalog:[{id:'pond',width:5,depth:4,height:.25},{id:'camel_pen',width:8,depth:8,height:1.5}]});
  const terrain=scene.getObjectByName('home-island-terrain'),buildings=scene.getObjectByName('home-island-buildings');assert.equal(terrain.userData.walkRadius,65);assert.equal(terrain.userData.buildRadius,57);assert.ok(scene.getObjectByName('island-upgrade-sign'));
  const pond=buildings.children.find(o=>o.userData.buildObjectID==='pond');assert.equal(pond.userData.pondCapacity,4);assert.equal(pond.children.filter(o=>o.name.startsWith('pond-rescue-')).length,4);assert.equal(buildings.children.find(o=>o.userData.buildObjectID==='pen').userData.camelPen,true);
+ api.sync({me:{id:'me',island:'camel_casual:lobby-one'},island:null});assert.equal(terrain.visible,false);assert.equal(buildings.visible,false);
  api.sync({me:{id:'me',island:''},island:null});assert.equal(terrain.visible,false);assert.equal(buildings.visible,false);
 });

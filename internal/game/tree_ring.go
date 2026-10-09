@@ -112,6 +112,7 @@ func (w *World) cookieArenaAction(p *player, a Action) error {
 	w.sequence++
 	p.cookieArena = &cookieArenaSession{returnTo: camelRaceReturn{x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, island: p.island, inCave: p.inCave, ridingCamel: p.ridingCamel, mountedCamelID: p.mountedCamelID, stamina: p.stamina, sprintExhausted: p.sprintExhausted, fallen: p.fallen, standAt: p.standAt, fallDistance: p.fallDistance}, health: p.health, buffs: cloneMap(p.buffs), life: w.sequence}
 	p.island, p.inCave, p.ridingCamel, p.mountedCamelID, p.y = mode, false, false, "", 0
+	w.leaveJohnPorkBehind(p)
 	p.posture, p.buildMode, p.editingBuildID, p.bakeryBuildMode, p.editingBakeryFurnitureID = "", false, "", false, ""
 	p.camelCalls = nil
 	w.spawnCookieArena(p)

@@ -8,16 +8,8 @@ import (
 // Use the same capsule, step height, doors and cave transitions as a player.
 // Navigation probes copy only the actor and never alter world/player state.
 func (w *World) johnStep(p player, x, z float64) (player, bool) {
-	if p.island == CamelRaceIsland || johnSanctuary(&p) {
+	if p.island != "" || johnSanctuary(&p) {
 		return p, false
-	}
-	if p.island != "" {
-		if w.islandBlocked(&p, x, z) {
-			return p, false
-		}
-		p.x, p.z = x, z
-		p.y = w.islandGround(&p)
-		return p, true
 	}
 	if !w.moveMainland(&p, x, z, groundY(&p)) {
 		return p, false
@@ -53,8 +45,9 @@ func johnChaseGoal(j, target *player) Point {
 }
 
 func (w *World) moveJohnPork(j *johnPork, target *player, budget float64) {
-	if !w.johnEligible(target) || johnSanctuary(&j.actor) || j.actor.island == CamelRaceIsland {
+	if !w.johnEligible(target) || johnSanctuary(&j.actor) || j.actor.island != "" {
 		j.path = nil
+		j.eating, j.eatProgress = false, 0
 		return
 	}
 	goal := johnChaseGoal(&j.actor, target)
@@ -118,6 +111,9 @@ func (q *johnQueue) Push(n any)        { *q = append(*q, n.(*johnRouteNode)) }
 func (q *johnQueue) Pop() any          { old := *q; n := old[len(old)-1]; *q = old[:len(old)-1]; return n }
 
 func (w *World) johnRoute(start player, goal Point) []Point {
+	if start.island != "" {
+		return nil
+	}
 	// A local A* search routes around buildings and movable furniture. Replan
 	// only on blocked/direct-path changes; large world travel uses successive
 	// local sections. Filter scenery once instead of on every grid edge.

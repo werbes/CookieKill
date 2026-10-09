@@ -135,6 +135,7 @@ func (w *World) dropItem(p *player, a Action) error {
 		slots[a.FromSlot] = Stack{}
 	}
 	syncInventory(&p.profile)
+	w.rodentDropped(p, s.Item)
 	return nil
 }
 

@@ -47,6 +47,7 @@ func (w *World) chopCactus(p *player, n *Node) error {
 	}
 	n.ChopRemaining, n.Available, n.readyAt = 0, false, w.time+n.respawn
 	p.cooldowns["interact"] = w.time + .7
+	w.rodentGather(p, n)
 	w.eventActor(fmt.Sprintf("Cactus felled: gathered %d cactus for baking.", n.Amount), "gather", n.X, n.Z, p.profile.ID)
 	return nil
 }
@@ -71,6 +72,7 @@ func (w *World) chopTree(p *player, n *Node) error {
 	}
 	n.ChopRemaining, n.Available, n.readyAt = 0, false, w.time+n.respawn
 	p.cooldowns["interact"] = w.time + .7
+	w.rodentGather(p, n)
 	w.eventActor(fmt.Sprintf("Tree felled: gathered %d wood.", n.Amount), "gather", n.X, n.Z, p.profile.ID)
 	return nil
 }

@@ -1,3 +1,4 @@
+import {isCamelRaceIsland} from './camel-race-state.js';
 export function createCamelCarePanels({state,button,escapeHTML}){
   const esc=value=>escapeHTML(String(value??''));
   const stats=[['speed','Speed','m/s'],['jump','Jump','m/s'],['stamina','Stamina',''],['happiness','Happiness','%']];
@@ -7,7 +8,7 @@ export function createCamelCarePanels({state,button,escapeHTML}){
     return `<div class="section-label">CAMEL CARE <span>Each companion is one of a kind</span></div><p class="field-hint">Put a treat in your hotbar, hold it, and press E near your camel to feed it. Call a parked camel to make it run over. Speed is its natural pace; happiness brings it closer to its best. Treats double progress from matching exercises in the Camel Cove training gardens. Feeding alone never changes a stat.</p><div class="shop-list">${camels.map((c,i)=>{
       const activeTraining=me.island==='camel_training'&&state.snapshot?.camelTraining?.ownCamel?.id===c.id;
       if(activeTraining)c=state.snapshot.camelTraining.ownCamel;
-      const sameWorld=!['camel_race','camel_training'].includes(me.island)&&(c.island||'')===(me.island||'')&&!!c.inCave===!!me.inCave;
+      const sameWorld=!isCamelRaceIsland(me.island)&&me.island!=='camel_training'&&(c.island||'')===(me.island||'')&&!!c.inCave===!!me.inCave;
       const near=activeTraining||sameWorld&&Math.hypot(c.x-me.x,c.z-me.z)<=5&&Math.abs((c.y||0)-(me.y||0))<=2;
       const mounted=!!me.ridingCamel&&me.mountedCamelId===c.id;
       const location=mounted?'You are riding this camel.':c.following?'Running to you…':!sameWorld?(c.island?'Travel to this camel’s home island to call it.':'Return to this camel’s area on the main island to call it.'):c.homePenId?'This camel has a home in a fenced pen and returns there when you log out.':'Parked in this area.';

@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{test}=require('node:test');
-const load=file=>import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'..',file),'utf8')).toString('base64'));
+const raceStateURL='data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../web/camel-race-state.js'),'utf8')).toString('base64');
+const load=file=>import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'..',file),'utf8').replaceAll('./camel-race-state.js',raceStateURL)).toString('base64'));
 const modules=Promise.all([load('web/vendor/three.core.js'),load('web/camel-training-scene.js'),load('web/camel-training-panels.js'),load('web/camel-care-panels.js')]);
 const courses=['speed','jump','stamina','happiness'].map((id,i)=>({id,name:id,centerX:-42+i*28,halfWidth:8,halfDepth:24,checkpoints:[{x:-34+i*28,z:24},{x:-50+i*28,z:24},{x:-50+i*28,z:-24},{x:-34+i*28,z:-24}],pointsPerGain:100,cap:100}));
 

@@ -2,10 +2,12 @@ package game
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
 const bakeryChefHandlingSeconds = 2.0
+const bakeryChefBatchLimit = 40
 
 // The legacy single recipe migrates only when no selected list was saved.
 // Retaining a nonempty, deduplicated list makes an accidental empty click safe.
@@ -160,16 +162,56 @@ func bakeryChefPrepared(p *player, mixers []bakeryChefStation, item string) int 
 	}
 	return n
 }
+
+// Reserve the destination for every paid bakery oven batch, including jobs in
+// edited or inaccessible ovens and queued manual jobs. A second chef observes
+// the first chef's reservation immediately through the new production job.
+func bakeryChefCoolingSpace(p *Profile, cooling *StationProduction) int {
+	space := productionCapacity - bakeryStockCount(cooling.Output)
+	for key, station := range p.Production {
+		if station == nil || !strings.HasPrefix(key, "bakery_") && !strings.HasPrefix(key, "bakery:") {
+			continue
+		}
+		if kind, valid := productionKind(p, key); !valid || kind != "oven" {
+			continue
+		}
+		reserve := func(job ProductionJob) {
+			if job.Destination == "" || job.Destination == "bakery_cooling_table" {
+				space -= job.Amount
+			}
+		}
+		if station.Job != nil {
+			reserve(*station.Job)
+		}
+		for _, job := range station.Queue {
+			reserve(job)
+		}
+	}
+	return max(0, space)
+}
+
+func bakeryChefRecipeBatch(recipe Recipe, stock map[string]int, limit int) (int, map[string]int) {
+	for amount := min(bakeryChefBatchLimit, limit); amount > 0; amount-- {
+		// Protein powder and drinks are substitutes, so recalculate the full
+		// cost for each batch size instead of multiplying a one-cookie cost.
+		cost := productionAddinCost(recipe, amount, stock)
+		if bakeryChefCanAfford(stock, cost) {
+			return amount, cost
+		}
+	}
+	return 0, nil
+}
+
 func bakeryChefJobStatus(p *player, worker *bakeryWorker) string {
 	if s := p.profile.Production[worker.chefJobKey]; s != nil && s.Job != nil {
 		if r, ok := recipeFor(s.Job.Item); ok {
-			return "Baking " + r.Name
+			return fmt.Sprintf("Baking %d %s", s.Job.Amount, r.Name)
 		}
 		if r, ok := preparedRecipe(s.Job.Item); ok {
-			return "Preparing " + r.Name
+			return fmt.Sprintf("Preparing %d %s", s.Job.Amount, r.Name)
 		}
 		if s.Job.Item == "dough" {
-			return "Mixing fresh dough"
+			return fmt.Sprintf("Mixing %d fresh dough", s.Job.Amount)
 		}
 	}
 	return "Waiting for an available appliance or fridge ingredients"
@@ -235,8 +277,9 @@ func (w *World) workBakeryChefWorker(p *player, worker *bakeryWorker, selected [
 			}
 		}
 	}
-	if bakeryStockCount(cooling.Output) >= productionCapacity {
-		return "Cooling table full: collect bakes or use a server"
+	coolingSpace := bakeryChefCoolingSpace(&p.profile, cooling)
+	if coolingSpace == 0 {
+		return "Cooling table full or reserved: collect bakes or use a server"
 	}
 	// Advance the cursor only after loading an oven. Preparing the next
 	// affordable recipe first reserves its full ingredient cost before a fast
@@ -254,32 +297,35 @@ func (w *World) workBakeryChefWorker(p *player, worker *bakeryWorker, selected [
 				if oven.state.Job != nil || len(oven.state.Queue) > 0 {
 					continue
 				}
-				bakeryChefSpend(stock, map[string]int{input: 1})
-				startProduction(oven.state, r.ID, 1, 5)
+				amount := min(bakeryChefBatchLimit, stock[input], coolingSpace)
+				bakeryChefSpend(stock, map[string]int{input: amount})
+				startProduction(oven.state, r.ID, amount, float64(amount)*5)
 				oven.state.Job.Destination = "bakery_cooling_table"
 				p.bakery.chefRecipeCursor = (index + 1) % len(selected)
 				worker.chefJobKey, worker.chefReady = oven.key, w.time+bakeryChefHandlingSeconds
-				return "Baking " + r.Name
+				return bakeryChefJobStatus(p, worker)
 			}
 		}
 		if r.ID != "sugar" && bakeryChefPrepared(p, mixers, "prepared_"+r.ID) > 0 {
 			continue
 		}
-		cost := productionAddinCost(r, 1, stock)
-		plain := stock["dough"] < cost["dough"]
+		oneCost := productionAddinCost(r, 1, stock)
+		plain := stock["dough"] < oneCost["dough"]
 		if r.ID == "sugar" && !plain {
 			continue
 		}
+		amount, cost := bakeryChefRecipeBatch(r, stock, coolingSpace)
 		if plain {
 			// Only make base dough for an otherwise affordable selected recipe.
-			addins := cloneMap(cost)
+			addins := cloneMap(oneCost)
 			delete(addins, "dough")
 			if !bakeryChefCanAfford(stock, addins) {
 				continue
 			}
 			cost = map[string]int{"baking_sugar": 1, "butter": 1, "flour": 1, "egg": 1}
+			amount = 40
 		}
-		if !bakeryChefCanAfford(stock, cost) {
+		if amount == 0 || !bakeryChefCanAfford(stock, cost) {
 			continue
 		}
 		for _, mixer := range mixers {
@@ -287,9 +333,9 @@ func (w *World) workBakeryChefWorker(p *player, worker *bakeryWorker, selected [
 				continue
 			}
 			bakeryChefSpend(stock, cost)
-			item, amount, duration := "prepared_"+r.ID, 1, float64(cost["dough"])
+			item, duration := "prepared_"+r.ID, float64(cost["dough"])
 			if plain {
-				item, amount, duration = "dough", 40, 40
+				item, duration = "dough", 40
 			}
 			startProduction(mixer.state, item, amount, duration)
 			worker.chefJobKey, worker.chefReady = mixer.key, w.time+bakeryChefHandlingSeconds

@@ -1,3 +1,4 @@
+import {isCamelRaceIsland} from './camel-race-state.js';
 // The beach entrance stays at surface level; only the race uses a separate world.
 function parts(THREE,parent){
   const materials=new Map();
@@ -74,7 +75,7 @@ export function createCamelRaceScene({THREE,scene,flatLabel}){
   for(let i=0;i<7;i++){const a=i*2.4,x=-23+Math.cos(a)*8,z=Math.sin(a)*8;post(.22,5,'#aa8658',x,2.5,z);for(let j=0;j<5;j++){const leaf=ball(1.7,'#698e61',x+Math.cos(j*1.26),5.1,z+Math.sin(j*1.26));leaf.scale.set(1,.2,.5);leaf.rotation.y=-j*1.26;}}
   const gate=new THREE.Mesh(new THREE.BoxGeometry(15,.06,2),new THREE.MeshBasicMaterial({color:'#ffe38a',transparent:true,opacity:.5,depthWrite:false}));gate.name='camel-race-next-checkpoint';gate.position.y=.09;group.add(gate);
   let snapshot=null;
-  function sync(next){snapshot=next;group.visible=next.me?.island==='camel_race';if(!group.visible)return;const race=next.camelRace,entrant=race?.entrants?.find(e=>e.id===next.me.id);gate.visible=race?.phase==='racing'&&entrant?.status==='racing';const n=entrant?.checkpoint??1,a=n*Math.PI*2/(race?.track?.checkpoints||16);gate.position.set(51.5*Math.cos(a),.09,33.5*Math.sin(a));gate.rotation.y=-a;}
+  function sync(next){snapshot=next;group.visible=isCamelRaceIsland(next.me?.island);if(!group.visible)return;const race=next.camelRace,entrant=race?.entrants?.find(e=>e.id===next.me.id);gate.visible=race?.phase==='racing'&&entrant?.status==='racing';const n=entrant?.checkpoint??1,a=n*Math.PI*2/(race?.track?.checkpoints||16);gate.position.set(51.5*Math.cos(a),.09,33.5*Math.sin(a));gate.rotation.y=-a;}
   function update(){if(snapshot&&group.visible)sync(snapshot);}
   return {group,sync,update};
 }

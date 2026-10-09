@@ -131,8 +131,13 @@ func TestSnapshotUpdatePreservesIslandAndAccountPrivacy(t *testing.T) {
 	if view.Island == nil || len(view.Island.Chest) != 0 || len(view.Island.Builders) != 0 || len(view.Island.Objects) != 1 {
 		t.Fatal("visitor cannot see furniture or can see private storage/permissions")
 	}
-	if len(view.Events) != 1 || view.Events[0].Actor != "visitor" {
-		t.Fatal("island update leaked another account's notifications or discovery")
+	if len(view.Events) != 2 { // Their own message plus the scheduled-race reminder.
+		t.Fatal("island update dropped a private notification or race reminder")
+	}
+	for _, event := range view.Events {
+		if event.Actor != "visitor" {
+			t.Fatal("island update leaked another account's notifications or discovery")
+		}
 	}
 	for _, recipe := range view.Recipes {
 		if recipe.ID == "cake" && recipe.Known {

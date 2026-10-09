@@ -1,3 +1,7 @@
+import {isCamelRaceIsland} from './camel-race-state.js';
+import {createRodentsScene,createRodentModel,createRodentRainbowEffect} from './rodents-scene.js';
+import {createRodentCaptureHUD} from './rodents-panels.js';
+import {createNutIslandScene} from './nut-island-scene.js';
 import * as THREE from './vendor/three.module.js';
 import {createSnapshotDecoder} from './state-sync.js';
 import {createIslandScene} from './island-scene.js';
@@ -12,6 +16,8 @@ import {createFunnyCakeEffects} from './funny-cake-effects.js';
 import {buildJohnHut} from './john-hut-scenery.js';
 import {buildBeachRaceCave,createCamelRaceScene} from './camel-race-scene.js';
 import {createCamelRaceHUD} from './camel-race-panels.js';
+import {createRollerCoasterScene} from './roller-coaster-scene.js';
+import {createRollerCoasterHUD} from './roller-coaster-panels.js';
 import {buildCamelTrainingEntrance,createCamelTrainingScene} from './camel-training-scene.js';
 import {createCamelTrainingHUD} from './camel-training-panels.js';
 import {buildAchievementHat,createAchievementScenery} from './achievement-scenery.js';
@@ -50,13 +56,16 @@ const state = {player:null,snapshot:null,ws:null,connected:false,playing:false,l
 let renderer, scene, camera, clock, worldGroup, hand, water, waterPositions, landingTime=0, lastUI=0, lastMinimap=0, lastFrame=0, lastAnimation=0, lastPanelRefresh=0, miniContext;
 let islandScene, buildGhost, riddenCamel, flowerScenery, caveScenery, forestClub, bakeryScene, bakeryFurnishings, productionScene, nightScene, funnyCakeEffects, daylight, skylight;
 const nearForestClub=me=>!!me&&!me.island&&me.x>-229&&me.x<-175&&me.z<-184;
+const rainbowEffectActive=()=>!!state.snapshot&&state.snapshot.rodentWorld?.rainbowUntil>state.snapshot.time;
 const cakeEffectActive=me=>(me?.buffs?.funny_cake||0)>0;
-let raceScene,raceHUD,townScenery,trainingScene,trainingHUD,achievementScenery,treeRingScene,practiceScene,cookieActivityHUD;
-const camelArena=island=>island==='camel_race'||island==='camel_training';
+let rodentsScene,rodentCaptureHUD,rodentRainbow,nutIslandScene,rollerCoasterScene,rollerCoasterHUD,raceScene,raceHUD,townScenery,trainingScene,trainingHUD,achievementScenery,treeRingScene,practiceScene,cookieActivityHUD;
+const nutIsland=island=>typeof island==='string'&&island.startsWith('nut:');
+const camelArena=island=>isCamelRaceIsland(island)||island==='camel_training';
 const cookieArena=island=>island==='cookie_ring'||island==='cookie_practice';
 const activityArena=island=>camelArena(island)||cookieArena(island);
 const ambientAudio=createAmbientAudio();
 const motionClock=createMotionClock(),localMotion=createMotionTrack(),localPose={};
+const coasterRotation=new THREE.Euler(0,0,0,'YXZ'),coasterLook=new THREE.Quaternion(),coasterEye=new THREE.Vector3();
 const motionIdentity=p=>`${p.island||''}|${p.deaths||0}|${p.posture||''}|${p.ridingCamel?1:0}`;
 const eyeHeight=p=>p.posture==='lying'?.5:p.posture==='sitting'?1.05:p.ridingCamel?3.1:1.7;
 const dynamicGroup = new THREE.Group();
@@ -224,7 +233,7 @@ function createEnvironment(layout=null) {
     else if(p.kind==='rock'||p.kind==='beach_rock'){o=addRock(p.x,p.z,s);if(p.kind==='beach_rock')o.material=mat('#cbb68e');}
     else if(p.kind==='bush'){o=sphere(s,'#6f8950',p.x,s*.48,p.z);o.scale.set(1,.7,.9);}
     else if(p.kind==='cactus'){o=new THREE.Group();worldGroup.add(o);o.position.set(p.x,0,p.z);buildCactus(o,s,p.color,p.variant);}
-    else if(p.kind.startsWith('cave_')||p.kind.startsWith('club_')||p.kind.startsWith('town_')||p.kind==='john_pork_hut'||p.kind==='camel_race_cave'||p.kind==='tree_hut')continue;
+    else if(p.kind.startsWith('cave_')||p.kind.startsWith('club_')||p.kind.startsWith('town_')||p.kind==='john_pork_hut'||p.kind==='camel_race_cave'||p.kind==='tree_hut'||p.kind==='roller_coaster')continue;
     else if(p.kind==='city_plant'||p.kind==='plant'){o=new THREE.Group();worldGroup.add(o);o.position.set(p.x,0,p.z);cylinder(.45,.32,.6,'#b58162',0,.3,0,o);for(let i=0;i<5;i++)flowerScenery.flower(o,Math.sin(i*2.4)*.25,.6,Math.cos(i*2.4)*.25,i+(p.variant||0),.85);}
     else o=addBuilding(p.x,p.z,p.kind,p);
     if(o){o.userData.prop=p;scenery.set(p.id,o);if(['tree','pine','palm','rock','beach_rock','bush','cactus','city_plant','plant'].includes(p.kind))batchRoots.push(o);}
@@ -264,8 +273,8 @@ function createCave(){caveScenery=buildCave({THREE,parent:worldGroup,layout:stat
 function makeCookie(kind='sugar',scale=1) {
   const g=new THREE.Group();
   const colors={sugar:'#e6b776',berry_cookie:'#dbaa78',nut_cookie:'#be8b4d',cactus_cookie:'#c1b878',sun_cookie:'#efbd5b',salt_cookie:'#c8c7a4',protein_cookie:'#cfa685',cake:'#d5a36d'};
-  if(kind==='cake'){
-    box(.65,.2,.5,'#9b643d',0,0,0,g);box(.67,.11,.52,'#f5ddb0',0,.14,0,g);sphere(.08,'#b25556',0,.23,0,g);
+  if(['cake','funny_cake','cosmic_cake'].includes(kind)){
+    box(.65,.2,.5,'#9b643d',0,0,0,g);box(.67,.11,.52,kind==='cosmic_cake'?'#be8be3':kind==='funny_cake'?'#eaa7c5':'#f5ddb0',0,.14,0,g);sphere(.08,'#b25556',0,.23,0,g);if(kind!=='cake')for(let i=0;i<7;i++)sphere(.025,['#f7d770','#87d9d2','#e692b7'][i%3],Math.sin(i*2.4)*.22,.21,Math.cos(i*2.4)*.16,g);
   }else{
     cylinder(.34,.36,.105,colors[kind]||colors.sugar,0,0,0,g,12);
     const chip={berry_cookie:'#993d59',nut_cookie:'#785033',cactus_cookie:'#6d8d4b',sun_cookie:'#c58037',salt_cookie:'#fff4dc',protein_cookie:'#835c82'}[kind]||'#895e3b';
@@ -289,7 +298,7 @@ function makePerson(name='',color='#df9d60',peace=false,avatar={},heldItem='') {
     if(avatar.shirt!=='tank')cylinder(.115,.1,avatar.shirt==='hoodie'?.58:.25,shirt,side*.34,avatar.shirt==='hoodie'?1.09:1.26,0,g,6);
     box(.21,.14,.36,'#685846',side*.16,.1,-.07,g);
   }
-  const bouquet=createBouquetView({THREE,sphere,box,cylinder},heldItem),held=bouquet||makeCookie('sugar',.45);held.position.set(.37,.97,-.2);if(bouquet)held.rotation.z=-.15;g.add(held);
+  const bouquet=createBouquetView({THREE,sphere,box,cylinder},heldItem),pet=heldItem.startsWith('pet_')?createRodentModel(THREE,heldItem.slice(4)):null,held=bouquet||pet||makeCookie(['funny_cake','cosmic_cake'].includes(heldItem)?heldItem:'sugar',.45);if(pet)pet.scale.setScalar(.55);held.position.set(.37,.97,-.2);if(bouquet)held.rotation.z=-.15;g.add(held);
   if(peace){cylinder(.5,.5,.06,'#dcb782',0,1.85,0,g,10);cylinder(.23,.3,.24,'#d5ad78',0,1.95,0,g,8);box(.4,.12,.08,'#cf8b70',0,1.1,-.23,g);}
   else if(avatar.hat&&avatar.hat!=='none')buildAchievementHat({THREE,parent:g,box,sphere,cylinder},avatar.hat);
   if(name){const label=textSprite(name,'#fff6db','#233f2cca',512,96);label.position.y=avatar.hat?2.85:2.3;label.scale.set(2.2,.42,1);g.add(label);}
@@ -336,7 +345,7 @@ function nodeObject(n) {
   const g=new THREE.Group();
   switch(n.kind){
     case 'ingredient_shop':{const vendor=makePerson('Baker\u2019s Pantry','#bd9562',false,{shirt:'tee',shirtColor:'sand',pantsColor:'black',hat:'chef'});g.add(vendor);break;}
-    case 'tree_golden_cookie':case 'tree_silver_cookie':case 'cookie_ring_exit':case 'cookie_practice_exit':case 'practice_treadmill':case 'practice_bench_press':case 'practice_leg_press':case 'practice_pool':case 'practice_target':case 'bakery_chair':case 'club_bar':case 'club_casino':case 'club_seat':case 'club_cake_seller':case 'camel_training_lollipop':case 'camel_race_lollipop':case 'flower_shop':case 'pet_shop':case 'betty':case 'leaderboard_board':case 'flower_daisy':case 'flower_tulip':case 'flower_lavender':break; // Dedicated scenery owns these models.
+    case 'nut_pet':case 'nut_cage':case 'nut_return':case 'nut_cage_shop':case 'roller_coaster':case 'tree_golden_cookie':case 'tree_silver_cookie':case 'cookie_ring_exit':case 'cookie_practice_exit':case 'practice_treadmill':case 'practice_bench_press':case 'practice_leg_press':case 'practice_pool':case 'practice_target':case 'bakery_chair':case 'club_bar':case 'club_casino':case 'club_seat':case 'club_cake_seller':case 'camel_training_lollipop':case 'camel_race_lollipop':case 'flower_shop':case 'pet_shop':case 'betty':case 'leaderboard_board':case 'flower_daisy':case 'flower_tulip':case 'flower_lavender':break; // Dedicated scenery owns these models.
     case 'item_drop': {
       const count=n.amount||1,size=count>=10?.72:count>=5?.5:.24;
       if(count===1&&cookieNames[n.item]){const cookie=makeCookie(n.item,.7);cookie.position.y=.16;g.add(cookie);}
@@ -351,11 +360,11 @@ function nodeObject(n) {
     case 'berry':sphere(.65,'#647f48',0,.5,0,g,1);sphere(.5,'#79924e',.4,.45,.1,g);for(let i=0;i<10;i++){const a=i*2.4;sphere(.105,'#b7504f',Math.cos(a)*.53,.65+(i%3)*.13,Math.sin(a)*.5,g);}break;
     case 'nut':sphere(.55,'#829355',0,.42,0,g);for(let i=0;i<7;i++)sphere(.15,'#9c7047',Math.cos(i)*.5,.13,Math.sin(i)*.5,g);break;
     case 'cactus':if(!scenery.has(n.id))buildCactus(g,n.scale||1,n.color,n.variant);break;
-    case 'pink_lollipop': case 'blue_lollipop': {
-      const color=n.kind==='pink_lollipop'?'#f4a8c5':'#88c9ee';
+    case 'pink_lollipop': case 'blue_lollipop': case 'green_lollipop': {
+      const color=n.kind==='pink_lollipop'?'#f4a8c5':n.kind==='green_lollipop'?'#96df71':'#88c9ee';
       cylinder(.035,.035,.7,'#f5ead5',0,.35,0,g);const sweet=sphere(.22,color,0,.83,0,g,2);sweet.scale.z=.35;
       mesh(new THREE.TorusGeometry(.12,.025,6,20),'#fff1dc',0,.83,.075,g);
-      const label=textSprite(n.kind==='pink_lollipop'?'A taste of home':'A taste of friendship',color,'#463e4588');label.position.y=1.4;label.scale.set(2.5,.49,1);g.add(label);break;
+      const label=textSprite(n.kind==='pink_lollipop'?'A taste of home':n.kind==='green_lollipop'?'A taste of Nut Island':'A taste of friendship',color,'#463e4588');label.position.y=1.4;label.scale.set(2.5,.49,1);g.add(label);break;
     }
     case 'abu_fanous': {g.add(makePerson('ABU FANOUS','#d9bf87'));const camel=islandScene?.camel();if(camel){camel.position.set(3,0,-1);camel.rotation.y=-.7;g.add(camel);}box(4,.12,3,'#bc8b65',0,3,-2,g);for(const x of [-1.8,1.8])cylinder(.08,.1,3,'#8b6e4d',x,1.5,-2,g);break;}
     case 'camel': {g.add(islandScene.camel());const label=textSprite(n.label||'Camel','#f5e2bd','#654d3d99');label.position.y=3.25;label.scale.set(2.4,.4,1);g.add(label);break;}
@@ -423,6 +432,11 @@ function initializeRenderer(){
     productionScene=createProductionScene({THREE,parent:scene,makeCookie,makeDough:(item,scale)=>createDoughView({THREE,sphere,box},item,scale),flatLabel,disposeObject});
     nightScene=createNightScene({THREE,parent:scene,box,sphere,cylinder,disposeObject});
     funnyCakeEffects=createFunnyCakeEffects({canvas:renderer.domElement});
+    nutIslandScene=createNutIslandScene({THREE,scene,flatLabel});
+    rodentsScene=createRodentsScene({THREE,scene});rodentRainbow=createRodentRainbowEffect({document});
+    rodentCaptureHUD=createRodentCaptureHUD({document,state,action});
+    rollerCoasterScene=createRollerCoasterScene({THREE,scene,flatLabel});
+    rollerCoasterHUD=createRollerCoasterHUD({document,state,openModal});
     raceScene=createCamelRaceScene({THREE,scene,flatLabel});
     raceHUD=createCamelRaceHUD({document,state,openModal});
     trainingScene=createCamelTrainingScene({THREE,scene,flatLabel});trainingHUD=createCamelTrainingHUD({document,state,openModal});
@@ -501,7 +515,7 @@ function action(actionName,extra={}){
 }
 function fallPrompt(me){return me.standIn>0?'You fell over. Rest for '+me.standIn.toFixed(1)+'s before standing.':'Press E, Space, or move to stand up.';}
 function movement(){
-  if(!state.locked||state.modal||!state.connected)return{x:0,z:0,sprint:false,jump:false};
+  if(!state.locked||state.modal||!state.connected||state.snapshot?.rollerCoaster?.ride)return{x:0,z:0,sprint:false,jump:false};
   const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')?1:0);
   const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')?1:0);
   const size=Math.hypot(forward,side)||1;
@@ -511,22 +525,23 @@ function sendMovement(){if(state.connected)send({type:'input',...movement(),yaw:
 setInterval(sendMovement,50);
 function receiveSnapshot(snapshot){
   if(!snapshot.me)return;
-  const first=!state.snapshot,old=state.snapshot?.me,oldTraining=state.snapshot?.camelTraining?.exercise,oldExercise=state.snapshot?.cookiePractice?.exercise?.station;
+  const first=!state.snapshot,old=state.snapshot?.me,oldRide=state.snapshot?.rollerCoaster?.ride,oldTraining=state.snapshot?.camelTraining?.exercise,oldExercise=state.snapshot?.cookiePractice?.exercise?.station;
   if(snapshot.layout&&state.layout?.version!==snapshot.layout.version)createEnvironment(snapshot.layout);
   else if(snapshot.layout)state.layout=snapshot.layout;
   state.snapshot=snapshot;state.serverRecipes=snapshot.recipes||[];state.lastSnapshot=performance.now();
   const motionTime=snapshot.time*1000,acceptMotion=motionClock.accept(motionTime,state.lastSnapshot,{reset:snapshot.seq===1});
   if(acceptMotion&&localMotion.push(motionTime,{x:snapshot.me.x,y:(snapshot.me.y||0)+eyeHeight(snapshot.me),z:snapshot.me.z},{key:motionIdentity(snapshot.me),epoch:motionClock.generation}))state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+eyeHeight(snapshot.me),snapshot.me.z);
   worldGroup.visible=!snapshot.me.island;islandScene?.sync(snapshot);
-  raceScene?.sync(snapshot);trainingScene?.sync(snapshot);treeRingScene?.sync(snapshot);practiceScene?.sync(snapshot);townScenery?.update(snapshot);achievementScenery?.sync(snapshot);
+  rodentsScene?.sync(snapshot);nutIslandScene?.sync(snapshot);rollerCoasterScene?.sync(snapshot);raceScene?.sync(snapshot);trainingScene?.sync(snapshot);treeRingScene?.sync(snapshot);practiceScene?.sync(snapshot);townScenery?.update(snapshot);achievementScenery?.sync(snapshot);
   if(state.pendingBakeryEdit&&snapshot.me.editingBakeryFurnitureId===state.pendingBakeryEdit){const object=snapshot.me.bakeryFurniture?.find(o=>o.id===state.pendingBakeryEdit);state.pendingBakeryEdit=null;if(object)beginBuild({object,acquired:true,scope:'bakery'});}
   if(state.pendingBuildEdit&&snapshot.me.editingBuildId===state.pendingBuildEdit){const object=snapshot.island?.objects?.find(o=>o.id===state.pendingBuildEdit);state.pendingBuildEdit=null;if(object)beginBuild({object,acquired:true});}
   if(state.building){const bakery=state.building.scope==='bakery',mode=bakery?snapshot.me.bakeryBuildMode:snapshot.me.buildMode,editing=bakery?snapshot.me.editingBakeryFurnitureId:snapshot.me.editingBuildId;if(!mode||state.building.object&&editing!==state.building.object.id)cancelBuild({notify:false});}
   if(state.pendingBakeryEdit&&!snapshot.me.bakeryBuildMode)state.pendingBakeryEdit=null;
   if(state.building?.scope==='bakery'&&state.building.object){const current=snapshot.me.bakeryFurniture?.find(o=>o.id===state.building.object.id),color=current?.color||snapshot.me.paint?.[current?.kind]||'';if(current&&color!==state.building.color){const rotation=state.building.rotation;beginBuild({object:current,acquired:true,scope:'bakery',silent:true});if(state.building)state.building.rotation=rotation;}}
-  if(old&&old.island!==snapshot.me.island){cancelBuild({notify:!activityArena(snapshot.me.island)});state.zone=null;updateHeldCookie();if(activityArena(old.island)||activityArena(snapshot.me.island)){state.yaw=snapshot.me.island==='camel_training'?Math.PI:snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.keys.clear();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}}
+  if(old&&old.island!==snapshot.me.island){cancelBuild({notify:!activityArena(snapshot.me.island)});state.zone=null;updateHeldCookie();if(activityArena(old.island)||activityArena(snapshot.me.island)||nutIsland(old.island)||nutIsland(snapshot.me.island)){state.yaw=snapshot.me.island==='camel_training'?Math.PI:snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.keys.clear();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}}
   if(old?.island==='camel_training'&&snapshot.me.island==='camel_training'&&oldTraining!==snapshot.camelTraining?.exercise){state.yaw=Math.PI;state.pitch=snapshot.me.pitch||0;state.keys.clear();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}
   if(snapshot.me.island==='cookie_practice'&&oldExercise!==snapshot.cookiePractice?.exercise?.station&&snapshot.cookiePractice?.exercise?.station&&snapshot.cookiePractice.exercise.station!=='practice_pool'){state.yaw=0;state.pitch=snapshot.cookiePractice.exercise.station==='practice_treadmill'?-.22:-.62;state.keys.clear();}
+  if((oldRide?.id||'')!==(snapshot.rollerCoaster?.ride?.id||'')){state.keys.clear();state.coasterYaw=snapshot.rollerCoaster?.ride?.yaw??null;state.yaw=snapshot.me.yaw||0;state.pitch=-.08;if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}
   if(first){state.yaw=snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.selected=snapshot.me.selected||'sugar';updateHeldCookie();}
   if(old&&snapshot.me.health<old.health-1){$('damage-overlay').style.opacity='.5';setTimeout(()=>$('damage-overlay').style.opacity='0',240);}
   if(old&&!old.sprintExhausted&&snapshot.me.sprintExhausted)toast('Out of stamina — walking to recover. Release Shift, then sprint again once stamina reaches 20%.');
@@ -573,13 +588,13 @@ function syncObjects(items,collection,create,update){
 }
 function disposeObject(object){object.traverse((child)=>{if(child.isMesh)child.geometry?.dispose();if(child.isSprite){child.material?.map?.dispose();child.material?.dispose();}});}
 function updateHeldCookie(){
-  if(!hand)return;const selected=cookieArena(state.snapshot?.me.island)?(state.snapshot.cookieArena?.ammoItem||'sugar'):state.selected;const old=hand.getObjectByName('held-cookie');if(old){hand.remove(old);disposeObject(old);}if(cookieNames[selected]||state.snapshot?.clubCakes?.some(c=>c.id===selected)){const held=makeCookie(cookieNames[selected]?selected:'cake',1);held.name='held-cookie';hand.add(held);}else if(state.snapshot?.town?.treatCatalog?.some(t=>t.id===selected)){const held=createCamelFoodView({THREE,sphere,box,cylinder},selected);held.name='held-cookie';hand.add(held);}else if((state.snapshot?.town?.bouquets||[state.snapshot?.town?.bouquet]).some(b=>b?.id===selected)){const held=createBouquetView({THREE,sphere,box,cylinder},selected);if(held){held.name='held-cookie';hand.add(held);}}else if(isDoughItem(selected)){const held=createDoughView({THREE,sphere,box},selected,1);held.name='held-cookie';hand.add(held);}else if(state.snapshot?.clubDrinks?.some(d=>d.id===selected)){const held=new THREE.Group();held.name='held-cookie';const shake=selected.includes('shake'),color=selected==='chocolate_shake'?'#785138':selected==='strawberry_shake'?'#df9aaf':selected==='orange_juice'?'#efb44c':'#a1c9c6';cylinder(.11,.075,.32,color,0,0,0,held,10);cylinder(.115,.115,.025,'#ecedd9',0,.17,0,held,10);const straw=cylinder(.013,.013,.27,shake?'#e48fa3':'#f2ecd2',.045,.3,0,held,6);straw.rotation.z=-.16;held.position.y=.08;hand.add(held);}
+  if(!hand)return;const selected=cookieArena(state.snapshot?.me.island)?(state.snapshot.cookieArena?.ammoItem||'sugar'):state.selected;const old=hand.getObjectByName('held-cookie');if(old){hand.remove(old);disposeObject(old);}if(cookieNames[selected]||state.snapshot?.clubCakes?.some(c=>c.id===selected)){const held=makeCookie(selected,1);held.name='held-cookie';hand.add(held);}else if(selected?.startsWith('pet_')){const held=createRodentModel(THREE,selected.slice(4));if(held){held.name='held-cookie';held.scale.setScalar(.6);held.position.set(0,-.08,0);hand.add(held);}}else if(state.snapshot?.town?.treatCatalog?.some(t=>t.id===selected)){const held=createCamelFoodView({THREE,sphere,box,cylinder},selected);held.name='held-cookie';hand.add(held);}else if((state.snapshot?.town?.bouquets||[state.snapshot?.town?.bouquet]).some(b=>b?.id===selected)){const held=createBouquetView({THREE,sphere,box,cylinder},selected);if(held){held.name='held-cookie';hand.add(held);}}else if(isDoughItem(selected)){const held=createDoughView({THREE,sphere,box},selected,1);held.name='held-cookie';hand.add(held);}else if(state.snapshot?.clubDrinks?.some(d=>d.id===selected)){const held=new THREE.Group();held.name='held-cookie';const shake=selected.includes('shake'),color=selected==='chocolate_shake'?'#785138':selected==='strawberry_shake'?'#df9aaf':selected==='orange_juice'?'#efb44c':'#a1c9c6';cylinder(.11,.075,.32,color,0,0,0,held,10);cylinder(.115,.115,.025,'#ecedd9',0,.17,0,held,10);const straw=cylinder(.013,.013,.27,shake?'#e48fa3':'#f2ecd2',.045,.3,0,held,6);straw.rotation.z=-.16;held.position.y=.08;hand.add(held);}
 }
 function cookieIcon(kind){return '<span class="cookie-icon '+escapeHTML(kind)+'" aria-hidden="true"></span>';}
-function itemIcon(kind){return cookieNames[kind]?cookieIcon(kind):'<span class="material-icon" aria-hidden="true">'+(state.snapshot?.clubDrinks?.some(d=>d.id===kind)?'🥤':bakingIngredientIcons[kind]||materialEmoji[kind]||(isDoughItem(kind)?'\u25d5':'◇'))+'</span>';}
+function itemIcon(kind){return kind.startsWith('pet_')?'<span class="material-icon" aria-hidden="true">&#128062;</span>':cookieNames[kind]||['funny_cake','cosmic_cake'].includes(kind)?cookieIcon(['funny_cake','cosmic_cake'].includes(kind)?'cake':kind):'<span class="material-icon" aria-hidden="true">'+(state.snapshot?.clubDrinks?.some(d=>d.id===kind)?'🥤':bakingIngredientIcons[kind]||materialEmoji[kind]||(isDoughItem(kind)?'\u25d5':'◇'))+'</span>';}
 function inventory(){return state.snapshot?.me.inventory||{};}
 function itemCount(key){return inventory()[key]||0;}
-function itemName(key){const ingredient=bakingItemName(key,cookieName);if(ingredient)return ingredient;if(key.startsWith('bakery_')){const [kind,color]=key.slice(7).split(':');return 'Packed '+(state.snapshot?.bakeryFurnitureCatalog?.find(r=>r.id===kind)?.name||pretty(kind))+(color?' · '+pretty(color):'');}return state.snapshot?.town?.flowerCatalog?.find(f=>f.id===key)?.name||state.snapshot?.town?.treatCatalog?.find(t=>t.id===key)?.name||(state.snapshot?.town?.bouquets||[state.snapshot?.town?.bouquet]).find(b=>b?.id===key)?.name||state.snapshot?.clubCakes?.find(c=>c.id===key)?.name||state.snapshot?.clubDrinks?.find(d=>d.id===key)?.name||(cookieNames[key]?cookieName(key):key.startsWith('build_')?pretty(key.slice(6).replace(':',' · ')):pretty(key));}
+function itemName(key){if(key.startsWith('pet_'))return state.snapshot?.rodentCatalog?.find(r=>r.id===key.slice(4))?.name||pretty(key.slice(4));const ingredient=bakingItemName(key,cookieName);if(ingredient)return ingredient;if(key.startsWith('bakery_')){const [kind,color]=key.slice(7).split(':');return 'Packed '+(state.snapshot?.bakeryFurnitureCatalog?.find(r=>r.id===kind)?.name||pretty(kind))+(color?' · '+pretty(color):'');}return state.snapshot?.town?.flowerCatalog?.find(f=>f.id===key)?.name||state.snapshot?.town?.treatCatalog?.find(t=>t.id===key)?.name||(state.snapshot?.town?.bouquets||[state.snapshot?.town?.bouquet]).find(b=>b?.id===key)?.name||state.snapshot?.clubCakes?.find(c=>c.id===key)?.name||state.snapshot?.clubDrinks?.find(d=>d.id===key)?.name||(cookieNames[key]?cookieName(key):key.startsWith('build_')?pretty(key.slice(6).replace(':',' · ')):pretty(key));}
 function areaFor(x,z){return x<0?(z>coastAt(x)-18?'ocean':'forest'):(z<0?'desert':'city');}
 const areaNames={forest:'THE WILDWOOD',desert:'SUNBAKED SANDS',ocean:'THE BLUE',city:'CRUMB CITY'};
 let zoneTimer;
@@ -592,18 +607,18 @@ function updateZone(me){
 function updateHUD(){
   const me=state.snapshot?.me;if(!me)return;
   updateZone(me);
-  const clubToggle=$('club-light-toggle');clubToggle.hidden=!nearForestClub(me)&&!cakeEffectActive(me);clubToggle.textContent='L · Flashing lights: '+(clubReducedFlashing()?'reduced':'on');clubToggle.setAttribute('aria-pressed',String(clubReducedFlashing()));
+  const clubToggle=$('club-light-toggle');clubToggle.hidden=!nearForestClub(me)&&!cakeEffectActive(me)&&!rainbowEffectActive();clubToggle.textContent='L · Flashing lights: '+(clubReducedFlashing()?'reduced':'on');clubToggle.setAttribute('aria-pressed',String(clubReducedFlashing()));
   $('coin-count').textContent=me.coins||0;$('player-name').textContent=me.callName||me.name;
   $('health-value').textContent=Math.ceil(me.health);$('health-bar').style.width=clamp(me.health/me.maxHealth*100,0,100)+'%';
   $('stamina-value').textContent=Math.ceil(me.stamina);$('stamina-bar').style.width=clamp(me.stamina/me.maxStamina*100,0,100)+'%';
   $('stamina-bar').title=me.sprintExhausted?'Walking to recover. Release Shift and recover 20% stamina before sprinting again.':'Hold Shift to sprint';
-  $('area-name').textContent=me.island==='cookie_ring'?'COOKIE FIGHTING RING':me.island==='cookie_practice'?'PRACTICE CENTER':me.island==='camel_training'?'TRAINING GARDENS':me.island==='camel_race'?'DUNE DASH':me.island?'HOME ISLAND':me.inCave&&me.x<0?'WILDWOOD UNDERGROUND':areaNames[areaFor(me.x,me.z)];$('position-label').textContent=Math.round(me.x)+' · '+Math.round(me.z);
+  $('area-name').textContent=nutIsland(me.island)?'NUT ISLAND':me.island==='cookie_ring'?'COOKIE FIGHTING RING':me.island==='cookie_practice'?'PRACTICE CENTER':me.island==='camel_training'?'TRAINING GARDENS':isCamelRaceIsland(me.island)?'DUNE DASH':me.island?'HOME ISLAND':me.inCave&&me.x<0?'WILDWOOD UNDERGROUND':areaNames[areaFor(me.x,me.z)];$('position-label').textContent=Math.round(me.x)+' · '+Math.round(me.z);
   const angle=((state.yaw*180/Math.PI)%360+360)%360;$('compass-direction').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(angle/45)%8];
   const slots=cookieArena(me.island)?[{item:'sugar',count:'∞'}]:Array.from({length:5},(_,i)=>me.hotbar?.[i]||{item:'',count:0});state.hotkeys=slots.map(s=>s.item);
   const hotbarSignature=JSON.stringify([slots,state.selectedSlot,me.discovered,!!me.homeIsland,me.island,!!insideOwnBakery(state.snapshot)]);
   if(hotbarSignature!==state.hotbarSignature){
     state.hotbarSignature=hotbarSignature;
-    $('hotbar').innerHTML=slots.map((slot,i)=>'<button class="hotbar-slot '+((cookieArena(me.island)||i===state.selectedSlot)?'selected ':'')+(!slot.item?'empty':'')+'" data-slot="'+i+'" title="'+escapeHTML(slot.item?itemName(slot.item):'Empty hotbar slot')+' · '+(i+1)+'"><span class="slot-number">'+(i+1)+'</span>'+(slot.item?itemIcon(slot.item)+'<span class="slot-count">'+slot.count+'</span>':'<span class="empty-hotbar">+</span>')+'<span class="slot-safe" aria-label="Kept on death">◆</span></button>').join('')+(!activityArena(me.island)&&(me.homeIsland||me.island||insideOwnBakery(state.snapshot))?'<button class="hotbar-slot" data-slot="5" title="Build menu · 6"><span class="slot-number">6</span><span style="font-size:25px">⌂</span><span class="slot-count">BUILD</span></button>':'');
+    $('hotbar').innerHTML=slots.map((slot,i)=>'<button class="hotbar-slot '+((cookieArena(me.island)||i===state.selectedSlot)?'selected ':'')+(!slot.item?'empty':'')+'" data-slot="'+i+'" title="'+escapeHTML(slot.item?itemName(slot.item):'Empty hotbar slot')+' · '+(i+1)+'"><span class="slot-number">'+(i+1)+'</span>'+(slot.item?itemIcon(slot.item)+'<span class="slot-count">'+slot.count+'</span>':'<span class="empty-hotbar">+</span>')+'<span class="slot-safe" aria-label="Kept on death">◆</span></button>').join('')+(!activityArena(me.island)&&(me.homeIsland||me.island||insideOwnBakery(state.snapshot))?'<button class="hotbar-slot" data-slot="5" title="'+(nutIsland(me.island)?'Pet care':'Build menu')+'· 6"><span class="slot-number">6</span><span style="font-size:25px">⌂</span><span class="slot-count">'+(nutIsland(me.island)?'PETS':'BUILD')+'</span></button>':'');
   }
   const selected=slots[state.selectedSlot]||{item:'',count:0};
   $('selected-cookie-label').innerHTML=selected.item?escapeHTML(itemName(selected.item).toUpperCase())+' <span>'+escapeHTML(cookieNames[selected.item]?cookieNote(selected.item):heldCamelTreat(state.snapshot)?'Press E near your camel to feed it':'Ready in your hotbar')+'</span>':'EMPTY SLOT <span>Move an item here from your inventory</span>';
@@ -615,10 +630,11 @@ function updateHUD(){
   const need=Math.min(itemCount('wood'),2)+Math.min(itemCount('stick'),2)+Math.min(itemCount('stone'),3);
   if(cookieArena(me.island)){$('objective-title').textContent=me.island==='cookie_ring'?'Cookie showdown':'Practice and grow';$('objective-text').textContent=me.island==='cookie_ring'?'Left click to throw. Ring kills count on both kill boards. R opens standings and the return button.':'Aim at targets or press E at gym equipment. W runs the treadmill, Space presses weights, and swimming laps improves swimming. R for details or return.';$('objective-progress').style.width='100%';}
   else if(me.island==='camel_training'){$('objective-title').textContent='Practice makes progress';$('objective-text').textContent=state.snapshot.camelTraining?.courses?.find(c=>c.id===state.snapshot.camelTraining.exercise)?.description||'Ride the course through each golden gate. E or R chooses an exercise or returns to Camel Cove.';$('objective-progress').style.width=Math.min(100,state.snapshot.camelTraining?.ownCamel?.training?.[state.snapshot.camelTraining.exercise]||0)+'%';}
-  else if(me.island==='camel_race'){$('objective-title').textContent='Dune Dash';$('objective-text').textContent='Follow the arrows and golden gates for three laps. Shift sprints, Space jumps. E or R shows standings and the return button.';$('objective-progress').style.width=(Math.min(3,state.snapshot.camelRace?.entrants?.find(e=>e.id===me.id)?.lap||0)/3*100)+'%';}
+  else if(isCamelRaceIsland(me.island)){$('objective-title').textContent=state.snapshot.camelRace?.mode==='casual'?'Playful camel race':'Dune Dash';$('objective-text').textContent='Follow the arrows and golden gates for three laps. Shift sprints, Space jumps. E or R shows standings and the return button.';$('objective-progress').style.width=(Math.min(3,state.snapshot.camelRace?.entrants?.find(e=>e.id===me.id)?.lap||0)/3*100)+'%';}
   else if(me.inCave&&me.x<0){$('objective-title').textContent='Wildwood after dark';$('objective-text').textContent='Press E at the bar, wheel, or a chair. At night, find Disco Duke by the far end of the dance floor for funny cakes. L reduces light and cake effects.';$('objective-progress').style.width='100%';}
   else if(me.bakeryBuildMode){$('objective-title').textContent='Decorate your bakery';$('objective-text').textContent='6 opens furnishings. E selects, R rotates, T destroys, F packs, left click places. B exits build mode.';$('objective-progress').style.width='100%';}
   else if(me.buildMode){$('objective-title').textContent='Build mode';$('objective-text').textContent='6 opens the build catalog. Look at an object + E to edit. R rotates, T destroys, F packs, left click places, Esc cancels.';$('objective-progress').style.width='100%';}
+  else if(nutIsland(me.island)){$('objective-title').textContent='A home for little paws';$('objective-text').textContent='Open Inventory to release a caught animal. Press 6 for pet care, or visit the cage workshop near the return portal.';$('objective-progress').style.width='100%';}
   else if(me.island){$('objective-title').textContent='A place of your own';$('objective-text').textContent='Press 6 to build and decorate. Open Friends to invite visitors and choose who can help build.';$('objective-progress').style.width='100%';}
   else if(me.homeIsland){$('objective-title').textContent='Home across the water';$('objective-text').textContent='Press 6 to return home. Gather wood and stones, or find a wounded fish or turtle for your pond.';$('objective-progress').style.width='100%';}
   else if(me.coins>=200){$('objective-title').textContent='A sweet path home';$('objective-text').textContent='Find the cave near the middle of Sunbaked Sands. The pink lollipop offers your first island for 200 coins.';$('objective-progress').style.width='100%';}
@@ -635,13 +651,13 @@ function toast(message,type=''){
   while($('toast-stack').children.length>3)$('toast-stack').firstElementChild.remove();
   setTimeout(()=>{el.classList.add('removing');setTimeout(()=>el.remove(),300);},4400);
 }
-function chooseCookie(key){if(activityArena(state.snapshot?.me.island))return;const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot===5){if(insideOwnBakery(state.snapshot)){openModal('bakery_build');return;}if(state.snapshot?.me.homeIsland||state.snapshot?.me.island){openModal('build');return;}}if(slot<0||slot>4)return;cancelBuild();if(state.snapshot?.me.bakeryBuildMode)action('bakery_build_mode',{enabled:false});if(state.snapshot?.me.buildMode)action('build_mode',{enabled:false});state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
+function chooseCookie(key){if(activityArena(state.snapshot?.me.island)||state.snapshot?.rollerCoaster?.ride)return;const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot===5){if(nutIsland(state.snapshot?.me.island)){openModal('nut_island');return;}if(insideOwnBakery(state.snapshot)){openModal('bakery_build');return;}if(state.snapshot?.me.homeIsland||state.snapshot?.me.island){openModal('build');return;}}if(slot<0||slot>4)return;cancelBuild();if(state.snapshot?.me.bakeryBuildMode)action('bakery_build_mode',{enabled:false});if(state.snapshot?.me.buildMode)action('build_mode',{enabled:false});state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
 function toggleBakeryBuild(){if(!insideOwnBakery(state.snapshot)&&!state.snapshot?.me.bakeryBuildMode){toast('Step inside your own bakery to redecorate.');return;}cancelBuild();action('bakery_build_mode',{enabled:!state.snapshot.me.bakeryBuildMode});}
 $('hotbar').addEventListener('click',(event)=>{const button=event.target.closest('[data-slot]');if(button)chooseCookie(Number(button.dataset.slot));});
 function toggleClubLighting(){setClubReducedFlashing(!clubReducedFlashing());updateHUD();if(state.modal)renderModal();}
 $('club-light-toggle').addEventListener('click',toggleClubLighting);
 function throwCookie(){
-  if(camelArena(state.snapshot?.me.island))return;
+  if(camelArena(state.snapshot?.me.island)||state.snapshot?.rollerCoaster?.ride)return;
   if(document.pointerLockElement!==$('world')||state.modal||!state.snapshot||performance.now()-state.lastThrow<160)return;
   if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}
   if(state.building){placeBuild();return;}
@@ -649,18 +665,19 @@ function throwCookie(){
   const customer=bakeryScene?.pickCustomer(camera,state.snapshot,4);if(customer){openModal('bakery_customer',customer);return;}
   state.lastThrow=performance.now();send({type:'input',...movement(),yaw:state.yaw,pitch:state.pitch});action('throw',{item:cookieArena(state.snapshot.me.island)?'sugar':state.selected});state.handSwing=1;
 }
-function eatCookie(){if(!state.snapshot||!state.selected||activityArena(state.snapshot.me.island))return;if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}action(state.snapshot.clubDrinks?.some(d=>d.id===state.selected)?'drink':['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
+function eatCookie(){if(!state.snapshot||!state.selected||activityArena(state.snapshot.me.island)||state.snapshot.rollerCoaster?.ride)return;if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}action(state.snapshot.clubDrinks?.some(d=>d.id===state.selected)?'drink':['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
 function nearby(){
   const me=state.snapshot?.me;if(!me)return null;const feedingTarget=heldTreatTarget(state.snapshot);if(feedingTarget)return feedingTarget;let found=null,best=5;
-  for(const node of state.snapshot.nodes||[]){if(['tree_golden_cookie','tree_silver_cookie'].includes(node.kind)&&(Math.abs((node.y||0)-(me.y||0))>2||Math.hypot(node.x-me.x,node.z-me.z)>3.2))continue;if(!node.available||node.kind==='camel'&&(node.owner!==me.id||me.ridingCamel||Math.abs((node.y||0)-(me.y||0))>2))continue;if(node.kind==='item_drop'&&Math.abs((node.y||0)-(me.y||0))>2)continue;const underground=!!node.inCave||['pink_lollipop','blue_lollipop'].includes(node.kind);if(underground&&!me.inCave||!underground&&me.inCave)continue;const d=node.kind==='bakery_plot'?Math.min(Math.hypot(node.x-me.x,node.z-me.z),Math.hypot(node.x-2.7-me.x,node.z+8.6-me.z)):Math.hypot(node.x-me.x,node.z-me.z);if((node.kind==='club_seat'||node.kind==='bakery_chair')&&d>2.5||node.kind==='island_portal'&&d>3||['bakery_oven','bakery_mixer','bakery_cooling_table','bakery_display','bakery_fridge'].includes(node.kind)&&d>2.6)continue;if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
+  for(const node of state.snapshot.nodes||[]){if(['tree_golden_cookie','tree_silver_cookie'].includes(node.kind)&&(Math.abs((node.y||0)-(me.y||0))>2||Math.hypot(node.x-me.x,node.z-me.z)>3.2))continue;if(!node.available||node.kind==='camel'&&(node.owner!==me.id||me.ridingCamel||Math.abs((node.y||0)-(me.y||0))>2))continue;if(node.kind==='item_drop'&&Math.abs((node.y||0)-(me.y||0))>2)continue;const underground=!!node.inCave||['pink_lollipop','blue_lollipop','green_lollipop'].includes(node.kind);if(underground&&!me.inCave||!underground&&me.inCave)continue;const d=node.kind==='bakery_plot'?Math.min(Math.hypot(node.x-me.x,node.z-me.z),Math.hypot(node.x-2.7-me.x,node.z+8.6-me.z)):Math.hypot(node.x-me.x,node.z-me.z);if((node.kind==='club_seat'||node.kind==='bakery_chair')&&d>2.5||node.kind==='island_portal'&&d>3||['bakery_oven','bakery_mixer','bakery_cooling_table','bakery_display','bakery_fridge'].includes(node.kind)&&d>2.6)continue;if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
   for(const animal of state.snapshot.animals||[]){if(animal.health<=0&&!animal.egg)continue;const d=Math.hypot(animal.x-me.x,animal.z-me.z);if(d<best){best=d;found={...animal,distance:d,isAnimal:true};}}
   for(const object of state.snapshot.island?.objects||[]){const d=Math.hypot(object.x-me.x,object.z-me.z);if(d<best&&Math.abs((object.y||0)-(me.y||0))<3){best=d;found={...object,distance:d,isBuild:true};}}
   return found;
 }
 function updateInteraction(){
+  if(state.snapshot?.rollerCoaster?.ride){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent='Riding the desert coaster';$('interaction-detail').textContent='Enjoy the view - E or R opens ride details and an early return';return;}
   const exercise=state.snapshot?.cookiePractice?.exercise;if(exercise?.station&&exercise.station!=='practice_pool'){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent=exercise.status||'Keep training';$('interaction-detail').textContent=exercise.station==='practice_treadmill'?'Hold W to run · E or Q to step off':'Press Space for a repetition · E or Q to stop';return;}
   if(state.snapshot?.me.island==='camel_training'){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent='Training courses';$('interaction-detail').textContent='E or R \u00b7 Exercises, treats and return to Camel Cove';return;}
-  if(state.snapshot?.me.island==='camel_race'){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent='Race standings';$('interaction-detail').textContent='E or R · View the race / return to the beach';return;}
+  if(isCamelRaceIsland(state.snapshot?.me.island)){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent='Race standings';$('interaction-detail').textContent='E or R · View the race / return';return;}
   if(state.snapshot?.me.fallen){state.nearest=null;$('interaction-prompt').hidden=!state.locked;$('interaction-label').textContent=state.snapshot.me.standIn>0?'You fell over':'Stand up';$('interaction-detail').textContent=fallPrompt(state.snapshot.me);return;}
   if(state.snapshot?.me.bakeryBuildMode&&!state.building){const hit=bakeryFurnishings?.pickObject(camera,state.snapshot.me.bakeryPlot,12);state.nearest=hit?{...hit,isBakeryFurniture:true}:null;}
   else if(state.snapshot?.me.buildMode&&!state.building){const hit=islandScene?.pickObject(camera,12),object=state.snapshot.island?.objects?.find(o=>o.id===hit?.id);state.nearest=object?{...object,isBuild:true,distance:hit.distance}:null;}
@@ -669,6 +686,10 @@ function updateInteraction(){
   if(['cookie_ring_exit','cookie_practice_exit'].includes(n.kind)){$('interaction-label').textContent='Return to the treehut';$('interaction-detail').textContent='E to go back to the southern tree';return;}
   if(n.kind.startsWith('practice_')){$('interaction-label').textContent=n.label||'Practice';$('interaction-detail').textContent=n.kind==='practice_pool'?'Swim to the far end and back in one lane':'E to use this equipment';return;}
   if(n.kind==='tree_golden_cookie'||n.kind==='tree_silver_cookie'){$('interaction-label').textContent=n.kind==='tree_golden_cookie'?'Eat the golden cookie':'Eat the silver cookie';$('interaction-detail').textContent=n.kind==='tree_golden_cookie'?'Enter the cookie fighting ring':'Visit aim practice and the physical gym';return;}
+  if(n.kind==='green_lollipop'){$('interaction-label').textContent='The green lollipop';$('interaction-detail').textContent=state.snapshot.me.nutIsland?'Visit your nut island':'Unlock your nut island for 1,000 coins';return;}
+  if(n.kind==='nut_return'){$('interaction-label').textContent='Return to the desert cave';$('interaction-detail').textContent='E to leave your nut island';return;}
+  if(n.kind==='nut_cage_shop'){$('interaction-label').textContent='Nut Island pet workshop';$('interaction-detail').textContent='E to buy cages and care for your pets';return;}
+  if(n.kind==='roller_coaster'){$('interaction-label').textContent='Ride the desert rollercoaster';$('interaction-detail').textContent='E to board - Bring your mounted camel along';return;}
   if(n.kind==='camel_training_lollipop'){$('interaction-label').textContent='Taste the pink camel lollipop';$('interaction-detail').textContent='Train your camel \u00b7 Treats speed up practice';return;}
   if(n.kind==='camel_race_lollipop'){$('interaction-label').textContent='Taste the camel lollipop';$('interaction-detail').textContent='Enter the next Dune Dash · Every 18 minutes';return;}
   if(n.kind==='flower_shop'||n.kind==='betty'){$('interaction-label').textContent=n.kind==='betty'?'Have a chat with Betty':'Visit Betty’s flower shop';$('interaction-detail').textContent='Sell single flowers · Buy a bouquet · Make someone smile';return;}
@@ -698,13 +719,17 @@ function updateInteraction(){
   else{const p=phrases[n.kind]||[n.label,'Press E to interact'];$('interaction-label').textContent=p[0];$('interaction-detail').textContent=p[1];}
 }
 function interact(){
+  if(state.snapshot?.rollerCoaster?.ride){openModal('coaster');return;}
   if(state.snapshot?.cookiePractice?.exercise?.station&&state.snapshot.cookiePractice.exercise.station!=='practice_pool'){action('practice_stop');return;}
   if(state.snapshot?.me.island==='camel_training'){openModal('training');return;}
-  if(state.snapshot?.me.island==='camel_race'){openModal('race');return;}
+  if(isCamelRaceIsland(state.snapshot?.me.island)){openModal('race');return;}
   if(state.snapshot?.me.fallen){if(state.snapshot.me.standIn>0)toast(fallPrompt(state.snapshot.me));else action('stand');return;}
   if(state.snapshot?.me.bakeryBuildMode){if(state.building){toast('Place or cancel this furnishing first.');return;}const hit=bakeryFurnishings?.pickObject(camera,state.snapshot.me.bakeryPlot,12);if(!hit){toast('Look at a bakery furnishing within 12 metres to edit it.');return;}state.pendingBakeryEdit=hit.id;action('bakery_edit',{target:hit.id});return;}
   if(state.snapshot?.me.buildMode){if(state.building){toast('Place or cancel the object you are holding first.');return;}const hit=islandScene?.pickObject(camera,12);if(!hit){toast('Look at an island object within 12 metres to edit it.');return;}state.pendingBuildEdit=hit.id;action('edit_build',{target:hit.id});return;}
   const n=state.nearest||nearby();if(!n){toast('Move closer to something you can gather or use.');return;}
+  if(n.kind==='nut_return'){action('nut_island_leave');return;}
+  if(['green_lollipop','nut_cage_shop','nut_cage','nut_pet'].includes(n.kind)){openModal('nut_island',n);return;}
+  if(n.kind==='roller_coaster'){openModal('coaster',n);return;}
   if(n.kind==='club_bar'||n.kind==='club_casino'||n.kind==='club_cake_seller'){openModal('context',n);return;}
   if(n.kind==='bakery_chair'){action('bakery_sit',{target:n.id});return;}
   if(n.kind==='club_seat'){action('club_sit',{target:n.id});return;}
@@ -745,7 +770,7 @@ function updateBuildGhost(){
   buildGhost.visible=state.locked&&!state.modal;
 }
 function placeBuild(){
-  const b=state.building;if(!b||state.buildOperationPending)return;
+  const b=state.building;if(!b||state.buildOperationPending||!Number.isFinite(b.x)||!Number.isFinite(b.z))return;
   if(b.scope==='bakery'&&!b.valid){toast('Keep furnishings inside the right room, away from doors and other furniture.');return;}
   state.buildOperationPending=!!b.object;
   action(b.scope==='bakery'?(b.object?'bakery_move':'bakery_place'):(b.object?'move_build':'build'),{item:b.item,from:b.packed||'',target:b.object?.id||'',x:b.x,y:b.y,z:b.z,rotation:b.rotation});state.lastThrow=performance.now();
@@ -804,14 +829,16 @@ document.addEventListener('keydown',(event)=>{
   if(event.code==='Enter'&&!state.locked&&!state.modal)setPlaying();
   if(state.menuOpen)return;
   if(event.code==='KeyB'&&!state.modal){event.preventDefault();toggleBakeryBuild();return;}
-  if(event.code==='KeyL'&&(nearForestClub(state.snapshot?.me)||cakeEffectActive(state.snapshot?.me))){event.preventDefault();toggleClubLighting();return;}
+  if(event.code==='KeyL'&&(nearForestClub(state.snapshot?.me)||cakeEffectActive(state.snapshot?.me)||rainbowEffectActive())){event.preventDefault();toggleClubLighting();return;}
+  if(event.code==='KeyH'&&state.locked&&!state.modal){event.preventDefault();rodentCaptureHUD?.catchNearest();return;}
   if(event.code==='KeyI')toggleModal('inventory');
   if(event.code==='KeyC')toggleModal('recipes');
   if(event.code==='KeyM')toggleModal('map');
+  if(event.code==='KeyR'&&state.snapshot?.rollerCoaster?.ride)toggleModal('coaster');
   if(event.code==='KeyR'&&cookieArena(state.snapshot?.me.island))toggleModal('cookie_activity');
   if(event.code==='KeyR'&&camelArena(state.snapshot?.me.island))toggleModal(state.snapshot.me.island==='camel_training'?'training':'race');
   if(event.code==='KeyE'&&state.locked)interact();
-  if(event.code==='KeyQ'&&state.locked){if(state.snapshot?.cookiePractice?.exercise?.station)action('practice_stop');else if(cookieArena(state.snapshot?.me.island))openModal('cookie_activity');else if(camelArena(state.snapshot?.me.island))openModal(state.snapshot.me.island==='camel_training'?'training':'race');else if(state.snapshot?.me.ridingCamel)action('camel_dismount');else eatCookie();}
+  if(event.code==='KeyQ'&&state.locked){if(state.snapshot?.rollerCoaster?.ride)openModal('coaster');else if(state.snapshot?.cookiePractice?.exercise?.station)action('practice_stop');else if(cookieArena(state.snapshot?.me.island))openModal('cookie_activity');else if(camelArena(state.snapshot?.me.island))openModal(state.snapshot.me.island==='camel_training'?'training':'race');else if(state.snapshot?.me.ridingCamel)action('camel_dismount');else eatCookie();}
   if(/^Digit[1-6]$/.test(event.code)&&!state.modal)chooseCookie(Number(event.code.slice(5))-1);
 });
 document.addEventListener('keyup',(event)=>{const held=state.keys.delete(event.code);if(held&&movementKeys.has(event.code))sendMovement();if(event.code==='Escape'){if(!escapeHandled)toggleMenu();escapeHandled=false;}});
@@ -840,23 +867,34 @@ function animate(now){
   bakeryScene?.update(now/1000,dt);
   productionScene?.update(now/1000);
   nightScene?.update(now/1000,dt);
+  rodentCaptureHUD?.update();rodentsScene?.update(motionClock.time(now,REMOTE_MOTION_DELAY_MS));nutIslandScene?.update(motionClock.time(now,REMOTE_MOTION_DELAY_MS)/1000);
+  rodentRainbow?.update({until:state.snapshot?.rodentWorld?.rainbowUntil||0,time:motionClock.time(now,0)/1000,reduced:clubReducedFlashing(),enabled:state.connected&&state.hasPlayed});
+  rollerCoasterHUD?.update();rollerCoasterScene?.update(motionClock.time(now,REMOTE_MOTION_DELAY_MS),motionClock.time(now,LOCAL_MOTION_DELAY_MS));
   raceHUD?.update();trainingHUD?.update();trainingScene?.update(now/1000);treeRingScene?.update(now/1000);practiceScene?.update(now/1000);cookieActivityHUD?.update();
   if(state.player&&me){
     if(localMotion.sample(motionClock.time(now,LOCAL_MOTION_DELAY_MS),localPose))state.localPosition.set(localPose.x,localPose.y,localPose.z);
+    const ridePose=state.snapshot?.rollerCoaster?.ride?rollerCoasterScene?.poseForPlayer(me.id):null;
+    if(ridePose){if(Number.isFinite(state.coasterYaw))state.yaw+=Math.atan2(Math.sin(ridePose.yaw-state.coasterYaw),Math.cos(ridePose.yaw-state.coasterYaw));state.coasterYaw=ridePose.yaw;}
     const moving=movement();const walking=!me.fallen&&Math.hypot(moving.x,moving.z)>.05;
     const bob=walking&&state.locked&&me.grounded!==false?Math.sin(now*.012*(me.sprinting?1.45:1))*.027:0;
-    camera.position.copy(state.localPosition);camera.position.y+=bob;camera.rotation.set(state.pitch,state.yaw,0);
-    riddenCamel.visible=!!me.ridingCamel;if(riddenCamel.visible){riddenCamel.position.set(state.localPosition.x,state.localPosition.y-eyeHeight(me),state.localPosition.z);riddenCamel.rotation.y=state.yaw;animateCamelView(riddenCamel,{time:now/1000,moving:walking,eating:(me.camels?.find(c=>c.id===me.mountedCamelId)?.eatingUntil||0)>state.snapshot.time});}
+    if(ridePose){
+      coasterRotation.set(ridePose.pitch||0,ridePose.yaw,ridePose.bank||0);
+      coasterEye.set(0,eyeHeight(me),0).applyEuler(coasterRotation);
+      camera.position.set(ridePose.x+coasterEye.x,ridePose.y+coasterEye.y,ridePose.z+coasterEye.z);
+      camera.quaternion.setFromEuler(coasterRotation);
+      coasterLook.setFromEuler(coasterRotation.set(state.pitch,state.yaw-ridePose.yaw,0));camera.quaternion.multiply(coasterLook);
+    }else{camera.position.copy(state.localPosition);camera.position.y+=bob;camera.rotation.set(state.pitch,state.yaw,0);}
+    riddenCamel.visible=!!me.ridingCamel;if(riddenCamel.visible){riddenCamel.position.set(ridePose?.x??state.localPosition.x,ridePose?.y??state.localPosition.y-eyeHeight(me),ridePose?.z??state.localPosition.z);riddenCamel.rotation.order='YXZ';riddenCamel.rotation.set(ridePose?.pitch||0,ridePose?.yaw??state.yaw,ridePose?.bank||0);animateCamelView(riddenCamel,{time:now/1000,moving:walking,eating:(me.camels?.find(c=>c.id===me.mountedCamelId)?.eatingUntil||0)>state.snapshot.time});}
     camera.fov=THREE.MathUtils.lerp(camera.fov,me.sprinting&&walking?73:68,dt*5);camera.updateProjectionMatrix();
     if(me.island)islandScene?.animate(now);
     updateBuildGhost();
-    hand.visible=!me.fallen&&!state.building&&!camelArena(me.island)&&!['treadmill','bench_press','leg_press'].includes(me.posture);hand.position.set(.48,-.43+bob*.55,-.82);
+    hand.visible=!state.snapshot.rollerCoaster?.ride&&!me.fallen&&!state.building&&!camelArena(me.island)&&!['treadmill','bench_press','leg_press'].includes(me.posture);hand.position.set(.48,-.43+bob*.55,-.82);
     if(state.handSwing>0){hand.position.z-=Math.sin((1-state.handSwing)*Math.PI)*.36;hand.rotation.x=.55-state.handSwing*.35;state.handSwing=Math.max(0,state.handSwing-dt*4);}
     else if(state.handSwing<0){hand.position.y+=Math.sin((1+state.handSwing)*Math.PI)*.33;hand.position.x-=Math.sin((1+state.handSwing)*Math.PI)*.3;state.handSwing=Math.min(0,state.handSwing+dt*2.5);}
     else hand.rotation.x=.55;
     hand.rotation.z=-.24+(walking?Math.sin(now*.006)*.025:Math.sin(now*.002)*.009);
     if(now-lastUI>120){updateHUD();updateInteraction();lastUI=now;}
-    if(now-lastPanelRefresh>1000&&(['cookie_activity','customize','build_object','chest','animal','race','training','achievements','inventory','friends'].includes(state.modal)||(state.modal==='shop'&&['tree_golden_cookie','tree_silver_cookie','outfit_shop','abu_fanous','camel_training_lollipop','camel_race_lollipop','leaderboard_board','flower_shop','pet_shop','betty'].includes(state.context?.kind)))){renderModal();lastPanelRefresh=now;}
+    if(now-lastPanelRefresh>1000&&(['nut_island','rodents','coaster','cookie_activity','customize','build_object','chest','animal','race','training','achievements','inventory','friends','teleport'].includes(state.modal)||(state.modal==='shop'&&['tree_golden_cookie','tree_silver_cookie','outfit_shop','abu_fanous','camel_training_lollipop','camel_race_lollipop','leaderboard_board','flower_shop','pet_shop','betty'].includes(state.context?.kind)))){renderModal();lastPanelRefresh=now;}
     if(now-lastMinimap>150){panels?.drawMinimap();if(state.modal==='map')panels?.drawWorldMap();lastMinimap=now;}
     if(interactionRing){interactionRing.visible=!!state.nearest&&state.locked&&!state.building;if(state.nearest){interactionRing.position.set(state.nearest.x,(me.y||0)+.08,state.nearest.z);interactionRing.material.opacity=.36+Math.sin(now*.004)*.1;}}
   }else{
@@ -866,7 +904,8 @@ function animate(now){
   const remoteTime=motionClock.time(now,REMOTE_MOTION_DELAY_MS);
   for(const object of state.players.values()){
     const pose=object.userData.motion?.sample(remoteTime,object.userData.pose);if(!pose)continue;
-    object.position.set(pose.x,pose.y,pose.z);object.rotation.y=pose.yaw;
+    const coasterPose=rollerCoasterScene?.poseForPlayer(object.userData.player?.id);
+    object.position.set(pose.x,pose.y,pose.z);object.rotation.order='YXZ';object.rotation.set(coasterPose?.pitch||0,coasterPose?.yaw??pose.yaw,coasterPose?.bank||0);
     const station=state.snapshot?.cookiePractice?.stations?.find(s=>s.occupiedBy===object.userData.player?.id);animatePracticeAvatar(object.userData.practiceRig,!!station?.active,now/1000);
   }
   for(const object of state.animals.values()){

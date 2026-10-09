@@ -317,8 +317,8 @@ func TestConstructionRotationOverlapMoveRefundCollisionAndUse(t *testing.T) {
 	}
 	mustAct(t, w, Action{Action: "edit_build", Target: oven.ID})
 	mustAct(t, w, Action{Action: "destroy_build", Target: oven.ID})
-	if p.profile.Inventory["wood"] != wood+2 || p.profile.Inventory["stone"] != stone+6 {
-		t.Fatal("destroy should refund half")
+	if p.profile.Inventory["wood"] != wood || p.profile.Inventory["stone"] != stone {
+		t.Fatal("destroying a purchased appliance must not generate materials")
 	}
 	mustAct(t, w, Action{Action: "build", Item: "chair", X: 2, Z: 0})
 	chair := p.profile.HomeIsland.Objects[len(p.profile.HomeIsland.Objects)-1]
@@ -490,7 +490,7 @@ func TestConstructionRefundIsAtomicWhenBagFull(t *testing.T) {
 	mustAct(t, w, Action{Action: "teleport_home"})
 	mustAct(t, w, Action{Action: "build_mode", Enabled: true})
 	p.x, p.z = 0, 0
-	p.profile.HomeIsland.Objects = []BuildObject{{ID: "oven", Kind: "oven", X: 4}}
+	p.profile.HomeIsland.Objects = []BuildObject{{ID: "wall", Kind: "wall", X: 4}}
 	for i := range p.profile.BagSlots {
 		p.profile.BagSlots[i] = Stack{Item: "sugar", Count: inventoryLimit}
 	}
@@ -502,8 +502,8 @@ func TestConstructionRefundIsAtomicWhenBagFull(t *testing.T) {
 	}
 	syncInventory(&p.profile)
 	before := p.profile.Inventory["sugar"]
-	mustAct(t, w, Action{Action: "edit_build", Target: "oven"})
-	if err := w.Act("one", Action{Action: "destroy_build", Target: "oven"}); err == nil {
+	mustAct(t, w, Action{Action: "edit_build", Target: "wall"})
+	if err := w.Act("one", Action{Action: "destroy_build", Target: "wall"}); err == nil {
 		t.Fatal("refund overflow silently discarded")
 	}
 	if len(p.profile.HomeIsland.Objects) != 1 || p.profile.Inventory["wood"] != 0 || p.profile.Inventory["stone"] != 0 || p.profile.Inventory["sugar"] != before {

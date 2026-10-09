@@ -18,6 +18,30 @@ const {test} = require('node:test');
   });
   const delta = (extra = {}) => ({type:'delta', seq:2, base:1, time:2, serverTime:2000, ...extra});
 
+  test('wildlife deltas move and remove animals while nut pets and global rainbows survive world changes', () => {
+    const decoder=createSnapshotDecoder(),catalog=[{id:'otter',rarity:'mythic'}];
+    const first=decoder.apply(snapshot({rodents:[{id:'otter',species:'otter',x:1,y:0,z:2,state:'fleeing'}],rodentCatalog:catalog,nutIsland:null,rodentWorld:{rainbowUntil:0}}));
+    const second=decoder.apply(delta({rodents:{upsert:[{id:'otter',x:3,nutFed:true,state:'confused'}]},rodentWorld:{rainbowUntil:62}}));
+    assert.equal(second.rodents[0].species,'otter');assert.equal(second.rodents[0].nutFed,true);assert.equal(first.rodents[0].x,1);
+    const home=decoder.apply({type:'delta',seq:3,base:2,me:{island:'nut:self'},rodents:{remove:['otter']},nutIsland:{owner:'self',pets:[{id:'pet',species:'wood_mouse'}],cages:[]}});
+    assert.deepEqual(home.rodents,[]);assert.equal(home.rodentWorld.rainbowUntil,62);assert.equal(home.rodentCatalog,catalog);
+    const back=decoder.apply({type:'delta',seq:4,base:3,nutIsland:null,rodentWorld:{rainbowUntil:0}});
+    assert.equal(back.nutIsland,null);assert.equal(back.rodentWorld.rainbowUntil,0);assert.equal(home.nutIsland.pets.length,1);
+  });
+
+  test('coaster deltas keep the fixed track while replacing rides and clearing cars', () => {
+    const decoder=createSnapshotDecoder(),track=[{x:165,y:1.1,z:-165}],station={x:165,y:0,z:-161};
+    const before=decoder.apply(snapshot({rollerCoaster:{track,station,duration:48,cars:[],ride:null,nextBoardIn:0}}));
+    const ride={id:'car-one',playerId:'self',progress:.1,remaining:43.2};
+    const riding=decoder.apply(delta({rollerCoaster:{ride,cars:[ride],nextBoardIn:2}}));
+    assert.equal(riding.rollerCoaster.track,track);assert.equal(riding.rollerCoaster.station,station);assert.equal(riding.rollerCoaster.duration,48);
+    assert.equal(before.rollerCoaster.ride,null);assert.deepEqual(before.rollerCoaster.cars,[]);
+    assert.throws(()=>decoder.apply({type:'delta',seq:3,base:2,rollerCoaster:null}),/Invalid coaster/);
+    const cleared=decoder.apply({type:'delta',seq:3,base:2,rollerCoaster:{ride:null,cars:[],nextBoardIn:0}});
+    assert.equal(cleared.rollerCoaster.ride,null);assert.deepEqual(cleared.rollerCoaster.cars,[]);assert.equal(cleared.rollerCoaster.nextBoardIn,0);
+    assert.equal(cleared.rollerCoaster.track,track);assert.equal(riding.rollerCoaster.ride,ride);
+  });
+
   test('day cycle and John Pork replace through deltas and dawn returns him to bed', () => {
     const decoder=createSnapshotDecoder(),day={phase:'day',dayNumber:0,elapsed:719,remaining:1,dayDuration:720,nightDuration:360};
     decoder.apply(snapshot({dayCycle:day,johnPork:null}));

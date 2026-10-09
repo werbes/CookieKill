@@ -90,7 +90,7 @@ func (w *World) camelCompanionAction(p *player, a Action) error {
 	if c == nil {
 		return errors.New("Choose one of your own camels.")
 	}
-	if c.Island != p.island || c.InCave != p.inCave || p.island == CamelRaceIsland || inWater(p) {
+	if c.Island != p.island || c.InCave != p.inCave || isCamelRaceIsland(p.island) || inWater(p) {
 		return errors.New("Visit your camel's island and cave level before calling or housing it.")
 	}
 	if a.Action == "camel_call" {
@@ -193,7 +193,7 @@ func (w *World) camelParkingClear(p *player, point Point, y float64) bool {
 // Housing is an explicit owner assignment. Logout returns only assigned camels;
 // all other camels retain the existing parking and mounted-reconnect behavior.
 func (w *World) houseOfflineCamels(p *player) {
-	if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+	if isCamelRaceIsland(p.island) || p.island == CamelTrainingIsland {
 		return
 	}
 	syncMountedCamel(p)
@@ -267,7 +267,7 @@ func (w *World) tickCamelCompanions(dt float64) {
 		}
 		for id, call := range p.camelCalls {
 			c := ownCamel(p, id)
-			if c == nil || c.Island != p.island || c.InCave != p.inCave || p.island == CamelRaceIsland || inWater(p) || p.ridingCamel && p.mountedCamelID == id || c.RentalUntil > 0 && c.RentalUntil <= w.now().Unix() {
+			if c == nil || c.Island != p.island || c.InCave != p.inCave || isCamelRaceIsland(p.island) || inWater(p) || p.ridingCamel && p.mountedCamelID == id || c.RentalUntil > 0 && c.RentalUntil <= w.now().Unix() {
 				delete(p.camelCalls, id)
 				continue
 			}
@@ -324,7 +324,12 @@ func (w *World) camelSegment(p player, to Point) (player, bool) {
 	fromX, fromZ := p.x, p.z
 	for i := 1; i <= steps; i++ {
 		x, z := fromX+(to.X-fromX)*float64(i)/float64(steps), fromZ+(to.Z-fromZ)*float64(i)/float64(steps)
-		if p.island != "" {
+		if isNutIsland(p.island) {
+			if w.nutIslandBlocked(&p, x, z) {
+				return p, false
+			}
+			p.x, p.y, p.z = x, 0, z
+		} else if p.island != "" {
 			h, ok := w.currentIsland(&p)
 			if !ok || math.Hypot(x, z) > islandWalkRadius(h)-.6 {
 				return p, false

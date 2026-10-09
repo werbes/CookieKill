@@ -8,7 +8,7 @@ export function nightFactor(cycle){
 }
 export function johnPorkWarning(snapshot){
   const me=snapshot?.me,john=snapshot?.johnPork;
-  if(!me||!john||john.sleeping||snapshot.dayCycle?.phase!=='night'||(me.island||'')!==(john.island||'')||!!me.inCave!==!!john.inCave)return null;
+  if(!me||!john||me.island||john.island||john.sleeping||snapshot.dayCycle?.phase!=='night'||!!me.inCave!==!!john.inCave)return null;
   const distance=Math.hypot(me.x-john.x,(me.y||0)-(john.y||0),me.z-john.z);
   if(distance>100)return null;
   const urgent=john.target===me.id&&distance<=10;
@@ -98,7 +98,7 @@ export function createNightScene({THREE,parent,box,sphere,cylinder,disposeObject
   }
   function sync(snapshot){
     const previous=latest?.johnPork;latest=snapshot;warning=johnPorkWarning(snapshot);const john=snapshot?.johnPork,me=snapshot?.me;
-    const same=!!john&&!!me&&(john.sleeping||snapshot.dayCycle?.phase==='night')&&(john.island||'')===(me.island||'')&&!!john.inCave===!!me.inCave;
+    const same=!!john&&!!me&&!me.island&&!john.island&&(john.sleeping||snapshot.dayCycle?.phase==='night')&&!!john.inCave===!!me.inCave;
     if(same&&(!root.visible||previous?.sleeping!==john.sleeping||previous?.target!==john.target||previous?.island!==john.island||previous?.inCave!==john.inCave||Math.hypot(root.position.x-john.x,root.position.z-john.z)>20)){root.position.set(john.x,john.y||0,john.z);root.rotation.y=john.yaw||0;}root.visible=same;
     sleepingSign.visible=same&&!!john.sleeping;body.rotation.x=john?.sleeping?Math.PI/2:0;
     for(const eye of eyes)eye.visible=!john?.sleeping;for(const eye of closedEyes)eye.visible=!!john?.sleeping;

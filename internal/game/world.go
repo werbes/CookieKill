@@ -55,6 +55,8 @@ func New(saved map[string]Profile) *World {
 	w.restoreSocial()
 	w.rebuildPropertyColliders()
 	w.restoreCamelHomes()
+	w.seedNutIsland()
+	w.seedRodents()
 	return w
 }
 
@@ -107,6 +109,7 @@ func sanitize(p Profile) Profile {
 		p.BakeryName = ""
 	}
 	normalizeIslandProfile(&p)
+	normalizeNutIsland(&p)
 	normalizeProduction(&p)
 	normalizeCamels(&p)
 	p.Kills = max(0, p.Kills)
@@ -123,6 +126,7 @@ func cloneMap[K comparable, V any](src map[K]V) map[K]V {
 	return dst
 }
 func cloneProfile(p Profile) Profile {
+	p.NutIsland = cloneNutIsland(p.NutIsland)
 	p.Inventory = cloneMap(p.Inventory)
 	p.Levels = cloneMap(p.Levels)
 	p.Reputation = cloneMap(p.Reputation)
@@ -169,6 +173,7 @@ func (w *World) Join(id, name string) {
 	}
 	if _, ok := w.players[id]; ok {
 		w.players[id].disconnected = false
+		w.remindCamelRace(w.players[id])
 		// Account login cannot bypass call-name cooldown.
 		return
 	}
@@ -180,6 +185,7 @@ func (w *World) Join(id, name string) {
 		p.cooldowns["last_input"] = w.time
 		w.players[id] = p
 		delete(w.offline, id)
+		w.remindCamelRace(p)
 		return
 	}
 	profile, exists := w.profiles[id]
@@ -197,11 +203,13 @@ func (w *World) Join(id, name string) {
 	w.spawn(p)
 	w.players[id] = p
 	w.event(profile.CallName+" arrived in the forest.", "join", p.x, p.z)
+	w.remindCamelRace(p)
 }
 
 func (w *World) Leave(id string) {
 	w.ReleaseBakeryPlot(id)
 	if p, ok := w.players[id]; ok {
+		w.leaveRollerCoaster(p)
 		if p.cookieArena != nil {
 			_ = w.leaveCookieArena(p)
 		}
@@ -234,6 +242,7 @@ func (w *World) Leave(id string) {
 }
 
 func (w *World) spawn(p *player) {
+	w.leaveRollerCoaster(p)
 	p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
 	resetFall(p)
 	p.buildMode, p.editingBuildID = false, ""
@@ -281,7 +290,9 @@ func (w *World) Input(id string, in Input) {
 	}
 	p.jumpHeld, p.sprintHeld = in.Jump, in.Sprint
 	p.input = in
-	p.yaw = in.Yaw
+	if p.coaster == nil {
+		p.yaw = in.Yaw
+	}
 	p.pitch = in.Pitch
 	p.cooldowns["last_input"] = w.time
 }
@@ -480,6 +491,9 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 			out.Events = append(out.Events, e)
 		}
 	}
+	if viewer != nil && viewer.raceReminder.ID != 0 && w.time-viewer.raceReminder.Time < 12 {
+		out.Events = append(out.Events, viewer.raceReminder)
+	}
 	for _, r := range recipes {
 		r.Cost = cloneMap(r.Cost)
 		r.Known = out.Me.Discovered[r.ID]
@@ -491,6 +505,8 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		}
 		out.Recipes = append(out.Recipes, r)
 	}
+	w.rodentSnapshot(viewer, &out)
+	out.RollerCoaster = w.rollerCoasterSnapshot(viewer)
 	w.decorateIslandSnapshot(id, &out)
 	w.decorateCamelRaceSnapshot(viewer, &out)
 	w.decorateCamelTrainingSnapshot(viewer, &out)
@@ -501,5 +517,6 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 	w.bakeryFurnitureSnapshot(viewer, &out)
 	out.BakingIngredients = append([]BakingIngredient{}, bakingIngredients...)
 	w.decorateAchievementSnapshot(viewer, &out)
+	w.nutIslandSnapshot(viewer, &out)
 	return out
 }

@@ -1,5 +1,5 @@
 // Reconstruct full render state from one connection's snapshot/delta stream.
-const entityKeys = {players:'id',nodes:'id',animals:'id',projectiles:'id',homes:'owner'};
+const entityKeys = {rodents:'id',players:'id',nodes:'id',animals:'id',projectiles:'id',homes:'owner'};
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const sequence = (value) => Number.isSafeInteger(value) && value > 0;
@@ -55,6 +55,10 @@ export function createSnapshotDecoder() {
         if (has(frame, 'me')) {
           if (!object(frame.me)) throw new Error('Invalid player changes');
           next.me = {...current.me, ...frame.me};
+        }
+        if (has(frame, 'rollerCoaster')) {
+          if (!object(frame.rollerCoaster)) throw new Error('Invalid coaster changes');
+          next.rollerCoaster = {...current.rollerCoaster, ...frame.rollerCoaster};
         }
         for (const [name, key] of Object.entries(entityKeys)) {
           if (has(frame, name)) next[name] = updateEntities(current[name], frame[name], key, name);

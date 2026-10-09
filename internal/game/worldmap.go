@@ -88,7 +88,7 @@ func coastZ(x float64) float64 { return 32 + 11*math.Sin((x+240)*.021) + 5*math.
 // scenery; roof colliders alone cannot reserve a walkable ground-level room.
 func specialPlaceReserved(x, z, radius float64) bool {
 	radius = max(radius, .001)
-	return circleRect(x, z, radius, -225.5, 17.5, 29, 29) ||
+	return coasterReserved(x, z, radius) || circleRect(x, z, radius, -225.5, 17.5, 29, 29) ||
 		circleRect(x, z, radius, TreeHutX, TreeHutZ, 22, 28) ||
 		circleRect(x, z, radius, 222, -236.5, 10, 17) ||
 		circleRect(x, z, radius, 163.5, 156, 89, 42)
@@ -240,6 +240,7 @@ func (w *World) seedMap() {
 	w.seedCamelTraining()
 	w.seedTreeHut()
 	w.seedJohnHut()
+	w.seedRollerCoaster()
 	building("saffron_house", "desert_building", "SAFFRON • BARTER", 32, -30, 8, 7, 4)
 	building("juniper_house", "desert_building", "JUNIPER • BARTER", 150, -55, 9, 8, 4)
 	building("clove_house", "desert_building", "CLOVE • BARTER", 55, -195, 9, 8, 4)

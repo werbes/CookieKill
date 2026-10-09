@@ -41,11 +41,24 @@ func (e *stateEncoder) encode(snapshot game.Snapshot) ([]byte, error) {
 	if previous.DayCycle != snapshot.DayCycle {
 		frame["dayCycle"] = snapshot.DayCycle
 	}
+	if !reflect.DeepEqual(previous.NutIsland, snapshot.NutIsland) {
+		frame["nutIsland"] = snapshot.NutIsland
+	}
+	if !reflect.DeepEqual(previous.RodentCatalog, snapshot.RodentCatalog) {
+		frame["rodentCatalog"] = snapshot.RodentCatalog
+	}
+	if !reflect.DeepEqual(previous.RodentWorld, snapshot.RodentWorld) {
+		frame["rodentWorld"] = snapshot.RodentWorld
+	}
+	addEntityChanges(frame, "rodents", previous.Rodents, snapshot.Rodents, "id", func(r game.RodentView) string { return r.ID })
 	if !reflect.DeepEqual(previous.JohnPork, snapshot.JohnPork) {
 		frame["johnPork"] = snapshot.JohnPork
 	}
 	if !reflect.DeepEqual(previous.CamelRace, snapshot.CamelRace) {
 		frame["camelRace"] = snapshot.CamelRace
+	}
+	if patch := changedFields(&previous.RollerCoaster, &snapshot.RollerCoaster); len(patch) != 0 {
+		frame["rollerCoaster"] = patch
 	}
 	if !reflect.DeepEqual(previous.CamelTraining, snapshot.CamelTraining) {
 		frame["camelTraining"] = snapshot.CamelTraining

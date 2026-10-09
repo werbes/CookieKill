@@ -138,7 +138,7 @@ func TestChefBreakStopsOnlyThatWorkerAndKeepsBatchesOnSelectionChange(t *testing
 	chefTestReady(t, w, p, "chef", "chef_2")
 	chefTestSelections(p, "sugar")
 	p.profile.Discovered["berry_cookie"] = true
-	p.profile.BakeryPantry = map[string]int{"dough": 8, "berry": 4}
+	p.profile.BakeryPantry = map[string]int{"dough": 82, "berry": 4}
 	p.profile.BakeryStaffBreaks["chef_2"] = true
 	w.workBakeryChef(p)
 	if productionState(&p.profile, "bakery_oven").Job == nil || productionState(&p.profile, "bakery:extra_oven").Job != nil {
@@ -153,8 +153,8 @@ func TestChefBreakStopsOnlyThatWorkerAndKeepsBatchesOnSelectionChange(t *testing
 	before := cloneMap(p.profile.BakeryPantry)
 	nodePosition(w, p, "bakery_plot_0_oven")
 	mustAct(t, w, Action{Action: "bakery_chef_recipe", Item: "berry_cookie"})
-	advance(w, 8)
-	if !reflect.DeepEqual(before, p.profile.BakeryPantry) || productionState(&p.profile, "bakery_cooling_table").Output["sugar"] != 2 {
+	advance(w, 205)
+	if !reflect.DeepEqual(before, p.profile.BakeryPantry) || productionState(&p.profile, "bakery_cooling_table").Output["sugar"] != 80 {
 		t.Fatal("break or recipe change lost, replaced or duplicated already-loaded batches")
 	}
 	if !strings.Contains(p.bakery.chefStatus, "On break") {
@@ -162,7 +162,7 @@ func TestChefBreakStopsOnlyThatWorkerAndKeepsBatchesOnSelectionChange(t *testing
 	}
 	delete(p.profile.BakeryStaffBreaks, "chef_2")
 	advance(w, 20)
-	if got := productionState(&p.profile, "bakery_cooling_table").Output; got["sugar"] != 2 || got["berry_cookie"] != 2 {
+	if got := productionState(&p.profile, "bakery_cooling_table").Output; got["sugar"] != 80 || got["berry_cookie"] != 2 {
 		t.Fatalf("resume failed to continue selected recipe from fridge: %v", got)
 	}
 }

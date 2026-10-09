@@ -40,19 +40,25 @@ type CamelRaceEntryView struct {
 }
 
 type CamelRaceView struct {
-	NextStartAt       float64              `json:"nextStartAt"`
-	NextGatherAt      float64              `json:"nextGatherAt"`
-	RegisteredStartAt float64              `json:"registeredStartAt"`
-	InArena           bool                 `json:"inArena"`
-	Phase             string               `json:"phase"`
-	StartAt           float64              `json:"startAt"`
-	GatherAt          float64              `json:"gatherAt"`
-	EndsAt            float64              `json:"endsAt"`
-	Laps              int                  `json:"laps"`
-	EntrantCount      int                  `json:"entrantCount"`
-	Entrants          []CamelRaceEntryView `json:"entrants"`
-	Track             CamelRaceTrack       `json:"track"`
-	OwnCamel          *Camel               `json:"ownCamel,omitempty"`
+	Mode              string                 `json:"mode"`
+	LobbyID           string                 `json:"lobbyId"`
+	HostID            string                 `json:"hostId"`
+	CasualLobbies     []CamelCasualLobbyView `json:"casualLobbies"`
+	ReminderStartAt   float64                `json:"reminderStartAt"`
+	ReminderSeconds   float64                `json:"reminderSeconds"`
+	NextStartAt       float64                `json:"nextStartAt"`
+	NextGatherAt      float64                `json:"nextGatherAt"`
+	RegisteredStartAt float64                `json:"registeredStartAt"`
+	InArena           bool                   `json:"inArena"`
+	Phase             string                 `json:"phase"`
+	StartAt           float64                `json:"startAt"`
+	GatherAt          float64                `json:"gatherAt"`
+	EndsAt            float64                `json:"endsAt"`
+	Laps              int                    `json:"laps"`
+	EntrantCount      int                    `json:"entrantCount"`
+	Entrants          []CamelRaceEntryView   `json:"entrants"`
+	Track             CamelRaceTrack         `json:"track"`
+	OwnCamel          *Camel                 `json:"ownCamel,omitempty"`
 }
 
 type camelRaceReturn struct {
@@ -75,6 +81,9 @@ type camelRaceEntry struct {
 }
 
 type camelRace struct {
+	island       string
+	casual       bool
+	hostID       string
 	startAt      float64
 	entries      map[string]*camelRaceEntry
 	entrantCount int
@@ -122,12 +131,15 @@ func (w *World) enterCamelRace(p *player, target string) error {
 }
 
 func (w *World) leaveCamelRace(p *player) error {
-	if p.island == CamelRaceIsland && w.camelRace != nil {
-		if entry := w.camelRace.entries[p.profile.ID]; entry != nil && !entry.returned {
+	if r := w.camelRaceForPlayer(p); r != nil {
+		if entry := r.entries[p.profile.ID]; entry != nil && !entry.returned {
 			if entry.Status == "racing" {
 				entry.Status = "dnf"
 			}
 			w.returnCamelRacer(p, entry)
+			if r.casual {
+				w.refreshCasualRace(r)
+			}
 			return nil
 		}
 	}
@@ -156,38 +168,7 @@ func (w *World) gatherCamelRace(start float64) {
 	sort.Strings(ids)
 	for i, id := range ids {
 		p := w.players[id]
-		if p.cookieArena != nil {
-			_ = w.leaveCookieArena(p)
-		}
-		trainingCamelID := ""
-		if p.island == CamelTrainingIsland {
-			trainingCamelID = p.training.camelID
-			_ = w.leaveCamelTraining(p)
-		}
-		syncMountedCamel(p)
-		w.expireCamels(p)
-		loan := Camel{ID: fmt.Sprintf("race_%0.f_%s", start, id), Name: "Race camel"}
-		if c := ownCamel(p, trainingCamelID); c != nil {
-			loan = *c
-		} else if c := mountedCamel(p); c != nil {
-			loan = *c
-		} else if len(p.profile.Camels) > 0 {
-			loan = p.profile.Camels[0]
-		}
-		camelTraits(&loan)
-		e := &camelRaceEntry{CamelRaceEntryView: CamelRaceEntryView{ID: id, Name: p.profile.CallName, Status: "racing", Checkpoint: 1}, returnTo: camelRaceReturn{
-			x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, island: p.island, inCave: p.inCave, ridingCamel: p.ridingCamel, mountedCamelID: p.mountedCamelID,
-			stamina: p.stamina, sprintExhausted: p.sprintExhausted, fallen: p.fallen, standAt: p.standAt, fallDistance: p.fallDistance,
-		}}
-		p.island, p.inCave, p.y = CamelRaceIsland, false, 0
-		p.x, p.z, p.yaw, p.pitch = 47+float64(i%5)*2, -1.5-float64((i/5)%6)*1.7, math.Pi, 0
-		p.ridingCamel, p.mountedCamelID, p.raceCamel = true, loan.ID, &loan
-		p.posture, p.buildMode, p.editingBuildID, p.bakeryBuildMode, p.editingBakeryFurnitureID = "", false, "", false, ""
-		p.fallen, p.standAt, p.fallDistance = false, 0, 0
-		p.stamina, p.sprintExhausted = loan.Stamina, false
-		resetMovement(p)
-		e.progress = camelRaceAngle(p.x, p.z)
-		r.entries[id] = e
+		w.gatherCamelRacer(r, p, i)
 		w.eventActor("Camel Cove race: follow the ring through each checkpoint. Three laps; the grid opens at the countdown.", "notification", p.x, p.z, id)
 	}
 	r.entrantCount = len(r.entries)
@@ -196,6 +177,51 @@ func (w *World) gatherCamelRace(start float64) {
 		return
 	}
 	w.camelRace = r
+}
+
+func (w *World) gatherCamelRacer(r *camelRace, p *player, i int) {
+	w.leaveRollerCoaster(p)
+	id := p.profile.ID
+	w.clearCookieArenaShots(id)
+	if p.cookieArena != nil {
+		_ = w.leaveCookieArena(p)
+	}
+	if isCamelRaceIsland(p.island) {
+		_ = w.leaveCamelRace(p)
+	}
+	trainingCamelID := ""
+	if p.island == CamelTrainingIsland {
+		if p.training != nil {
+			trainingCamelID = p.training.camelID
+		}
+		_ = w.leaveCamelTraining(p)
+	}
+	syncMountedCamel(p)
+	w.expireCamels(p)
+	loan := Camel{ID: fmt.Sprintf("race_%0.f_%s", r.startAt, id), Name: "Race camel"}
+	if c := ownCamel(p, trainingCamelID); c != nil {
+		loan = *c
+	} else if c := mountedCamel(p); c != nil {
+		loan = *c
+	} else if len(p.profile.Camels) > 0 {
+		loan = p.profile.Camels[0]
+	}
+	camelTraits(&loan)
+	e := &camelRaceEntry{CamelRaceEntryView: CamelRaceEntryView{ID: id, Name: p.profile.CallName, Status: "racing", Checkpoint: 1}, returnTo: camelRaceReturn{
+		x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, island: p.island, inCave: p.inCave, ridingCamel: p.ridingCamel, mountedCamelID: p.mountedCamelID,
+		stamina: p.stamina, sprintExhausted: p.sprintExhausted, fallen: p.fallen, standAt: p.standAt, fallDistance: p.fallDistance,
+	}}
+	p.island, p.inCave, p.y = camelRaceIsland(r), false, 0
+	w.leaveJohnPorkBehind(p)
+	p.x, p.z, p.yaw, p.pitch = 47+float64(i%5)*2, -1.5-float64((i/5)%6)*1.7, math.Pi, 0
+	p.ridingCamel, p.mountedCamelID, p.raceCamel = true, loan.ID, &loan
+	p.posture, p.buildMode, p.editingBuildID, p.bakeryBuildMode, p.editingBakeryFurnitureID = "", false, "", false, ""
+	p.bakerySeatID, p.clubSeatID = "", ""
+	p.fallen, p.standAt, p.fallDistance = false, 0, 0
+	p.stamina, p.sprintExhausted = loan.Stamina, false
+	resetMovement(p)
+	e.progress = camelRaceAngle(p.x, p.z)
+	r.entries[id] = e
 }
 
 func (w *World) returnCamelRacer(p *player, entry *camelRaceEntry) {
@@ -211,7 +237,7 @@ func (w *World) returnCamelRacer(p *player, entry *camelRaceEntry) {
 	p.stamina, p.sprintExhausted = saved.stamina, saved.sprintExhausted
 	p.fallen, p.standAt, p.fallDistance = saved.fallen, saved.standAt, saved.fallDistance
 	resetMovement(p)
-	if p.island != "" {
+	if p.island != "" && !(p.island == nutIslandID(p.profile.ID) && p.profile.NutIsland != nil) {
 		profile, exists := w.profileByID(p.island)
 		if !exists || profile.HomeIsland == nil || p.island != p.profile.ID && !profile.HomeIsland.Visitors {
 			p.x, p.y, p.z, p.island, p.inCave = -227, 0, 20, "", false
@@ -226,7 +252,14 @@ func (w *World) returnCamelRacer(p *player, entry *camelRaceEntry) {
 }
 
 func (w *World) returnAllCamelRacers() {
-	for id, entry := range w.camelRace.entries {
+	w.returnCamelRaceEntrants(w.camelRace)
+}
+
+func (w *World) returnCamelRaceEntrants(r *camelRace) {
+	if r == nil {
+		return
+	}
+	for id, entry := range r.entries {
 		p := w.players[id]
 		if p == nil {
 			p = w.offline[id]
@@ -316,10 +349,13 @@ func (w *World) finishCamelRacer(p *player, entry *camelRaceEntry, at float64) {
 	if entry.Status != "racing" {
 		return
 	}
-	r := w.camelRace
+	r := w.camelRaceForPlayer(p)
+	if r == nil {
+		return
+	}
 	r.finished++
 	entry.Status, entry.Rank, entry.FinishTime = "finished", r.finished, max(0, at-r.startAt)
-	if entry.Rank <= 3 {
+	if !r.casual && entry.Rank <= 3 {
 		coins := []int{200, 100, 50}[entry.Rank-1] * max(0, r.entrantCount-1)
 		before := p.profile.Coins
 		addCoins(p, coins)
@@ -329,16 +365,30 @@ func (w *World) finishCamelRacer(p *player, entry *camelRaceEntry, at float64) {
 	}
 	resetMovement(p)
 	p.sprinting = false
+	if r.casual {
+		w.eventActor(fmt.Sprintf("Friendly camel race: place %d! Three laps completed in %.1f seconds. No prizes or entry fees.", entry.Rank, entry.FinishTime), "notification", p.x, p.z, p.profile.ID)
+		return
+	}
 	w.eventActor(fmt.Sprintf("Camel race: place %d! Earned %d coins and %d CamelCoins. Leave the track whenever you are ready.", entry.Rank, entry.Coins, entry.CamelCoins), "notification", p.x, p.z, p.profile.ID)
 }
 
 func (w *World) tickCamelRace(dt float64) {
+	for _, p := range w.players {
+		w.remindCamelRace(p)
+	}
 	latest := CamelRaceFirstStart + math.Floor((w.time+CamelRaceGather-CamelRaceFirstStart+1e-8)/CamelRaceInterval)*CamelRaceInterval
 	if latest >= CamelRaceFirstStart && latest > w.raceStartHandled {
 		w.raceStartHandled = latest
 		w.gatherCamelRace(latest)
 	}
-	r := w.camelRace
+	w.tickCamelRaceInstance(w.camelRace, dt)
+	for _, r := range w.casualRaces {
+		w.tickCamelRaceInstance(r, dt)
+		w.refreshCasualRace(r)
+	}
+}
+
+func (w *World) tickCamelRaceInstance(r *camelRace, dt float64) {
 	if r == nil {
 		return
 	}
@@ -353,13 +403,17 @@ func (w *World) tickCamelRace(dt float64) {
 			continue
 		}
 		p := w.players[id]
-		if p == nil || p.disconnected || p.island != CamelRaceIsland {
+		if p == nil || p.disconnected || p.island != camelRaceIsland(r) {
 			if entry.Status == "racing" {
 				entry.Status = "dnf"
 			}
 			if p != nil {
 				w.returnCamelRacer(p, entry)
 			}
+			continue
+		}
+		if r.casual && r.startAt == 0 {
+			p.jumpQueued, p.sprinting = false, false
 			continue
 		}
 		if w.time >= r.startAt+CamelRaceTimeout {
@@ -397,31 +451,34 @@ func (w *World) tickCamelRace(dt float64) {
 		r.returnAt = w.time + 20
 	}
 	if r.returnAt > 0 && w.time >= r.returnAt {
-		w.returnAllCamelRacers()
+		w.returnCamelRaceEntrants(r)
 	}
 }
 
 func (w *World) camelRaceSnapshot(id string) CamelRaceView {
 	next := nextCamelRaceStart(w.time)
-	view := CamelRaceView{NextStartAt: next, NextGatherAt: next - CamelRaceGather, RegisteredStartAt: w.raceRegistrations[id], Phase: "registration", Laps: CamelRaceLaps, Entrants: []CamelRaceEntryView{}, Track: camelRaceTrack}
-	if p := w.players[id]; p != nil && p.island == CamelRaceIsland {
+	view := CamelRaceView{Mode: "scheduled", CasualLobbies: w.casualRaceLobbies(), NextStartAt: next, NextGatherAt: next - CamelRaceGather, RegisteredStartAt: w.raceRegistrations[id], Phase: "registration", Laps: CamelRaceLaps, Entrants: []CamelRaceEntryView{}, Track: camelRaceTrack}
+	view.ReminderStartAt, view.ReminderSeconds = camelRaceReminder(w.time)
+	r := w.camelRace
+	if p := w.players[id]; p != nil && isCamelRaceIsland(p.island) {
+		r = w.camelRaceForPlayer(p)
 		view.InArena = true
 		if p.raceCamel != nil {
 			c := *p.raceCamel
 			view.OwnCamel = &c
 		}
 	}
-	r := w.camelRace
 	if r == nil {
 		return view
 	}
 	view.StartAt, view.GatherAt, view.EndsAt, view.EntrantCount = r.startAt, r.startAt-CamelRaceGather, r.startAt+CamelRaceTimeout, r.entrantCount
-	view.Phase = "racing"
-	if w.time < r.startAt {
-		view.Phase = "gathering"
-	}
-	if r.returnAt != 0 {
-		view.Phase = "finished"
+	view.Phase = camelRacePhase(r, w.time)
+	if r.casual {
+		view.Mode, view.LobbyID, view.HostID = "casual", casualRaceID(r), r.hostID
+		view.GatherAt = 0
+		if r.startAt == 0 {
+			view.EndsAt = 0
+		}
 	}
 	entries := make([]*camelRaceEntry, 0, len(r.entries))
 	for _, entry := range r.entries {
@@ -447,7 +504,7 @@ func (w *World) camelRaceSnapshot(id string) CamelRaceView {
 }
 
 func (w *World) decorateCamelRaceSnapshot(viewer *player, out *Snapshot) {
-	if viewer == nil || viewer.island != CamelRaceIsland {
+	if viewer == nil || !isCamelRaceIsland(viewer.island) {
 		return
 	}
 	out.Me.Area, out.Me.Zone = "camel race", "Camel Cove ring"

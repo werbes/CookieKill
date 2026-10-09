@@ -277,7 +277,12 @@ func TestChefUsesTheSameTimedPaidProductionWithoutPersonalInventory(t *testing.T
 		t.Fatal("chef bypassed the mixer timer")
 	}
 	advance(w, 7)
-	if p.profile.Production["bakery_cooling_table"].Output["sugar"] < 1 || p.profile.BakeryDisplay["sugar"] != 0 || p.profile.BagSlots != bag || p.profile.Hotbar != hotbar {
+	oven := p.profile.Production["bakery_oven"]
+	if oven.Job == nil || oven.Job.Amount != 40 || oven.Job.Total != 200 || p.profile.Production["bakery_cooling_table"].Output["sugar"] != 0 {
+		t.Fatal("chef did not load the complete batch using the per-cookie oven time")
+	}
+	advance(w, 200)
+	if p.profile.Production["bakery_cooling_table"].Output["sugar"] != 40 || p.profile.BakeryDisplay["sugar"] != 0 || p.profile.BagSlots != bag || p.profile.Hotbar != hotbar {
 		t.Fatal("chef failed to bake through table output or used the player's bag")
 	}
 	total := p.profile.BakeryPantry["dough"] + p.profile.BakeryDisplay["sugar"] + p.profile.Production["bakery_cooling_table"].Output["sugar"] + p.profile.Production["bakery_mixer"].Output["dough"]

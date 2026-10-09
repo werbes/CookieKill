@@ -99,7 +99,15 @@ func johnSanctuary(p *player) bool {
 }
 
 func (w *World) johnEligible(p *player) bool {
-	return p != nil && !p.disconnected && p.health > 0 && p.island != CamelRaceIsland && p.island != CamelTrainingIsland && !isCookieArena(p.island) && !johnSanctuary(p) && !w.active(p, "spawn_shield") && !w.johnIgnored[p.profile.ID] && bakedFoodCount(p) > 0
+	return p != nil && p.island == "" && p.coaster == nil && !p.disconnected && p.health > 0 && !johnSanctuary(p) && !w.active(p, "spawn_shield") && !w.johnIgnored[p.profile.ID] && bakedFoodCount(p) > 0
+}
+
+// Home and activity portals, and the coaster, leave John behind. Escaping does
+// not count as having lost the player's cookies for the night.
+func (w *World) leaveJohnPorkBehind(p *player) {
+	if p != nil && (p.island != "" || p.coaster != nil) && w.johnPork != nil && (w.johnPork.target == p.profile.ID || w.johnPork.actor.island != "") {
+		w.johnPork = nil
+	}
 }
 
 func (w *World) richestJohnTarget() *player {
@@ -123,8 +131,8 @@ func (w *World) tickJohnPork(dt float64) {
 		w.johnIgnored = map[string]bool{}
 	}
 	j := w.johnPork
-	if j != nil && (!w.johnEligible(w.players[j.target]) || johnSanctuary(&j.actor) || j.actor.island == CamelRaceIsland || j.actor.island == CamelTrainingIsland) {
-		if p := w.players[j.target]; p != nil && !johnSanctuary(p) && p.island != CamelRaceIsland && p.island != CamelTrainingIsland && bakedFoodCount(p) == 0 {
+	if j != nil && (!w.johnEligible(w.players[j.target]) || johnSanctuary(&j.actor) || j.actor.island != "") {
+		if p := w.players[j.target]; p != nil && p.island == "" && p.coaster == nil && !johnSanctuary(p) && bakedFoodCount(p) == 0 {
 			w.johnIgnored[j.target] = true
 		}
 		w.johnPork = nil
@@ -140,7 +148,7 @@ func (w *World) tickJohnPork(dt float64) {
 		w.eventActor("John Pork is following "+p.profile.CallName+" tonight.", "john_pork", p.x, p.z, p.profile.ID)
 	}
 	target := w.players[j.target]
-	// A real portal/respawn is the only time John changes worlds or relocates.
+	// A mainland portal/respawn is the only time John relocates.
 	// Walking into a cave remains a physical journey through its mouth/stairs.
 	if target.island != j.lastIsland || distance(target.x, target.z, j.lastTarget.X, j.lastTarget.Z) > 20 {
 		j.travelUntil = w.time + 2
@@ -192,15 +200,11 @@ func (w *World) tickJohnPork(dt float64) {
 }
 
 func (w *World) johnCanEat(j, target *player) bool {
-	if !w.johnEligible(target) || johnSanctuary(j) || j.island == CamelRaceIsland || j.island == CamelTrainingIsland || j.island != target.island || j.inCave != target.inCave || math.Hypot(distance(j.x, j.z, target.x, target.z), groundY(j)-playerY(target)) > 1+1e-8 {
+	if !w.johnEligible(target) || j.island != "" || johnSanctuary(j) || j.inCave != target.inCave || math.Hypot(distance(j.x, j.z, target.x, target.z), groundY(j)-playerY(target)) > 1+1e-8 {
 		return false
 	}
-	if j.island == "" {
-		_, hit := w.solidShotHit(j.x, groundY(j)+1, j.z, target.x, playerY(target)+1, target.z)
-		return !hit
-	}
-	_, ok := w.johnSegment(*j, Point{target.x, target.z})
-	return ok
+	_, hit := w.solidShotHit(j.x, groundY(j)+1, j.z, target.x, playerY(target)+1, target.z)
+	return !hit
 }
 
 func (w *World) spawnJohnNear(j *johnPork, target *player) bool {
@@ -210,8 +214,6 @@ func (w *World) spawnJohnNear(j *johnPork, target *player) bool {
 	radii := []float64{70, 50, 30, 18, 12, 9, 6, 4, 2.5}
 	if target.inCave {
 		radii = []float64{12, 9, 6, 4, 2.5}
-	} else if target.island != "" {
-		radii = []float64{18, 12, 9, 6, 4, 2.5}
 	}
 	for _, radius := range radii {
 		angles := 16
@@ -239,6 +241,9 @@ func (w *World) spawnJohnNear(j *johnPork, target *player) bool {
 }
 
 func (w *World) johnPorkSnapshot(viewer *player) *JohnPorkView {
+	if viewer != nil && viewer.island != "" {
+		return nil
+	}
 	if dayCycleAt(w.time).Phase != "night" {
 		if viewer != nil && (viewer.island != "" || viewer.inCave) {
 			return nil
@@ -246,7 +251,7 @@ func (w *World) johnPorkSnapshot(viewer *player) *JohnPorkView {
 		return &JohnPorkView{ID: "john_pork", X: JohnBedX, Y: JohnBedY, Z: JohnBedZ, Yaw: JohnBedYaw, Sleeping: true}
 	}
 	j := w.johnPork
-	if j == nil || j.actor.profile.ID == "" || w.time < j.travelUntil || viewer != nil && (viewer.island != j.actor.island || viewer.inCave != j.actor.inCave) {
+	if j == nil || j.actor.island != "" || j.actor.profile.ID == "" || !w.johnEligible(w.players[j.target]) || w.time < j.travelUntil || viewer != nil && (viewer.island != j.actor.island || viewer.inCave != j.actor.inCave) {
 		return nil
 	}
 	p := &j.actor

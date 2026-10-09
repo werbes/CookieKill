@@ -106,7 +106,7 @@ func mountedCamel(p *player) *Camel {
 	if !p.ridingCamel {
 		return nil
 	}
-	if p.island == CamelRaceIsland && p.raceCamel != nil {
+	if isCamelRaceIsland(p.island) && p.raceCamel != nil {
 		return p.raceCamel
 	}
 	if p.island == CamelTrainingIsland && p.training != nil {
@@ -121,7 +121,7 @@ func mountedCamel(p *player) *Camel {
 }
 
 func syncMountedCamel(p *player) {
-	if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+	if isCamelRaceIsland(p.island) || p.island == CamelTrainingIsland || p.coaster != nil {
 		return
 	}
 	if c := mountedCamel(p); c != nil {
@@ -149,7 +149,7 @@ func (w *World) expireCamels(p *player) {
 }
 
 func (w *World) updateMountedCamel(p *player) {
-	if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+	if isCamelRaceIsland(p.island) || p.island == CamelTrainingIsland || p.coaster != nil {
 		return
 	}
 	// Also supports an in-memory legacy companion during a rolling migration.

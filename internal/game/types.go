@@ -61,6 +61,7 @@ type Home struct {
 
 // Inventory is a derived compatibility view; bag and hotbar slots own items.
 type Profile struct {
+	NutIsland              *NutIsland                    `json:"nutIsland,omitempty"`
 	ID                     string                        `json:"id"`
 	Name                   string                        `json:"name"`
 	Coins                  int                           `json:"coins"`
@@ -294,6 +295,11 @@ type Recipe struct {
 }
 
 type Snapshot struct {
+	NutIsland              *NutIslandView          `json:"nutIsland"`
+	Rodents                []RodentView            `json:"rodents"`
+	RodentCatalog          []RodentSpecies         `json:"rodentCatalog"`
+	RodentWorld            RodentWorldView         `json:"rodentWorld"`
+	RollerCoaster          RollerCoasterView       `json:"rollerCoaster"`
 	CookieArena            CookieArenaView         `json:"cookieArena"`
 	CookiePractice         *CookiePracticeView     `json:"cookiePractice,omitempty"`
 	CamelTraining          CamelTrainingView       `json:"camelTraining"`
@@ -324,6 +330,7 @@ type Snapshot struct {
 }
 
 type player struct {
+	coaster                                 *rollerCoasterRide
 	disconnected                            bool
 	profile                                 Profile
 	island, posture                         string
@@ -334,6 +341,8 @@ type player struct {
 	inCave                                  bool
 	homeOffer, friendsTeleport, ridingCamel bool
 	mountedCamelID                          string
+	raceReminderStart                       float64
+	raceReminder                            Event
 	raceCamel                               *Camel
 	training                                *camelTraining
 	cookieArena                             *cookieArenaSession
@@ -358,26 +367,29 @@ type player struct {
 }
 
 type World struct {
-	camelRace         *camelRace
-	raceRegistrations map[string]float64
-	raceStartHandled  float64
-	johnPork          *johnPork
-	johnIgnored       map[string]bool
-	time              float64
-	sequence          uint64
-	players           map[string]*player
-	offline           map[string]*player
-	profiles          map[string]Profile
-	nodes             []*Node
-	drops             map[string]groundDrop
-	dropSequence      uint64
-	animals           []*Animal
-	projectiles       []*Projectile
-	events            []Event
-	layout            Layout
-	colliders         []Collider
-	propertyColliders []Collider
-	now               func() time.Time
-	clubRandom        func() (int, error)
-	fallRandom        func() int
+	rodents            *rodentSimulation
+	coasterNextBoardAt float64
+	casualRaces        map[string]*camelRace
+	camelRace          *camelRace
+	raceRegistrations  map[string]float64
+	raceStartHandled   float64
+	johnPork           *johnPork
+	johnIgnored        map[string]bool
+	time               float64
+	sequence           uint64
+	players            map[string]*player
+	offline            map[string]*player
+	profiles           map[string]Profile
+	nodes              []*Node
+	drops              map[string]groundDrop
+	dropSequence       uint64
+	animals            []*Animal
+	projectiles        []*Projectile
+	events             []Event
+	layout             Layout
+	colliders          []Collider
+	propertyColliders  []Collider
+	now                func() time.Time
+	clubRandom         func() (int, error)
+	fallRandom         func() int
 }

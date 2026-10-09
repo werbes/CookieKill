@@ -45,6 +45,7 @@ type BuildRecipe struct {
 	Name     string         `json:"name"`
 	Category string         `json:"category"`
 	Cost     map[string]int `json:"cost"`
+	CoinCost int            `json:"coinCost,omitempty"`
 	Width    float64        `json:"width"`
 	Depth    float64        `json:"depth"`
 	Height   float64        `json:"height"`
@@ -57,27 +58,27 @@ const (
 )
 
 var buildRecipes = []BuildRecipe{
-	{"wall", "Wall", "building", map[string]int{"wood": 4, "stone": 2}, 4, .3, 3},
-	{"floor", "Floor", "building", map[string]int{"wood": 4}, 4, 4, .2},
-	{"roof", "Roof", "building", map[string]int{"wood": 5, "stick": 2}, 4, 4, .5},
-	{"stairs", "Stairs", "building", map[string]int{"wood": 6, "stone": 2}, 2, 4, 3},
-	{"window", "Window wall", "building", map[string]int{"wood": 3, "stone": 2}, 4, .3, 3},
-	{"door", "Door", "building", map[string]int{"wood": 3, "stick": 2}, 1.4, .25, 2.6},
-	{"table", "Table", "decor", map[string]int{"wood": 4}, 2.4, 1.4, 1},
-	{"chair", "Chair", "decor", map[string]int{"wood": 2, "stick": 2}, 1, 1, 1.3},
-	{"bed", "Bed", "decor", map[string]int{"wood": 5, "stick": 3}, 1.8, 2.8, .8},
-	{"plant", "Potted plant", "decor", map[string]int{"stone": 2, "berry": 1}, .7, .7, 1.1},
-	{"lantern", "Lantern", "decor", map[string]int{"stone": 2, "stick": 2}, .5, .5, .8},
-	{"chest", "Shared materials chest", "decor", map[string]int{"wood": 5, "stone": 1}, 1.7, 1, 1},
-	{"storage_chest", "Personal storage chest", "decor", map[string]int{"wood": 6, "stone": 2}, 1.8, 1.1, 1},
-	{"tree", "Garden tree", "garden", map[string]int{"wood": 2, "nut": 1}, 2.4, 2.4, 4},
-	{"flowers", "Flower bed", "garden", map[string]int{"berry": 2, "stick": 1}, 1.8, 1.2, .6},
-	{"mixer", "Mixer", "appliances", map[string]int{"stone": 8, "wood": 4}, 1.5, 1.2, 1.6},
-	{"oven", "Oven", "appliances", map[string]int{"stone": 12, "wood": 4}, 2, 1.7, 2},
-	{"garden_bed", "Nut and berry garden", "appliances", map[string]int{"wood": 4, "stone": 3}, 3, 2, .6},
-	{"pond", "Adoption pond", "appliances", map[string]int{"stone": 14, "wood": 4}, 5, 4, .3},
-	{"camel_pen", "Fenced camel enclosure", "appliances", map[string]int{"wood": 24, "stick": 12, "stone": 6}, 8, 8, 1.5},
-	{"fire", "Campfire", "appliances", map[string]int{"wood": 2, "stick": 2, "stone": 3}, 1.4, 1.4, .7},
+	{"wall", "Wall", "building", map[string]int{"wood": 4, "stone": 2}, 0, 4, .3, 3},
+	{"floor", "Floor", "building", map[string]int{"wood": 4}, 0, 4, 4, .2},
+	{"roof", "Roof", "building", map[string]int{"wood": 5, "stick": 2}, 0, 4, 4, .5},
+	{"stairs", "Stairs", "building", map[string]int{"wood": 6, "stone": 2}, 0, 2, 4, 3},
+	{"window", "Window wall", "building", map[string]int{"wood": 3, "stone": 2}, 0, 4, .3, 3},
+	{"door", "Door", "building", map[string]int{"wood": 3, "stick": 2}, 0, 1.4, .25, 2.6},
+	{"table", "Table", "decor", nil, 30, 2.4, 1.4, 1},
+	{"chair", "Chair", "decor", nil, 12, 1, 1, 1.3},
+	{"bed", "Bed", "decor", nil, 45, 1.8, 2.8, .8},
+	{"plant", "Potted plant", "decor", nil, 15, .7, .7, 1.1},
+	{"lantern", "Lantern", "decor", nil, 25, .5, .5, .8},
+	{"chest", "Shared materials chest", "decor", nil, 40, 1.7, 1, 1},
+	{"storage_chest", "Personal storage chest", "decor", nil, 50, 1.8, 1.1, 1},
+	{"tree", "Garden tree", "garden", nil, 25, 2.4, 2.4, 4},
+	{"flowers", "Flower bed", "garden", nil, 15, 1.8, 1.2, .6},
+	{"mixer", "Mixer", "appliances", nil, 90, 1.5, 1.2, 1.6},
+	{"oven", "Oven", "appliances", nil, 120, 2, 1.7, 2},
+	{"garden_bed", "Nut and berry garden", "appliances", nil, 35, 3, 2, .6},
+	{"pond", "Adoption pond", "appliances", nil, 100, 5, 4, .3},
+	{"camel_pen", "Fenced camel enclosure", "appliances", nil, 150, 8, 8, 1.5},
+	{"fire", "Campfire", "appliances", nil, 20, 1.4, 1.4, .7},
 }
 
 func buildRecipeFor(id string) (BuildRecipe, bool) {
@@ -310,10 +311,12 @@ func (w *World) saveIsland(h *Island) {
 	}
 }
 func (w *World) setIsland(p *player, id string) {
+	w.leaveRollerCoaster(p)
 	p.bakeryBuildMode, p.editingBakeryFurnitureID = false, ""
 	p.buildMode, p.editingBuildID = false, ""
 	w.updateMountedCamel(p)
 	p.island = id
+	w.leaveJohnPorkBehind(p)
 	p.inCave = false
 	p.posture = ""
 	p.y = 0
@@ -508,6 +511,11 @@ func (w *World) islandAction(p *player, a Action) error {
 				}
 				color = ""
 			}
+		} else if r.CoinCost > 0 {
+			if p.profile.Coins < r.CoinCost {
+				return errors.New("You need more coins to place this furnishing.")
+			}
+			p.profile.Coins -= r.CoinCost
 		} else if err := spendBuildMaterials(p, h, r.Cost); err != nil {
 			return err
 		}
@@ -786,6 +794,9 @@ func objectBlocks(o BuildObject, r BuildRecipe, x, y, z, radius float64) bool {
 }
 
 func (w *World) islandBlocked(p *player, x, z float64) bool {
+	if isNutIsland(p.island) {
+		return w.nutIslandBlocked(p, x, z)
+	}
 	if isCookieArena(p.island) {
 		return cookieArenaBlocked(p, x, z)
 	}
@@ -803,6 +814,9 @@ func (w *World) islandBlocked(p *player, x, z float64) bool {
 }
 
 func (w *World) islandGround(p *player) float64 {
+	if isNutIsland(p.island) {
+		return 0
+	}
 	if p.island == CookiePracticeIsland {
 		return cookiePracticeGround(p, p.x, p.z)
 	}

@@ -14,10 +14,19 @@ func (w *World) Act(id string, a Action) (err error) {
 	if !ok {
 		return errors.New("Join the game before taking an action.")
 	}
+	if validChoice(a.Action, "coaster_board", "coaster_leave") {
+		return w.rollerCoasterAction(p, a)
+	}
+	if p.coaster != nil {
+		return errors.New("Return to the roller coaster station before taking other actions.")
+	}
+	if validChoice(a.Action, "race_casual_host", "race_casual_join", "race_casual_start") {
+		return w.casualCamelRaceAction(p, a)
+	}
 	if a.Action == "race_leave" {
 		return w.leaveCamelRace(p)
 	}
-	if p.island == CamelRaceIsland {
+	if isCamelRaceIsland(p.island) {
 		return errors.New("Finish or leave the camel race before taking other actions.")
 	}
 	if p.island == CamelTrainingIsland && !validChoice(a.Action, "training_leave", "training_select", "feed_camel") {
@@ -77,6 +86,10 @@ func (w *World) Act(id string, a Action) (err error) {
 		return w.camelCompanionAction(p, a)
 	case "upgrade_island", "upgrade_pond":
 		return w.homeUpgradeAction(p, a)
+	case "nut_island_unlock", "teleport_nut_island", "nut_island_leave", "rodent_release", "nut_cage_buy", "nut_pet_cage", "nut_pet_free", "nut_pet_pack":
+		return w.nutIslandAction(p, a)
+	case "catch_rodent":
+		return w.catchRodent(p, a.Target)
 	case "race_enter":
 		return w.enterCamelRace(p, a.Target)
 	case "sell_flower", "buy_bouquet", "give_bouquet":
@@ -241,9 +254,9 @@ func (w *World) throw(p *player, item string) error {
 	if item == "" {
 		item = p.profile.Selected
 	}
-	r, ok := recipeFor(item)
+	r, ok := throwableRecipe(item)
 	if !ok {
-		return errors.New("Choose a cookie to throw.")
+		return errors.New("Choose a cookie or cake to throw.")
 	}
 	if p.cooldowns["throw"] > w.time {
 		return errors.New("Your next throw is not ready yet.")
@@ -315,6 +328,9 @@ func (w *World) eat(p *player, item string) error {
 }
 
 func (w *World) interact(p *player, target string) error {
+	if target == "desert_coaster" {
+		return w.boardRollerCoaster(p, target)
+	}
 	if validChoice(target, "tree_golden_cookie", "tree_silver_cookie") {
 		return w.cookieArenaAction(p, Action{Action: "cookie_arena_enter", Target: target})
 	}
@@ -357,6 +373,15 @@ func (w *World) interact(p *player, target string) error {
 			}
 			return w.mountCamel(p, target)
 		}
+	}
+	if target == "nut_island_portal" {
+		return w.nutIslandAction(p, Action{Action: "nut_island_leave"})
+	}
+	if target == "green_lollipop" {
+		if p.profile.NutIsland == nil {
+			return w.nutIslandAction(p, Action{Action: "nut_island_unlock", Target: target})
+		}
+		return w.nutIslandAction(p, Action{Action: "teleport_nut_island"})
 	}
 	if target == "island_portal" {
 		return w.islandAction(p, Action{Action: "teleport_cave"})
@@ -449,6 +474,7 @@ func (w *World) interact(p *player, target string) error {
 		}
 		n.Available = false
 		n.readyAt = w.time + n.respawn
+		w.rodentGather(p, n)
 		p.cooldowns["interact"] = w.time + .4
 		return nil
 	}

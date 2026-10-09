@@ -101,7 +101,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
     assert.equal(own().coins,0);assert.equal(own().camelCoins,50);assert.deepEqual(snapshot.me.camels[0],parked,'race did not move owned camel parking');
     await shot('race-finish-prize');await page.keyboard.press('r');await page.locator('#modal').waitFor({state:'visible'});
     assert.match(await page.locator('#modal-content').innerText(),/Finished in place 1/);
-    await page.getByRole('button',{name:'Return to the beach'}).click();await until(()=>snapshot.me.island==='','return to cliff');
+    await page.getByRole('button',{name:'Return to previous location'}).click();await until(()=>snapshot.me.island==='','return to cliff');
     assert.deepEqual({x:snapshot.me.x,z:snapshot.me.z},origin);assert.equal(snapshot.me.mountedCamelId,camelID);assert.equal(snapshot.me.ridingCamel,true);
     await resume();await until(()=>page.evaluate(()=>{const d=window.__raceDebug();return !d.ringVisible&&d.worldVisible&&!d.homeVisible;}),'mainland restored');await shot('returned-with-owned-camel');
     assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);assert.deepEqual(actionErrors,[]);

@@ -39,6 +39,13 @@ jobs:
       - run: node --check web/john-hut-scenery.js
       - run: node --check web/camel-race-scene.js
       - run: node --check web/camel-race-panels.js
+      - run: node --check web/camel-race-state.js
+      - run: node --check web/roller-coaster-scene.js
+      - run: node --check web/roller-coaster-panels.js
+      - run: node --check web/rodents-scene.js
+      - run: node --check web/rodents-panels.js
+      - run: node --check web/nut-island-scene.js
+      - run: node --check web/nut-island-panels.js
       - run: node --check web/camel-training-panels.js
       - run: node --check web/camel-training-scene.js
       - run: node --check web/achievement-panels.js
@@ -69,12 +76,15 @@ jobs:
       - run: node --test scripts/production-panels.test.cjs scripts/production-scenery.test.cjs scripts/roof-scenery.test.cjs
       - run: node --test scripts/night-scene.test.cjs
       - run: node --test scripts/camel-race-ui.test.cjs scripts/town.test.cjs
+      - run: node --test scripts/roller-coaster-ui.test.cjs
+      - run: node --test scripts/rodents.test.cjs
       - run: node --test scripts/camel-companions-ui.test.cjs scripts/ambient-audio.test.cjs
       - run: node --test scripts/cookie-activities.test.cjs
       - run: node --test scripts/camel-training-ui.test.cjs scripts/achievements.test.cjs scripts/bouquets.test.cjs
       - run: node --test scripts/home-upgrades.test.cjs
       - run: node --test scripts/motion.test.cjs scripts/scenery-batches.test.cjs
       - run: node scripts/island-panels.test.cjs
+      - run: node --test scripts/island-building-panels.test.cjs scripts/teleport-ui.test.cjs
   windows:
     runs-on: windows-latest
     steps:

@@ -54,11 +54,12 @@ func (w *World) step(dt float64) {
 	w.tickCookieArenas()
 	w.tickCamelRace(dt)
 	w.tickCamelTraining(dt)
+	w.tickRollerCoaster()
 	for _, p := range w.players {
 		if !p.disconnected {
 			awardAchievements(&p.profile)
 		}
-		if p.island == CamelRaceIsland || p.island == CamelTrainingIsland {
+		if isCamelRaceIsland(p.island) || p.island == CamelTrainingIsland || p.coaster != nil {
 			for key, until := range p.buffs {
 				if until <= w.time {
 					delete(p.buffs, key)
@@ -186,6 +187,8 @@ func (w *World) step(dt float64) {
 	w.tickJohnPork(dt)
 	w.tickCamelCompanions(dt)
 	w.moveAnimals(dt)
+	w.tickRodents(dt)
+	w.tickNutIslandPets(dt)
 	w.moveProjectiles(dt)
 }
 
@@ -391,7 +394,7 @@ func (w *World) moveProjectiles(dt float64) {
 			return false
 		})
 		for id, p := range w.players {
-			if id == shot.Owner || p.island != "" {
+			if id == shot.Owner || p.island != "" || p.coaster != nil {
 				continue
 			}
 			t, coins, hit := playerHit(shot, nx, ny, nz, p)
@@ -438,7 +441,16 @@ func (w *World) moveProjectiles(dt float64) {
 			hitAnimal = nil
 			hitDummy = true
 		}
+		hitRodentID := ""
+		if rodentT, id, hit := w.rodentShotHit(shot, nx, ny, nz); hit && rodentT < nearest {
+			hitRodentID = id
+			blocked, hitDummy, hitHome, hitPlayer, hitAnimal = false, false, "", nil, nil
+		}
 		owner := w.players[shot.Owner]
+		if hitRodentID != "" {
+			w.hitRodent(shot, hitRodentID)
+			continue
+		}
 		if blocked {
 			if hitHome != "" && hitHome != shot.Owner {
 				w.damageHome(hitHome, shot.damage)
@@ -447,6 +459,9 @@ func (w *World) moveProjectiles(dt float64) {
 		}
 		if hitPlayer != nil {
 			if !w.active(hitPlayer, "spawn_shield") && !w.insideSafe(hitPlayer.x, hitPlayer.z) {
+				if w.hitClubCakePlayer(hitPlayer, shot.Item) {
+					continue
+				}
 				damage := shot.damage
 				if shot.super && owner != nil && w.active(owner, "superstrength") {
 					damage = 1000
@@ -479,7 +494,9 @@ func (w *World) moveProjectiles(dt float64) {
 			continue
 		}
 		if hitAnimal != nil {
-			w.damageAnimal(owner, hitAnimal, shot.damage)
+			if _, cake := clubCakeFor(shot.Item); !cake {
+				w.damageAnimal(owner, hitAnimal, shot.damage)
+			}
 			continue
 		}
 		if hitDummy {
@@ -506,7 +523,7 @@ func (w *World) damagePlayer(killer, victim *player, damage float64, cause strin
 	if victim.island == CookieRingIsland {
 		return w.damageCookieRing(killer, victim, damage, 1)
 	}
-	if victim.island != "" || w.active(victim, "spawn_shield") || w.insideSafe(victim.x, victim.z) {
+	if victim.coaster != nil || victim.island != "" || w.active(victim, "spawn_shield") || w.insideSafe(victim.x, victim.z) {
 		return false
 	}
 	victim.health -= damage

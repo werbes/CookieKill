@@ -154,6 +154,7 @@ func (w *World) camelTrainingAction(p *player, a Action) error {
 	syncMountedCamel(p)
 	p.training = &camelTraining{camelID: c.ID, returnTo: camelRaceReturn{x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, island: p.island, inCave: p.inCave, ridingCamel: p.ridingCamel, mountedCamelID: p.mountedCamelID, stamina: p.stamina, sprintExhausted: p.sprintExhausted, fallen: p.fallen, standAt: p.standAt, fallDistance: p.fallDistance}}
 	p.island, p.inCave, p.y = CamelTrainingIsland, false, 0
+	w.leaveJohnPorkBehind(p)
 	p.ridingCamel, p.mountedCamelID = true, c.ID
 	p.camelCalls = nil
 	p.posture, p.buildMode, p.editingBuildID, p.bakeryBuildMode, p.editingBakeryFurnitureID = "", false, "", false, ""
