@@ -474,9 +474,6 @@ func (w *World) productionOwnerProfile(id string) *Profile {
 	if p := w.players[id]; p != nil {
 		return &p.profile
 	}
-	if p := w.offline[id]; p != nil {
-		return &p.profile
-	}
 	if profile, ok := w.profiles[id]; ok {
 		return &profile
 	}

@@ -271,12 +271,80 @@ func TestCapacityAndReplacementAreCheckedByOwnerAfterHandshake(t *testing.T) {
 	}
 	s.submit(context.Background(), detachCommand{id: "player-0", peer: first})
 	view := inspectTestOwner(t, s, "player-0")
-	if view.players != maxPlayers || view.departed != 0 || view.snapshot.Me.BagSlots[0].Count != 0 {
+	if view.players != maxPlayers || view.snapshot.Me.BagSlots[0].Count != 0 {
 		t.Fatal("old connection disconnected or modified its replacement")
 	}
 	applyTestCommand(t, s, "player-0", replacement, nil, &game.Action{Action: "move_item", From: "hotbar", FromSlot: 0, To: "bag", ToSlot: 0})
 	if inspectTestOwner(t, s, "player-0").snapshot.Me.BagSlots[0].Count != 10 {
 		t.Fatal("replacement cannot act")
+	}
+}
+
+func TestDetachUnloadsPlayerWithoutSimulationTicksAndKeepsProgress(t *testing.T) {
+	for _, stopped := range []bool{false, true} {
+		name := "before Run"
+		if stopped {
+			name = "after Run stops"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := coordinatorServer(t, nil, serverTiming{10 * time.Millisecond, 20 * time.Millisecond, time.Hour})
+			p := attachTestPeer(t, s, "alice")
+			if stopped {
+				cancel, done := startTestRun(t, s)
+				waitCoordinator(t, "simulation did not start", func() bool {
+					return inspectTestOwner(t, s, "alice").snapshot.Time > 0
+				})
+				cancel()
+				<-done
+			}
+			applyTestCommand(t, s, "alice", p, &game.Input{Yaw: 2.1, X: 1, Jump: true}, nil)
+			applyTestCommand(t, s, "alice", p, nil, &game.Action{Action: "move_item", From: "hotbar", FromSlot: 0, To: "bag", ToSlot: 0})
+			if err := s.submit(context.Background(), detachCommand{id: "alice", peer: p}); err != nil {
+				t.Fatal(err)
+			}
+			view := inspectTestOwner(t, s, "alice")
+			if view.players != 0 || view.snapshot.Me.ID != "" || len(view.snapshot.Players) != 0 {
+				t.Fatal("disconnect retained a live player without simulation ticks")
+			}
+			if err := s.Save(); err != nil {
+				t.Fatal(err)
+			}
+			saved, err := s.store.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved["alice"].BagSlots[0].Count != 10 || saved["alice"].Hotbar[0].Count != 0 {
+				t.Fatal("unloading the player lost its latest account progress")
+			}
+			reconnected := attachTestPeer(t, s, "alice")
+			fresh := (<-reconnected.out).snapshot
+			if fresh == nil || fresh.Layout == nil || fresh.Me.Yaw != 0 || fresh.Me.BagSlots[0].Count != 10 {
+				t.Fatal("reconnect did not create a fresh runtime from saved progress")
+			}
+		})
+	}
+}
+
+func TestReplacementRebuildsPlayerAndIgnoresLateDetach(t *testing.T) {
+	s := coordinatorServer(t, nil, serverTiming{10 * time.Millisecond, 20 * time.Millisecond, time.Hour})
+	old := attachTestPeer(t, s, "alice")
+	applyTestCommand(t, s, "alice", old, &game.Input{Yaw: 2.1, X: 1, Jump: true}, nil)
+	applyTestCommand(t, s, "alice", old, nil, &game.Action{Action: "move_item", From: "hotbar", FromSlot: 0, To: "bag", ToSlot: 0})
+	replacement := attachTestPeer(t, s, "alice")
+	fresh := (<-replacement.out).snapshot
+	if fresh == nil || fresh.Layout == nil || fresh.Me.Yaw != 0 || fresh.Me.BagSlots[0].Count != 10 {
+		t.Fatal("socket replacement reused transient state or lost account progress")
+	}
+	if err := s.submit(context.Background(), detachCommand{id: "alice", peer: old}); err != nil {
+		t.Fatal(err)
+	}
+	view := inspectTestOwner(t, s, "alice")
+	if view.players != 1 || view.snapshot.Me.ID != "alice" {
+		t.Fatal("late detach removed the replacement session")
+	}
+	applyTestCommand(t, s, "alice", replacement, &game.Input{Yaw: 1.2}, nil)
+	if got := inspectTestOwner(t, s, "alice").snapshot.Me.Yaw; got != 1.2 {
+		t.Fatalf("replacement cannot receive input: yaw=%v", got)
 	}
 }
 
@@ -313,7 +381,7 @@ func TestTickerJitterKeepsExactStepsAndTenHertzSnapshots(t *testing.T) {
 	p := &peer{out: make(chan outbound, 2), baselineReady: make(chan struct{})}
 	close(p.baselineReady)
 	start := time.Unix(1000, 0)
-	c := &coordinator{world: w, peers: map[string]*peer{"alice": p}, departed: map[string]time.Time{}, timing: serverTiming{50 * time.Millisecond, 100 * time.Millisecond, time.Hour}, lastTick: start, nextSnapshot: start.Add(100 * time.Millisecond), nextSave: start.Add(time.Hour)}
+	c := &coordinator{world: w, peers: map[string]*peer{"alice": p}, timing: serverTiming{50 * time.Millisecond, 100 * time.Millisecond, time.Hour}, lastTick: start, nextSnapshot: start.Add(100 * time.Millisecond), nextSave: start.Add(time.Hour)}
 	frames := 0
 	for tick := 1; tick <= 40; tick++ {
 		jitter := time.Duration(100-tick%3*100) * time.Nanosecond

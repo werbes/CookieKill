@@ -440,10 +440,20 @@ func (w *World) islandAction(p *player, a Action) error {
 						w.setIsland(visitor, "")
 					}
 				}
-				for _, visitor := range w.offline {
-					if visitor.island == p.profile.ID && visitor.profile.ID != p.profile.ID {
-						w.setIsland(visitor, "")
+				// Offline visitors have no runtime player. Return their parked
+				// camels through the saved profile so closing an island cannot
+				// strand an animal behind its visitor restriction.
+				for id, profile := range w.profiles {
+					if id == p.profile.ID || w.players[id] != nil {
+						continue
 					}
+					for i := range profile.Camels {
+						c := &profile.Camels[i]
+						if c.Island == p.profile.ID {
+							c.X, c.Y, c.Z, c.Island, c.InCave = 120, 0, -70, "", false
+						}
+					}
+					w.profiles[id] = profile
 				}
 			}
 		} else {

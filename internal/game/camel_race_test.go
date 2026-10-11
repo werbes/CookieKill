@@ -242,6 +242,7 @@ func TestCamelRaceDisconnectTimeoutAndOfflineRegistrations(t *testing.T) {
 	}
 	w.Leave("one")
 	w.Join("one", "Returning racer")
+	p = w.players["one"]
 	if p.island == CamelRaceIsland || p.profile.CamelCoins != 0 {
 		t.Fatal("reconnect resumed or paid an abandoned race")
 	}
@@ -254,6 +255,7 @@ func TestCamelRaceDisconnectTimeoutAndOfflineRegistrations(t *testing.T) {
 	if players[2].island != "" || w.camelRace.entries[players[2].profile.ID].Status != "dnf" {
 		t.Fatal("race timeout left a racer stranded")
 	}
+	p.x, p.z = -227, 20
 	mustAct(t, w, Action{Action: "race_enter", Target: "camel_race_lollipop"})
 	w.Leave("one")
 	w.time = 1180

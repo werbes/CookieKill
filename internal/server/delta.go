@@ -12,12 +12,14 @@ import (
 // stateEncoder belongs exclusively to a connection's writer. Its baseline is
 // advanced only after a successful write, never when a snapshot is queued.
 type stateEncoder struct {
-	delta    bool
-	previous *game.Snapshot
-	sequence uint64
+	delta       bool
+	animalPaths bool
+	previous    *game.Snapshot
+	sequence    uint64
 }
 
 func (e *stateEncoder) encode(snapshot game.Snapshot) ([]byte, error) {
+	snapshot = e.wireSnapshot(snapshot)
 	if !e.delta || e.previous == nil {
 		if e.previous != nil {
 			snapshot.Layout = nil
@@ -117,10 +119,33 @@ func (e *stateEncoder) encode(snapshot game.Snapshot) ([]byte, error) {
 }
 
 func (e *stateEncoder) commit(snapshot game.Snapshot) {
+	snapshot = e.wireSnapshot(snapshot)
 	// Layout is immutable and only needed in the initial frame.
 	snapshot.Layout = nil
 	e.previous = &snapshot
 	e.sequence++
+}
+
+// Route-aware clients evaluate animal poses and clocks from their immutable
+// motion plan. Keep its anchor on the wire so normal swimming needs no deltas.
+// The writer commits this same projection only after a successful write, so
+// dropped queue entries cannot hide a route change or a return to live updates.
+func (e *stateEncoder) wireSnapshot(snapshot game.Snapshot) game.Snapshot {
+	if !e.animalPaths {
+		return snapshot
+	}
+	snapshot.Animals = append([]game.Animal{}, snapshot.Animals...)
+	for i := range snapshot.Animals {
+		a := &snapshot.Animals[i]
+		if a.Motion == nil {
+			continue
+		}
+		pose := a.Motion.Sample(a.Species, a.Egg, a.Motion.Epoch)
+		a.X, a.Y, a.Z = pose.X, pose.Y, pose.Z
+		a.Yaw, a.Heading, a.Speed = pose.Yaw, pose.Heading, pose.Speed
+		a.Age, a.HatchIn = pose.Age, pose.HatchIn
+	}
+	return snapshot
 }
 
 type entityChanges struct {

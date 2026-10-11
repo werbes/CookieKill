@@ -32,3 +32,191 @@
 .ambient-controls{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;padding:15px 0 6px;border-top:1px solid #bdc6b660;margin-top:14px}.ambient-controls label{display:flex;align-items:center;gap:8px;font-size:10px;color:#62715e}.ambient-controls input{width:105px;accent-color:#527d6d}.ambient-controls output{min-width:29px;text-align:right;font-variant-numeric:tabular-nums}
 .camel-training-hud{position:fixed;top:92px;left:50%;transform:translateX(-50%);z-index:12;max-width:calc(100vw - 32px);padding:12px 20px;border:1px solid #ead8c3;border-radius:16px;background:#fff7e8ed;color:#655148;box-shadow:0 6px 24px #40332b24;font-family:inherit;font-size:12px;font-weight:600;line-height:1.6;white-space:pre-line;text-align:center;cursor:pointer}
 .camel-training-hud[hidden]{display:none}
+
+/* Touch controls leave the world itself available for looking around. */
+.touch-instructions{display:none}
+.input-controls{margin-top:18px}
+#touch-mode-toggle{min-height:44px;padding:10px 16px;font-size:11px}
+body.touch-controls-enabled{--touch-top:max(10px,env(safe-area-inset-top));--touch-bottom:max(14px,env(safe-area-inset-bottom));--touch-left:max(12px,env(safe-area-inset-left));--touch-right:max(12px,env(safe-area-inset-right));overscroll-behavior:none}
+body.touch-controls-enabled #world{touch-action:none}
+body.touch-controls-enabled .desktop-controls,
+body.touch-controls-enabled .hotbar-hints,
+body.touch-controls-enabled.playing .site-header,
+body.touch-controls-enabled .objective-card,
+body.touch-controls-enabled .minimap-wrap,
+body.touch-controls-enabled #menu-button,
+body.touch-controls-enabled #interaction-prompt>kbd,
+body.touch-controls-enabled .modal-footer>span:last-child{display:none}
+body.touch-controls-enabled .touch-instructions{display:block;font-size:12px;line-height:1.8;color:#65765e}
+body.touch-controls-enabled #touch-controls{position:absolute;inset:0;z-index:3;pointer-events:none;user-select:none;-webkit-user-select:none}
+body.touch-controls-enabled #touch-controls button{min-width:44px;min-height:44px;padding:8px 10px;border:1px solid #fff3d760;border-radius:12px;background:#193e30dc;color:var(--cream);font-size:12px;font-weight:700;line-height:1.2;box-shadow:0 3px 12px #08231830;touch-action:none;pointer-events:auto;backdrop-filter:blur(5px)}
+body.touch-controls-enabled #touch-controls button:active,
+body.touch-controls-enabled #touch-controls button.is-pressed,
+body.touch-controls-enabled #touch-controls button[aria-pressed="true"]{background:#f0b56c;color:#253b2f;border-color:#ffe3a8;box-shadow:0 0 0 2px #ffe3a836}
+body.touch-controls-enabled #touch-controls .touch-primary{background:#eb8544ed;color:#293522;border-color:#ffc08a}
+body.touch-controls-enabled .touch-toolbar{position:absolute;top:var(--touch-top);right:var(--touch-right);display:flex;gap:5px}
+body.touch-controls-enabled .touch-toolbar button{font-size:11px;padding:8px}
+body.touch-controls-enabled .touch-movement{position:absolute;left:var(--touch-left);bottom:var(--touch-bottom);display:flex;flex-direction:column;align-items:center;gap:10px}
+body.touch-controls-enabled #touch-sprint{min-width:78px;border-radius:22px}
+body.touch-controls-enabled #touch-joystick{position:relative;display:grid;place-items:center;width:122px;height:122px;border:2px solid #fff4d747;border-radius:50%;background:radial-gradient(circle,#1c44304d 35%,#1b3d2b85 36%);box-shadow:inset 0 0 24px #09281f40,0 3px 18px #08231830;touch-action:none;pointer-events:auto}
+body.touch-controls-enabled #touch-stick{width:52px;height:52px;border-radius:50%;border:2px solid #fff0cba1;background:#fff0cb66;box-shadow:0 3px 10px #10251a35;pointer-events:none;will-change:transform}
+body.touch-controls-enabled .touch-move-label{position:absolute;bottom:12px;font-size:8px;letter-spacing:2px;color:#fff2d1b5;pointer-events:none}
+body.touch-controls-enabled .touch-actions{position:absolute;right:var(--touch-right);bottom:var(--touch-bottom);display:grid;grid-template-columns:repeat(2,65px);gap:7px}
+body.touch-controls-enabled .touch-actions button{min-height:50px;padding:8px 5px}
+body.touch-controls-enabled #touch-jump{grid-column:1/-1;min-height:48px}
+body.touch-controls-enabled .touch-context-actions{position:absolute;right:var(--touch-right);bottom:calc(var(--touch-bottom) + 176px);display:flex;gap:6px}
+body.touch-controls-enabled .touch-context-actions button{font-size:10px;padding:7px;max-width:88px}
+body.touch-controls-enabled #touch-build-controls{position:absolute;left:50%;top:calc(50% - 94px);transform:translateX(-50%);display:flex;justify-content:center;gap:4px;width:max-content;max-width:calc(100% - var(--touch-left) - var(--touch-right));padding:4px;border-radius:14px;background:#163428a8}
+body.touch-controls-enabled #touch-build-controls button{font-size:10px;padding:6px;min-width:44px}
+body.touch-controls-enabled #touch-destroy{color:#ffc6af}
+body.touch-controls-enabled .player-summary{top:var(--touch-top);left:var(--touch-left);right:auto;max-width:calc(100% - 215px)}
+body.touch-controls-enabled .coin-counter{min-height:44px;padding:7px 10px;gap:5px}
+body.touch-controls-enabled .coin-counter strong{font-size:12px}
+body.touch-controls-enabled .coin-counter>span:last-child{display:none}
+body.touch-controls-enabled .coin-icon{width:20px;height:20px;font-size:15px}
+body.touch-controls-enabled .compass{top:calc(var(--touch-top) + 50px);padding:6px 12px;gap:9px;font-size:8px}
+body.touch-controls-enabled .compass strong{font-size:9px}
+body.touch-controls-enabled .compass>span:last-child{display:none}
+body.touch-controls-enabled .vitals{left:var(--touch-left);top:calc(var(--touch-top) + 82px);bottom:auto;width:132px;padding:9px 10px}
+body.touch-controls-enabled .vital-label{font-size:7px;margin-bottom:4px;letter-spacing:.5px}
+body.touch-controls-enabled .vital-label strong{font-size:10px}
+body.touch-controls-enabled .stamina-label{margin-top:7px}
+body.touch-controls-enabled .vital-caption{display:none}
+body.touch-controls-enabled .hotbar-wrap{bottom:calc(var(--touch-bottom) + 230px);max-width:calc(100% - var(--touch-left) - var(--touch-right))}
+body.touch-controls-enabled .hotbar{gap:5px;margin:8px 0 0}
+body.touch-controls-enabled .hotbar-slot{width:44px;height:46px;min-width:44px;touch-action:manipulation}
+body.touch-controls-enabled .hotbar-slot .cookie-icon{width:27px;height:27px}
+body.touch-controls-enabled .hotbar-slot .slot-number{display:none}
+body.touch-controls-enabled #selected-cookie-label{font-size:8px;letter-spacing:.7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:289px}
+body.touch-controls-enabled #selected-cookie-label span{display:none}
+body.touch-controls-enabled #interaction-prompt{top:calc(50% + 20px);min-width:0;width:max-content;max-width:calc(100% - 30px);padding:8px 12px;text-align:center}
+body.touch-controls-enabled #interaction-label{font-size:11px}
+body.touch-controls-enabled #interaction-detail{font-size:9px;max-width:260px}
+body.touch-controls-enabled .buffs{top:calc(var(--touch-top) + 156px);left:var(--touch-left);gap:4px;max-width:140px}
+body.touch-controls-enabled .buff{font-size:9px;padding:5px 7px;gap:5px}
+body.touch-controls-enabled .activity-feed{top:calc(var(--touch-top) + 152px);right:var(--touch-right);max-width:145px}
+body.touch-controls-enabled .feed-item{font-size:8px;padding:6px 8px}
+body.touch-controls-enabled .feed-item:nth-child(n+3){display:none}
+body.touch-controls-enabled #toast-stack{top:calc(var(--touch-top) + 152px);max-width:350px;width:calc(100% - 28px)}
+body.touch-controls-enabled .toast{font-size:10px;padding:8px 12px}
+body.touch-controls-enabled #zone-notification{top:calc(var(--touch-top) + 152px);padding:10px 20px;min-width:0;max-width:95%;width:max-content}
+body.touch-controls-enabled #zone-notification strong{font-size:20px;white-space:normal}
+body.touch-controls-enabled #disconnect-banner{top:calc(var(--touch-top) + 152px);max-width:calc(100% - 24px);white-space:normal;text-align:center;z-index:4}
+body.touch-controls-enabled #disconnect-banner span{display:block;margin:4px 0 0}
+body.touch-controls-enabled #night-hud{top:calc(var(--touch-top) + 82px);right:var(--touch-right);gap:4px;font-size:8px;max-width:calc(100% - 162px)}
+body.touch-controls-enabled #day-cycle{padding:6px 8px;white-space:nowrap}
+body.touch-controls-enabled #ringing-toggle{min-width:44px;min-height:44px;padding:6px;font-size:9px}
+body.touch-controls-enabled #john-pork-warning{top:calc(var(--touch-top) + 136px);max-width:calc(100% - 28px);white-space:normal;font-size:10px;padding:8px 12px}
+body.touch-controls-enabled #john-pork-warning[data-urgent="true"]{font-size:11px}
+body.touch-controls-enabled .club-light-toggle{top:calc(var(--touch-top) + 130px);right:var(--touch-right);font-size:9px;padding:8px;min-height:44px;max-width:150px}
+body.touch-controls-enabled #camel-race-hud,
+body.touch-controls-enabled #camel-training-hud,
+body.touch-controls-enabled #roller-coaster-hud,
+body.touch-controls-enabled #cookie-activity-hud{top:auto;bottom:calc(var(--touch-bottom) + 300px);left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 28px);max-height:76px;min-height:44px;overflow:auto;padding:8px 12px;font-size:10px;line-height:1.5;touch-action:pan-y}
+body.touch-controls-enabled #rodent-capture-hud{display:none!important}
+body.touch-controls-enabled:has(#touch-build-controls:not([hidden])) #camel-race-hud,
+body.touch-controls-enabled:has(#touch-build-controls:not([hidden])) #camel-training-hud,
+body.touch-controls-enabled:has(#touch-build-controls:not([hidden])) #roller-coaster-hud,
+body.touch-controls-enabled:has(#touch-build-controls:not([hidden])) #cookie-activity-hud,
+body.touch-controls-enabled:has(:is(.overlay,.modal-overlay):not([hidden])) :is(#night-hud,#john-pork-warning,#camel-race-hud,#camel-training-hud,#roller-coaster-hud,#cookie-activity-hud){display:none}
+
+/* Menus keep normal scrolling and browser zoom, even while game gestures are active. */
+body.touch-controls-enabled #landing{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain;padding:calc(var(--touch-top) + 72px) max(22px,env(safe-area-inset-right)) calc(var(--touch-bottom) + 20px) max(22px,env(safe-area-inset-left))}
+body.touch-controls-enabled .site-header{padding:var(--touch-top) max(22px,env(safe-area-inset-right)) 0 max(22px,env(safe-area-inset-left))}
+body.touch-controls-enabled .round-button{width:44px;height:44px}
+body.touch-controls-enabled .header-tagline,
+body.touch-controls-enabled .status-badge,
+body.touch-controls-enabled .world-caption{display:none}
+body.touch-controls-enabled .landing-copy{position:relative;top:auto;left:auto;right:auto;max-width:430px;margin:auto}
+body.touch-controls-enabled .landing-copy h1{font-size:clamp(43px,10vw,65px);margin:14px 0;letter-spacing:-2px}
+body.touch-controls-enabled .landing-description{font-size:12px}
+body.touch-controls-enabled .login-card{width:100%;max-width:none;margin-top:20px;padding:20px}
+body.touch-controls-enabled .landing-bottom{position:relative;bottom:auto;left:auto;right:auto;max-width:430px;margin:22px auto 0}
+body.touch-controls-enabled .world-links{flex-wrap:wrap;gap:12px}
+body.touch-controls-enabled .early-access{display:none}
+body.touch-controls-enabled .landing-perks{flex-wrap:wrap;gap:8px 15px;font-size:9px}
+body.touch-controls-enabled .login-card input:not([type="checkbox"]),
+body.touch-controls-enabled .modal-content input:not([type="checkbox"]):not([type="range"]){font-size:16px;min-height:44px}
+body.touch-controls-enabled .remember-device label{min-height:44px}
+body.touch-controls-enabled .remember-device input[type="checkbox"]{width:20px;height:20px}
+body.touch-controls-enabled .button,
+body.touch-controls-enabled .text-button,
+body.touch-controls-enabled .small-button,
+body.touch-controls-enabled .close-button,
+body.touch-controls-enabled .modal-tab,
+body.touch-controls-enabled .build-category{min-height:44px;min-width:44px;touch-action:manipulation}
+body.touch-controls-enabled .small-button{font-size:11px;padding:9px 12px}
+body.touch-controls-enabled .overlay,
+body.touch-controls-enabled .modal-overlay{padding:var(--touch-top) var(--touch-right) var(--touch-bottom) var(--touch-left);overflow:auto;overscroll-behavior:contain;align-items:start}
+body.touch-controls-enabled .modal-overlay{grid-template-columns:minmax(0,1fr)}
+body.touch-controls-enabled .play-card{width:100%;max-width:440px;margin:auto;padding:24px;max-height:none}
+body.touch-controls-enabled .play-card .cookie-mark.big{width:48px;height:48px;margin-bottom:20px}
+body.touch-controls-enabled .play-card .cookie-mark.big:after{width:17px;height:17px}
+body.touch-controls-enabled .play-card h2{font-size:31px}
+body.touch-controls-enabled .menu-small-actions{gap:9px;margin-top:12px}
+body.touch-controls-enabled .menu-small-actions .small-button{font-size:11px}
+body.touch-controls-enabled .ambient-controls{gap:8px}
+body.touch-controls-enabled .ambient-controls input{min-height:44px}
+body.touch-controls-enabled .modal-shell{width:min(830px,100%);min-width:0;margin:auto;max-height:calc(100dvh - var(--touch-top) - var(--touch-bottom));min-height:0}
+body.touch-controls-enabled .customer-popup .modal-shell{width:min(410px,100%)}
+body.touch-controls-enabled .modal-header{flex-shrink:0;padding:15px 17px}
+body.touch-controls-enabled .modal-header h2{font-size:26px}
+body.touch-controls-enabled .close-button{width:44px;height:44px;flex-shrink:0}
+body.touch-controls-enabled .modal-tabs{flex-shrink:0;min-width:0;max-width:100%;padding:0 15px;gap:18px;overflow-x:auto;overscroll-behavior-x:contain}
+body.touch-controls-enabled .modal-tab{flex:0 0 auto;white-space:nowrap;font-size:11px}
+body.touch-controls-enabled .modal-content{min-width:0;max-width:100%;min-height:0;padding:17px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+body.touch-controls-enabled .modal-footer{padding:10px 17px}
+body.touch-controls-enabled .safe-slot{min-height:112px;padding-top:22px}
+body.touch-controls-enabled .safe-slot .unsave{width:44px;height:44px;top:0;right:0}
+body.touch-controls-enabled .item-card h4{font-size:12px}
+body.touch-controls-enabled .item-card .item-info,
+body.touch-controls-enabled .recipe-card p{font-size:11px}
+body.touch-controls-enabled .shop-row{flex-wrap:wrap}
+body.touch-controls-enabled .shop-row .small-button{font-size:11px}
+body.touch-controls-enabled .build-toolbar{flex-wrap:wrap}
+
+@media(max-height:690px) and (orientation:portrait){
+  body.touch-controls-enabled .hotbar-wrap{bottom:calc(var(--touch-bottom) + 176px)}
+  body.touch-controls-enabled .touch-context-actions{bottom:calc(var(--touch-bottom) + 242px)}
+  body.touch-controls-enabled #interaction-prompt{top:auto;bottom:calc(var(--touch-bottom) + 238px);max-width:calc(100% - 155px);left:var(--touch-left);transform:none;text-align:left}
+  body.touch-controls-enabled #interaction-detail{display:none}
+  body.touch-controls-enabled .buffs,
+  body.touch-controls-enabled .activity-feed{display:none}
+  body.touch-controls-enabled #camel-race-hud,
+  body.touch-controls-enabled #camel-training-hud,
+  body.touch-controls-enabled #roller-coaster-hud,
+  body.touch-controls-enabled #cookie-activity-hud{bottom:auto;top:calc(var(--touch-top) + 152px);max-height:60px}
+}
+@media(orientation:landscape){
+  body.touch-controls-enabled .hotbar-wrap{bottom:var(--touch-bottom);max-width:calc(100% - 340px)}
+  body.touch-controls-enabled .compass{top:var(--touch-top);height:44px;max-width:calc(100% - 470px);overflow:hidden}
+  body.touch-controls-enabled .vitals{top:calc(var(--touch-top) + 53px)}
+  body.touch-controls-enabled #night-hud{top:calc(var(--touch-top) + 53px)}
+  body.touch-controls-enabled .touch-context-actions{bottom:calc(var(--touch-bottom) + 176px)}
+  body.touch-controls-enabled #touch-build-controls{top:auto;bottom:calc(var(--touch-bottom) + 70px)}
+  body.touch-controls-enabled #interaction-prompt{top:calc(50% + 22px);max-width:calc(100% - 340px)}
+  body.touch-controls-enabled .buffs{top:calc(var(--touch-top) + 125px)}
+  body.touch-controls-enabled .activity-feed{display:none}
+  body.touch-controls-enabled #zone-notification,
+  body.touch-controls-enabled #john-pork-warning,
+  body.touch-controls-enabled #toast-stack,
+  body.touch-controls-enabled #disconnect-banner{top:calc(var(--touch-top) + 52px);max-width:calc(100% - 340px)}
+  body.touch-controls-enabled .club-light-toggle{top:calc(var(--touch-top) + 101px)}
+  body.touch-controls-enabled #camel-race-hud,
+  body.touch-controls-enabled #camel-training-hud,
+  body.touch-controls-enabled #roller-coaster-hud,
+  body.touch-controls-enabled #cookie-activity-hud{top:calc(var(--touch-top) + 52px);bottom:auto;max-width:calc(100% - 350px);max-height:76px}
+}
+@media(orientation:landscape) and (max-width:700px){
+  body.touch-controls-enabled .hotbar{gap:3px}
+  body.touch-controls-enabled .hotbar-wrap{max-width:calc(100% - 280px)}
+  body.touch-controls-enabled #touch-joystick{width:100px;height:100px}
+  body.touch-controls-enabled .touch-actions{grid-template-columns:repeat(2,54px);gap:5px}
+  body.touch-controls-enabled .touch-actions button{min-height:44px;font-size:11px}
+  body.touch-controls-enabled #touch-jump{min-height:44px}
+  body.touch-controls-enabled .touch-context-actions{bottom:calc(var(--touch-bottom) + 146px)}
+  body.touch-controls-enabled .compass{display:none}
+  body.touch-controls-enabled #selected-cookie-label{max-width:270px}
+  body.touch-controls-enabled .vitals{width:120px}
+  body.touch-controls-enabled .buffs{display:none}
+}

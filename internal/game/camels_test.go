@@ -215,11 +215,15 @@ func TestOfflineMountedVisitorCamelEvictionIsSaved(t *testing.T) {
 	}
 	w.Leave("two")
 	mustAct(t, w, Action{Action: "island_visitors", Enabled: false})
-	if visitor.island != "" || !visitor.ridingCamel {
-		t.Fatal("closing an island should return an offline rider and camel together")
+	if w.players["two"] != nil {
+		t.Fatal("closing an island reloaded the offline visitor")
 	}
 	saved := w.Profiles()["two"].Camels
-	if len(saved) != 1 || saved[0].Island != "" || saved[0].X != visitor.x || saved[0].Z != visitor.z {
+	if len(saved) != 1 || saved[0].Island != "" || saved[0].X != 120 || saved[0].Z != -70 {
 		t.Fatal("offline camel teleport was absent from saved profiles")
+	}
+	w.Join("two", "Visitor")
+	if p := w.players["two"]; p == visitor || p.island != "" || p.ridingCamel || !reflect.DeepEqual(p.profile.Camels, saved) {
+		t.Fatal("reconnect retained the rider or lost saved camel relocation")
 	}
 }

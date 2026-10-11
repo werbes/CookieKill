@@ -222,12 +222,13 @@ func TestClubCakeEffectSnapshotsExpiryReconnectAndDeath(t *testing.T) {
 	w.Leave("one")
 	w.time += 10
 	w.Join("one", "Returning dancer")
-	if w.Snapshot("one").Me.Buffs["funny_cake"] != 35 {
-		t.Fatal("reconnect reset or extended effect")
+	if w.Snapshot("one").Me.Buffs["funny_cake"] != 0 {
+		t.Fatal("reconnect restored a discarded runtime effect")
 	}
 	w.Leave("one")
 	w.time += 35
 	w.Join("one", "Returning dancer")
+	p = w.players["one"]
 	if w.Snapshot("one").Me.Buffs["funny_cake"] != 0 {
 		t.Fatal("offline time failed to expire effect")
 	}
@@ -236,6 +237,7 @@ func TestClubCakeEffectSnapshotsExpiryReconnectAndDeath(t *testing.T) {
 		t.Fatal("simulation retained expired cake buff")
 	}
 	mustAct(t, w, Action{Action: "eat", Item: "funny_cake"})
+	delete(p.buffs, "spawn_shield")
 	if !w.damagePlayer(nil, p, 1000, "test") || w.active(p, "funny_cake") || p.profile.Inventory["funny_cake"] != 2 {
 		t.Fatal("death did not clear effect and retain unconsumed cakes")
 	}

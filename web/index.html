@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#152b25">
   <meta name="description" content="A multiplayer cookie fight in a world worth exploring. Gather, bake, trade, and make a little mischief.">
   <title>CookieKill — A little sweet. A little savage.</title>
@@ -59,14 +59,44 @@
       <button id="minimap-button" class="minimap-wrap" title="Open world map"><canvas id="minimap" width="180" height="180"></canvas><span class="minimap-north">N</span><span class="minimap-title">THE WORLD IS YOUR OVEN <kbd>M</kbd></span></button>
       <div id="damage-overlay"></div>
       <div id="disconnect-banner" hidden>Reconnecting to your world… <span>Your progress is saved.</span></div>
+      <div id="touch-controls" hidden aria-label="Touch game controls">
+        <nav class="touch-toolbar" aria-label="Game panels">
+          <button type="button" data-touch-action="inventory" aria-label="Open inventory">Bag</button>
+          <button type="button" data-touch-action="recipes" aria-label="Open cookbook">Recipes</button>
+          <button type="button" data-touch-action="map" aria-label="Open world map">Map</button>
+          <button type="button" data-touch-action="menu" aria-label="Open game menu">Menu</button>
+        </nav>
+        <div class="touch-movement">
+          <button id="touch-sprint" type="button" aria-pressed="false">Sprint</button>
+          <div id="touch-joystick" role="group" aria-label="Drag to move in any direction"><span id="touch-stick"></span><span class="touch-move-label">MOVE</span></div>
+        </div>
+        <div class="touch-actions" aria-label="Player actions">
+          <button id="touch-throw" class="touch-primary" type="button" data-touch-action="throw">Throw</button>
+          <button id="touch-interact" type="button" data-touch-action="interact">Interact</button>
+          <button id="touch-eat" type="button" data-touch-action="eat">Eat</button>
+          <button type="button" data-touch-action="catch">Catch</button>
+          <button id="touch-jump" type="button">Jump</button>
+        </div>
+        <div class="touch-context-actions">
+          <button id="touch-activity" type="button" data-touch-action="activity" hidden>Activity</button>
+          <button id="touch-bakery-build" type="button" data-touch-action="bakery-build" aria-pressed="false" hidden>Build</button>
+        </div>
+        <div id="touch-build-controls" hidden aria-label="Building controls">
+          <button type="button" data-touch-action="rotate">Rotate</button>
+          <button id="touch-raise" type="button" data-touch-action="raise">Raise</button>
+          <button id="touch-lower" type="button" data-touch-action="lower">Lower</button>
+          <button id="touch-pack" type="button" data-touch-action="pack" hidden>Pack</button>
+          <button id="touch-destroy" type="button" data-touch-action="destroy" hidden>Destroy</button>
+          <button type="button" data-touch-action="cancel">Cancel</button>
+        </div>
+      </div>
     </section>
-    <section id="start-overlay" class="overlay" hidden><div class="play-card"><span class="cookie-mark big"></span><div class="eyebrow">YOUR ADVENTURE IS READY</div><h2>Ready to crumble?</h2><p>Ten cookies. A blank cookbook. A whole world of recipes to discover.</p><button id="start-button" class="button primary">Let’s play <span>→</span></button><div class="quick-controls"><span><kbd>W A S D</kbd> move</span><span><kbd>E</kbd> interact</span><span><kbd>I</kbd> inventory</span><span><kbd>C</kbd> cookbook</span></div><p class="mouse-note">Move your mouse to look around. Press Esc to open the menu.</p></div></section>
-    <section id="play-overlay" class="overlay" hidden><div class="play-card"><span class="cookie-mark big"></span><div class="eyebrow">A MOMENT BETWEEN BATCHES</div><h2 id="play-title">Back for seconds?</h2><p id="play-description">The world keeps moving while you take a breather.</p><button id="play-button" class="button primary">Back to the cookies <span>→</span></button><div class="quick-controls"><span><kbd>W A S D</kbd> move</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>SPACE</kbd> jump</span><span><kbd>E</kbd> interact</span><span><kbd>I</kbd> inventory</span></div><p class="mouse-note">Press Esc again to return to the world.</p><div class="ambient-controls"><button id="ambient-toggle" type="button" class="small-button" aria-pressed="false">World sounds on</button><label for="ambient-volume">Volume <input id="ambient-volume" type="range" min="0" max="100" value="55"><output id="ambient-volume-label" for="ambient-volume">55%</output></label></div><div class="menu-small-actions"><button id="customize-button" class="small-button">Customize avatar</button><button id="friends-button" class="small-button">Friends</button><button id="teleport-button" class="small-button">Teleport</button><button id="logout-button" class="text-button">Sign out</button></div></div></section>
+    <section id="start-overlay" class="overlay" hidden><div class="play-card"><span class="cookie-mark big"></span><div class="eyebrow">YOUR ADVENTURE IS READY</div><h2>Ready to crumble?</h2><p>Ten cookies. A blank cookbook. A whole world of recipes to discover.</p><button id="start-button" class="button primary">Let’s play <span>→</span></button><div class="quick-controls desktop-controls"><span><kbd>W A S D</kbd> move</span><span><kbd>E</kbd> interact</span><span><kbd>I</kbd> inventory</span><span><kbd>C</kbd> cookbook</span></div><p class="mouse-note desktop-controls">Move your mouse to look around. Press Esc to open the menu.</p><p class="touch-instructions">Drag the left stick to move. Swipe the world to look around. Tap Sprint to run and press Jump for each jump. Use the buttons on the right to throw, gather, and eat.</p></div></section>
+    <section id="play-overlay" class="overlay" hidden><div class="play-card"><span class="cookie-mark big"></span><div class="eyebrow">A MOMENT BETWEEN BATCHES</div><h2 id="play-title">Back for seconds?</h2><p id="play-description">The world keeps moving while you take a breather.</p><button id="play-button" class="button primary">Back to the cookies <span>→</span></button><div class="quick-controls desktop-controls"><span><kbd>W A S D</kbd> move</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>SPACE</kbd> jump</span><span><kbd>E</kbd> interact</span><span><kbd>I</kbd> inventory</span></div><p class="mouse-note desktop-controls">Press Esc again to return to the world.</p><p class="touch-instructions">Left stick to move. Swipe to look.<br>Tap a hotbar item to select it. Use Menu to pause or open your settings.</p><div class="input-controls"><button id="touch-mode-toggle" type="button" class="small-button" aria-pressed="false">Touch controls off</button></div><div class="ambient-controls"><button id="ambient-toggle" type="button" class="small-button" aria-pressed="false">World sounds on</button><label for="ambient-volume">Volume <input id="ambient-volume" type="range" min="0" max="100" value="55"><output id="ambient-volume-label" for="ambient-volume">55%</output></label></div><div class="menu-small-actions"><button id="customize-button" class="small-button">Customize avatar</button><button id="friends-button" class="small-button">Friends</button><button id="teleport-button" class="small-button">Teleport</button><button id="logout-button" class="text-button">Sign out</button></div></div></section>
     <button id="capture-prompt" hidden>Click to look around <kbd>ESC</kbd> menu</button>
     <div id="zone-notification" hidden aria-live="polite"><span>NOW ENTERING</span><strong></strong></div>
     <section id="modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="modal-title"><div class="modal-shell"><header class="modal-header"><div><span class="eyebrow" id="modal-eyebrow">A WORLD OF POSSIBILITIES</span><h2 id="modal-title">Your backpack</h2></div><button id="close-modal" class="close-button" aria-label="Close panel">×</button></header><nav id="modal-tabs" class="modal-tabs"></nav><div id="modal-content" class="modal-content"></div><footer class="modal-footer"><span id="modal-footer-text">A cookie in the hand is worth two in the oven.</span><span><kbd>ESC</kbd> CLOSE</span></footer></div></section>
     <div id="toast-stack" aria-live="polite"></div>
-    <div id="mobile-note" hidden>CookieKill plays best on a desktop with a mouse and keyboard.</div>
   </main>
   <script type="module" src="/game.js"></script>
 </body>

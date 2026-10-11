@@ -3,7 +3,6 @@ package server
 import (
 	"cookiekill/internal/game"
 	"testing"
-	"time"
 )
 
 func TestNightCycleAndJohnSpawnMoveDespawnSurviveDelta(t *testing.T) {
@@ -36,7 +35,7 @@ func TestNightCycleAndJohnSpawnMoveDespawnSurviveDelta(t *testing.T) {
 	}
 }
 
-func TestDisconnectedGraceSessionCannotRemainJohnsTarget(t *testing.T) {
+func TestDisconnectedPlayerCannotRemainJohnsTarget(t *testing.T) {
 	w := game.New(map[string]game.Profile{
 		"rich":  {ID: "rich", Coins: 1000, Inventory: map[string]int{"sugar": 30}},
 		"other": {ID: "other", Coins: 100, Inventory: map[string]int{"sugar": 30}},
@@ -53,13 +52,13 @@ func TestDisconnectedGraceSessionCannotRemainJohnsTarget(t *testing.T) {
 		t.Fatal("highest coin balance was not selected at night")
 	}
 	p := &peer{out: make(chan outbound, 2), baselineReady: make(chan struct{})}
-	c := &coordinator{world: w, peers: map[string]*peer{"rich": p}, departed: map[string]time.Time{}}
+	c := &coordinator{world: w, peers: map[string]*peer{"rich": p}}
 	c.handle(detachCommand{id: "rich", peer: p})
+	if len(c.peers) != 0 || w.SnapshotUpdate("rich").Me.ID != "" {
+		t.Fatal("disconnect retained its player until the next world tick")
+	}
 	w.Tick(.05)
 	if john := w.SnapshotUpdate("other").JohnPork; john == nil || john.Target != "other" {
-		t.Fatal("10-second grace period let John keep chasing a disconnected account")
-	}
-	if len(c.departed) != 1 {
-		t.Fatal("test did not exercise an actual grace-period disconnect")
+		t.Fatal("John kept chasing a disconnected account")
 	}
 }

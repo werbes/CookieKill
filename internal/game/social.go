@@ -65,9 +65,6 @@ func (w *World) profileByID(id string) (Profile, bool) {
 	if p := w.players[id]; p != nil {
 		return p.profile, true
 	}
-	if p := w.offline[id]; p != nil {
-		return p.profile, true
-	}
 	p, ok := w.profiles[id]
 	return p, ok
 }
@@ -76,9 +73,6 @@ func (w *World) storeProfile(p Profile) {
 	if online := w.players[p.ID]; online != nil {
 		online.profile = p
 		return
-	}
-	if offline := w.offline[p.ID]; offline != nil {
-		offline.profile = p
 	}
 	w.profiles[p.ID] = cloneProfile(p)
 }

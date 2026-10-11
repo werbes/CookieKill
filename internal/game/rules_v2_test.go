@@ -282,8 +282,12 @@ func TestAvatarCallNameCooldownAndEarnedHats(t *testing.T) {
 	}
 	w.Leave("one")
 	w.Join("one", "Login bypass")
+	p = w.players["one"]
 	if p.profile.Name != "New Call Name" {
 		t.Fatal("login bypassed call-name cooldown")
+	}
+	if err := w.Act("one", Action{Action: "customize", CallName: "Too Soon"}); err == nil {
+		t.Fatal("reconnect bypassed saved call-name cooldown")
 	}
 	now = now.Add(time.Hour)
 	mustAct(t, w, Action{Action: "customize", CallName: "Next Name"})

@@ -190,7 +190,7 @@ func TestChefFullBatchesPersistAcrossBreakDisconnectAndRestart(t *testing.T) {
 	before := cloneProfile(p.profile)
 	w.Leave("one")
 	advance(w, 30)
-	if !reflect.DeepEqual(before.Production, p.profile.Production) {
+	if !reflect.DeepEqual(before.Production, w.Profiles()["one"].Production) {
 		t.Fatal("disconnected bakery advanced or lost paid batches")
 	}
 	w = New(w.Profiles())

@@ -43,7 +43,7 @@ func recipeFor(id string) (Recipe, bool) {
 
 // New restores saved economy/progression and creates a renewable shared world.
 func New(saved map[string]Profile) *World {
-	w := &World{players: map[string]*player{}, offline: map[string]*player{}, profiles: map[string]Profile{}, events: []Event{}, now: time.Now}
+	w := &World{players: map[string]*player{}, profiles: map[string]Profile{}, events: []Event{}, now: time.Now}
 	for id, profile := range saved {
 		profile.ID = id
 		w.profiles[id] = sanitize(profile)
@@ -177,17 +177,6 @@ func (w *World) Join(id, name string) {
 		// Account login cannot bypass call-name cooldown.
 		return
 	}
-	if p, ok := w.offline[id]; ok {
-		p.disconnected = false
-		// Account login cannot bypass call-name cooldown.
-		p.input = Input{}
-		p.jumpQueued, p.sprinting = false, false
-		p.cooldowns["last_input"] = w.time
-		w.players[id] = p
-		delete(w.offline, id)
-		w.remindCamelRace(p)
-		return
-	}
 	profile, exists := w.profiles[id]
 	if !exists {
 		profile = Profile{ID: id, Name: name, CallName: name, Inventory: map[string]int{"sugar": 10}, Selected: "sugar"}
@@ -226,10 +215,11 @@ func (w *World) Leave(id string) {
 		if p.clubSeatID != "" {
 			p.posture, p.clubSeatID = "", ""
 		}
+		// Retain persistent progress only. A reconnect gets a fresh player so
+		// transient movement, activity, and rendering state cannot survive it.
 		w.profiles[id] = cloneProfile(p.profile)
 		p.input = Input{}
 		p.jumpQueued, p.sprinting = false, false
-		w.offline[id] = p
 		delete(w.players, id)
 	}
 	shots := w.projectiles[:0]
@@ -321,9 +311,6 @@ func (w *World) Profiles() map[string]Profile {
 	out := make(map[string]Profile, len(w.profiles)+len(w.players))
 	for id, p := range w.profiles {
 		out[id] = cloneProfile(p)
-	}
-	for id, p := range w.offline {
-		out[id] = cloneProfile(p.profile)
 	}
 	for id, p := range w.players {
 		out[id] = cloneProfile(p.profile)
@@ -461,6 +448,14 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 			continue
 		}
 		cp := *a
+		if a.Motion != nil {
+			motion := *a.Motion
+			cp.Motion = &motion
+			// A projectile may have disturbed an egg after this tick's movement.
+			if a.Egg {
+				cp.Motion.HatchAt = a.eggSince + eggHatchSeconds
+			}
+		}
 		if p, ok := w.players[id]; ok {
 			rep := p.profile.Reputation[a.Species]
 			cp.Disposition = "calm"

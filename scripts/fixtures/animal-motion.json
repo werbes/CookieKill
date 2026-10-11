@@ -1,0 +1,614 @@
+[
+  {
+    "animal": {
+      "egg": false,
+      "id": "orbit_100",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "fish"
+    },
+    "expected": {
+      "age": 321.5,
+      "hatchIn": 0,
+      "heading": 0.2,
+      "speed": 3.6236639951086973,
+      "x": -82,
+      "y": 0.02,
+      "z": 93
+    },
+    "name": "orbit_100",
+    "time": 100
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "orbit_101",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "fish"
+    },
+    "expected": {
+      "age": 322.5,
+      "hatchIn": 0,
+      "heading": -2.9220428285531,
+      "speed": 3.9507188752494966,
+      "x": -81.66896515411436,
+      "y": 0.02,
+      "z": 95.58355762836607
+    },
+    "name": "orbit_101",
+    "time": 101
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "orbit_102",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "fish"
+    },
+    "expected": {
+      "age": 323.5,
+      "hatchIn": 0,
+      "heading": -2.590241541428279,
+      "speed": 4.17421797648835,
+      "x": -80.11253243018166,
+      "y": 0.02,
+      "z": 99.6378298030935
+    },
+    "name": "orbit_102",
+    "time": 102
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "orbit_103.999",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "fish"
+    },
+    "expected": {
+      "age": 325.499,
+      "hatchIn": 0,
+      "heading": 0.35788449960043356,
+      "speed": 3.913632633411709,
+      "x": -78.52010701368224,
+      "y": 0.02,
+      "z": 98.6369271494125
+    },
+    "name": "orbit_103.999",
+    "time": 103.999
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "orbit_104",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "fish"
+    },
+    "expected": {
+      "age": 325.5,
+      "hatchIn": 0,
+      "heading": 0.35832667599592344,
+      "speed": 3.913314051699221,
+      "x": -78.52150648437201,
+      "y": 0.02,
+      "z": 98.63318766533396
+    },
+    "name": "orbit_104",
+    "time": 104
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "orbit_160",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "fish"
+    },
+    "expected": {
+      "age": 381.5,
+      "hatchIn": 0,
+      "heading": -1.0731884359090376,
+      "speed": 3.5805971468823397,
+      "x": -84.47759908065956,
+      "y": 0.02,
+      "z": 113.58453492843424
+    },
+    "name": "orbit_160",
+    "time": 160
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "dolphin_113.999",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "dolphin"
+    },
+    "expected": {
+      "age": 335.499,
+      "hatchIn": 0,
+      "heading": -2.8676750839872978,
+      "speed": 3.3666199839248905,
+      "x": -101.13551385644922,
+      "y": 0.02,
+      "z": 106.79700809425282
+    },
+    "name": "dolphin_113.999",
+    "time": 113.999
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "dolphin_114",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "dolphin"
+    },
+    "expected": {
+      "age": 335.5,
+      "hatchIn": 0,
+      "heading": -2.8674109756427555,
+      "speed": 3.3665606952074647,
+      "x": -101.13444849012652,
+      "y": 0.02,
+      "z": 106.80079777662533
+    },
+    "name": "dolphin_114",
+    "time": 114
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "dolphin_115",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "dolphin"
+    },
+    "expected": {
+      "age": 336.5,
+      "hatchIn": 0,
+      "heading": -2.5787104598109067,
+      "speed": 3.1500000000000004,
+      "x": -99.58563830923269,
+      "y": 1.7,
+      "z": 110.33811656887744
+    },
+    "name": "dolphin_115",
+    "time": 115
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "dolphin_115.999",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "dolphin"
+    },
+    "expected": {
+      "age": 337.499,
+      "hatchIn": 0,
+      "heading": -2.220677012016356,
+      "speed": 3.1500000000000004,
+      "x": -97.1449206499148,
+      "y": 0.00267035265742537,
+      "z": 113.04180822689044
+    },
+    "name": "dolphin_115.999",
+    "time": 115.999
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "dolphin_116",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 4,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 12,
+        "phase": 0.7,
+        "angularSpeed": 0.31,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "dolphin"
+    },
+    "expected": {
+      "age": 337.5,
+      "hatchIn": 0,
+      "heading": -2.2202881271756203,
+      "speed": 3.718158231392607,
+      "x": -97.14207855887597,
+      "y": 0.02,
+      "z": 113.04396739029076
+    },
+    "name": "dolphin_116",
+    "time": 116
+  },
+  {
+    "animal": {
+      "egg": true,
+      "id": "egg_100",
+      "motion": {
+        "kind": "still",
+        "epoch": 100,
+        "transition": 0,
+        "fromX": -75,
+        "fromZ": 105,
+        "heading": -0.8,
+        "centerX": 0,
+        "centerZ": 0,
+        "radius": 0,
+        "phase": 0,
+        "angularSpeed": 0,
+        "wanderPhase": 0,
+        "jumpPhase": 0,
+        "speed": 0,
+        "age": 0,
+        "hatchAt": 220
+      },
+      "species": "turtle"
+    },
+    "expected": {
+      "age": 0,
+      "hatchIn": 120,
+      "heading": -0.8,
+      "speed": 0,
+      "x": -75,
+      "y": 0.02,
+      "z": 105
+    },
+    "name": "egg_100",
+    "time": 100
+  },
+  {
+    "animal": {
+      "egg": true,
+      "id": "egg_219.999",
+      "motion": {
+        "kind": "still",
+        "epoch": 100,
+        "transition": 0,
+        "fromX": -75,
+        "fromZ": 105,
+        "heading": -0.8,
+        "centerX": 0,
+        "centerZ": 0,
+        "radius": 0,
+        "phase": 0,
+        "angularSpeed": 0,
+        "wanderPhase": 0,
+        "jumpPhase": 0,
+        "speed": 0,
+        "age": 0,
+        "hatchAt": 220
+      },
+      "species": "turtle"
+    },
+    "expected": {
+      "age": 0,
+      "hatchIn": 0.0010000000000047748,
+      "heading": -0.8,
+      "speed": 0,
+      "x": -75,
+      "y": 0.02,
+      "z": 105
+    },
+    "name": "egg_219.999",
+    "time": 219.999
+  },
+  {
+    "animal": {
+      "egg": true,
+      "id": "egg_220",
+      "motion": {
+        "kind": "still",
+        "epoch": 100,
+        "transition": 0,
+        "fromX": -75,
+        "fromZ": 105,
+        "heading": -0.8,
+        "centerX": 0,
+        "centerZ": 0,
+        "radius": 0,
+        "phase": 0,
+        "angularSpeed": 0,
+        "wanderPhase": 0,
+        "jumpPhase": 0,
+        "speed": 0,
+        "age": 0,
+        "hatchAt": 220
+      },
+      "species": "turtle"
+    },
+    "expected": {
+      "age": 0,
+      "hatchIn": 0,
+      "heading": -0.8,
+      "speed": 0,
+      "x": -75,
+      "y": 0.02,
+      "z": 105
+    },
+    "name": "egg_220",
+    "time": 220
+  },
+  {
+    "animal": {
+      "egg": true,
+      "id": "egg_221",
+      "motion": {
+        "kind": "still",
+        "epoch": 100,
+        "transition": 0,
+        "fromX": -75,
+        "fromZ": 105,
+        "heading": -0.8,
+        "centerX": 0,
+        "centerZ": 0,
+        "radius": 0,
+        "phase": 0,
+        "angularSpeed": 0,
+        "wanderPhase": 0,
+        "jumpPhase": 0,
+        "speed": 0,
+        "age": 0,
+        "hatchAt": 220
+      },
+      "species": "turtle"
+    },
+    "expected": {
+      "age": 0,
+      "hatchIn": 0,
+      "heading": -0.8,
+      "speed": 0,
+      "x": -75,
+      "y": 0.02,
+      "z": 105
+    },
+    "name": "egg_221",
+    "time": 221
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "trapped_adult",
+      "motion": {
+        "kind": "still",
+        "epoch": 100,
+        "transition": 0,
+        "fromX": -75,
+        "fromZ": 105,
+        "heading": -0.8,
+        "centerX": 0,
+        "centerZ": 0,
+        "radius": 0,
+        "phase": 0,
+        "angularSpeed": 0,
+        "wanderPhase": 0,
+        "jumpPhase": 0,
+        "speed": 0,
+        "age": 300,
+        "hatchAt": 0
+      },
+      "species": "turtle"
+    },
+    "expected": {
+      "age": 350,
+      "hatchIn": 0,
+      "heading": -0.8,
+      "speed": 0,
+      "x": -75,
+      "y": 0.02,
+      "z": 105
+    },
+    "name": "trapped_adult",
+    "time": 150
+  },
+  {
+    "animal": {
+      "egg": false,
+      "id": "trapped_peer",
+      "motion": {
+        "kind": "orbit",
+        "epoch": 100,
+        "transition": 0,
+        "fromX": -82,
+        "fromZ": 93,
+        "heading": 0.2,
+        "centerX": -90,
+        "centerZ": 103,
+        "radius": 0,
+        "phase": 0.7,
+        "angularSpeed": 0,
+        "wanderPhase": 1.3,
+        "jumpPhase": 10,
+        "speed": 4.2,
+        "age": 321.5,
+        "hatchAt": 0
+      },
+      "species": "turtle"
+    },
+    "expected": {
+      "age": 381.5,
+      "hatchIn": 0,
+      "heading": 0.12273812147097121,
+      "speed": 3.5805971468823397,
+      "x": -89.70198340513427,
+      "y": 0.02,
+      "z": 102.78148867146658
+    },
+    "name": "trapped_peer",
+    "time": 160
+  }
+]

@@ -24,6 +24,8 @@ On Windows, if Go is installed but absent from PATH:
 
 ## Controls
 
+On phones and tablets, touch controls appear automatically. Drag the left thumbstick to move and swipe the world to look around; both work at the same time. Tap **Sprint** to toggle running, and press and release **Jump** for each jump. Use **Throw**, **Interact**, **Eat** (or **Dismount** while riding), and **Catch** on the right. Tap a hotbar slot to select it, and use **Bag**, **Recipes**, **Map**, or **Menu** at the top. Building shows buttons for placement, rotation, height, packing, destruction, and canceling. Controls adapt to portrait and landscape, and held input clears when a panel opens or the app loses focus. The game menu includes a **Touch controls** switch for devices with both a touchscreen and a mouse.
+
 | Input | Action |
 | --- | --- |
 | Mouse | Look around |
@@ -57,7 +59,7 @@ Click an occupied inventory slot, then another slot to move its stack. Different
 
 Players start with **125 stamina**, enough for roughly **seven seconds of continuous sprinting**; stamina training adds ten per level. Running out of stamina returns you to walking speed while stamina recovers. Release **Shift** and recover at least **20%** stamina before sprinting again. Press **Space** for each jump; holding it does not repeat jumps. You can jump on the mainland, in caves, and on home islands, including while riding a camel. Swimming prevents jumping. Mounted movement, jumping, and stamina use that camel's individual traits.
 
-Every **50 metres of actual grounded travel on foot** triggers a **0.1% chance of falling**. Each alcoholic drink adds **one percentage point**, up to 100%; soft drinks do not change it. The HUD shows your current chance. Falling leaves you lying down for **two seconds**; then press **E**, **Space**, or a movement key to stand. Swimming, camel rides, jumps, teleports, and pushing against walls do not count toward the distance. Respawning resets the alcohol increase.
+Every **50 metres of actual grounded travel on foot** triggers a **0.1% chance of falling**. Each alcoholic drink adds **one percentage point**, up to 100%; soft drinks do not change it. The HUD shows your current chance. Falling leaves you lying down for **two seconds**; then press **E**, **Space**, or a movement key to stand. Swimming, camel rides, jumps, teleports, and pushing against walls do not count toward the distance. Respawning or reconnecting resets the alcohol increase.
 
 ## The world
 
@@ -344,7 +346,7 @@ Old mainland tents and cabins migrate into home-island ownership. Their original
 
 Email login codes expire after ten minutes and can be used once; five incorrect attempts invalidate a code. The service rate-limits requests and verification attempts using the actual connection address. Select **Keep me signed in on this device** on a device you own to stay signed in for **30 days** after verifying your email once, including across browser and server restarts. Signing out revokes that device's session. Without this option, the browser gets a session cookie and the server expires the session after seven days at most; server restarts require signing in again. All session cookies are HttpOnly and SameSite, and Secure in production. Remembered sessions are saved atomically to `data/sessions.json` (under the configured data directory), containing only token hashes, player IDs/names, and expiration times. Pending codes and ordinary sessions remain in memory. Stable account IDs restore saved progress for the same normalized email address. The public game state does not contain email addresses.
 
-Resources, ocean animals and eggs, world time, player positions, transient buffs, and main-island campfires are recreated when the server restarts. Home-island buildings, including campfires and adopted pond animals, persist. Signing in after a server restart spawns a saved account in the forest. Reconnecting to the same running server preserves position, health, buffs, and action cooldowns; disconnecting cannot refill health or bypass bakery production timers. Disconnected players remain in the world for ten seconds to prevent immediately escaping incoming attacks; their bakery plot is released immediately. Restarting the server also clears plot occupancy without removing saved bakery purchases or upgrades.
+Resources, ocean animals and eggs, world time, player positions, transient buffs, and main-island campfires are recreated when the server restarts. Home-island buildings, including campfires and adopted pond animals, persist. Disconnecting immediately unloads the live player and releases their bakery plot. Reconnecting creates a fresh player at the forest spawn with full health and cleared temporary buffs and action cooldowns, while retaining saved inventory, purchases, progression, and paused production jobs. Restarting the server also clears plot occupancy without removing saved bakery purchases or upgrades.
 
 ## Development and verification
 
@@ -353,6 +355,7 @@ go test ./...
 go vet ./...
 go build ./...
 node --test scripts/state-sync.test.cjs
+node --test scripts/touch-controls.test.cjs
 node --test scripts/cave-scenery.test.cjs
 node --test scripts/club.test.cjs
 node --test scripts/funny-cake-panels.test.cjs scripts/funny-cake-effects.test.cjs
@@ -364,6 +367,7 @@ node --test scripts/camel-companions-ui.test.cjs scripts/ambient-audio.test.cjs
 node --test scripts/camel-training-ui.test.cjs scripts/achievements.test.cjs scripts/bouquets.test.cjs
 node --test scripts/home-upgrades.test.cjs
 node --test scripts/motion.test.cjs scripts/scenery-batches.test.cjs
+node --test scripts/animal-interaction.test.cjs scripts/animal-motion.test.cjs
 node scripts/island-panels.test.cjs
 ```
 
@@ -376,6 +380,8 @@ go test -race ./...
 The GitHub Actions workflow runs race-enabled tests, vet, the build, browser JavaScript syntax validation, and state reconstruction tests on Linux. Its Windows job tests the service lifecycle and builds an installable deployment ZIP with a checksum as a downloadable artifact. Backend tests cover configuration paths, graceful shutdown, game rules, login security, persistence, real authenticated WebSocket connections, delta reconstruction, queue drops, and compression negotiation. `/healthz` provides a basic process health check.
 
 Run `go test ./internal/server -run TestDeltaSteadyStateBandwidth -v` to compare complete snapshots, deltas, and compressed deltas over 100 simulated updates. This measures payload sizes in a stock local world, excluding the initial snapshot and network overhead; actual hosting traffic depends on player activity and connection count.
+
+Run `go test ./internal/server -run TestAnimalSteadyStateBandwidth -v` to compare animal routes against position updates in the same idle world. This isolates animals' contribution to compressed traffic and checks that ordinary swimming no longer generates repeated animal patches. `node --test scripts/animal-motion.test.cjs` checks shared Go/JavaScript trajectory fixtures, route transitions, egg clocks, and decoder baseline isolation.
 
 Run `go test ./internal/game -run '^$' -bench 'BenchmarkWorld' -benchmem` to measure simulation and snapshot construction at 1, 16, and 64 players. The fixture includes saved accounts, friend relationships, home islands, and the complete procedural map. Compare steady-state `SnapshotUpdate` batches separately from first-connection snapshots, which include the static layout. Server regressions also exercise blocked disk writes, ordered final saves, reconnects, mailbox pressure, and tick timing.
 
@@ -392,11 +398,15 @@ The smoke check creates a local test account and checks rendering, login, author
 
 `node scripts/auth-browser-smoke.cjs` uses the same `CK_TEST_URL` server to check both login steps at laptop sizes, the opt-in checkbox, browser-session versus 30-day cookies, remembered sign-in after reopening, and sign-out revocation.
 
+`node scripts/touch-browser-smoke.cjs` starts an isolated server and checks mobile multi-touch movement, looking, jumping, actions and hotbar selection, menu/panel input cleanup, disconnects, portrait/landscape layouts, and desktop keyboard/mouse controls. It saves screenshots and control bounds under `test-results/`.
+
 `node scripts/camel-browser-smoke.cjs` starts its own isolated server with a saved herd and home island, checks naming in Friends, **E/Q** mounting controls, mounted travel between home and cave, and saved names and parking locations after reconnecting. It chooses a free local port automatically; `CK_CAMEL_TEST_PORT` can override it.
 
 `node scripts/home-companions-browser-smoke.cjs` exercises held-treat feeding, camel recall, pen assignment and offline housing, pond upgrades, and the home island expansion sign in Chrome. It uses an isolated saved home and writes screenshots under `test-results/`.
 
 `node scripts/ambient-audio-browser-smoke.cjs` renders every environmental sound and footsteps to stereo WAV previews with Chrome's Web Audio engine and checks dolphin timing, quiet step levels, stopping, and disconnect silence. `node scripts/ambient-game-smoke.cjs` checks the actual game menu's volume and mute controls, saved preferences after reload, gesture unlock, and disconnect cleanup.
+
+`node scripts/animal-browser-smoke.cjs` starts an isolated server and replays its animal snapshots beside a swimmer in Chrome. It checks swimming from unchanged route descriptors, stopping when the stream stalls, continuous 3D rendering, compass/location updates, and E-key interactions near healthy or wounded fish, wounded or trapped turtles, and eggs. Set `CK_REPRO_ORIGINAL=1` to first reproduce the previous frozen-canvas error with the old interaction checks. Screenshots and logs go under `test-results/`.
 
 `node scripts/inventory-browser-smoke.cjs` starts an isolated server and checks the protected twenty-slot inventory and five-slot hotbar, Drop 1/5/10/all, ground bundles, and picking items back up through normal controls.
 
@@ -408,7 +418,7 @@ The smoke check creates a local test account and checks rendering, login, author
 
 `node scripts/funny-cake-browser-smoke.cjs` checks Disco Duke appearing at night, cake purchases, inventory and hotbar eating, color and motion effects, reduced flashing, refresh and expiry, dawn closing an open menu, and disconnect cleanup. It builds an isolated test server with temporary Go overlays for a shorter day/night cycle, effect duration, and nearby spawn; production timing is unchanged. Screenshots and logs go under `test-results/`.
 
-`node scripts/fall-browser-smoke.cjs` starts an isolated server, checks alcoholic and nonalcoholic drink effects, walks until a guaranteed fall, verifies the two-second recovery lock and low camera, then stands and reconnects with the same alcohol effect. It uses seeded test inventory and ordinary game actions; its screenshots and logs stay under `test-results/`.
+`node scripts/fall-browser-smoke.cjs` starts an isolated server, checks alcoholic and nonalcoholic drink effects, walks until a guaranteed fall, verifies the two-second recovery lock and low camera, then checks that reconnecting clears the temporary alcohol effect while preserving inventory. It uses seeded test inventory and ordinary game actions; its screenshots and logs stay under `test-results/`.
 
 `node scripts/render-benchmark.cjs` builds an isolated server on port 8094 and records draw calls, frame timings, and a fixed forest screenshot. Run again with `--unbatched` to compare the same scene without plant batching. It defaults to Chrome's software renderer; set `CK_RENDER_HARDWARE=1` to use Chrome's default graphics backend. Treat software frame timings separately from hardware FPS. `CK_RENDER_TEST_PORT` and `CK_CHROME` override the port and browser. Results are saved under `test-results/` and the test server stops afterward.
 
@@ -463,12 +473,16 @@ internal/store/     versioned profile saves
 web/                browser UI, first-person renderer, local Three.js assets
 ```
 
-The simulation runs at 20 ticks per second and publishes state ten times per second using [coder/websocket](https://github.com/coder/websocket). The browser requests `/ws?updates=delta-v1`: each connection receives a complete initial snapshot, then only changed player fields and changed entity fields, additions, and removals. Inventory maps and slots replace their previous values when changed; recipes and event lists are sent only when changed. WebSocket compression is negotiated when supported. The server computes each delta against the last successfully written state, so discarding queued updates for a slow connection cannot lose changes. Sequence checks reconnect the browser with a fresh snapshot if its baseline is lost. Older tabs using `/ws` continue receiving full snapshots until refreshed; rebuild and deploy the executable with its embedded browser assets to enable the new protocol.
+The simulation runs at 20 ticks per second and publishes state ten times per second using [coder/websocket](https://github.com/coder/websocket). The browser requests `/ws?updates=delta-v1&animals=paths-v1`: each connection receives a complete initial snapshot, then only changed player fields and changed entity fields, additions, and removals. Inventory maps and slots replace their previous values when changed; recipes and event lists are sent only when changed. WebSocket compression is negotiated when supported. The server computes each delta against the last successfully written state, so discarding queued updates for a slow connection cannot lose changes. Sequence checks reconnect the browser with a fresh snapshot if its baseline is lost. Older tabs using `/ws` continue receiving full snapshots until refreshed; rebuild and deploy the executable with its embedded browser assets to enable the new protocol.
+
+Undisturbed ocean animals receive a swimming route once, evaluated from the shared world clock by both the server and browser. Normal swimming, dolphin jumps, aging, and egg countdowns need no repeated animal updates. Pods reacting to friendly or hostile swimmers switch to authoritative position updates and smoothly resume a route when no nearby swimmer affects them, including after disconnect. Health, rescue needs, egg disturbances, hatching, deaths, and route changes still come from the server; collision and interaction checks use its current positions. Clients without `animals=paths-v1` continue receiving current animal coordinates. Browser animation uses separate display objects so it cannot alter the decoder's delta baseline.
 
 The server limits the world to 64 simultaneous connections, validates actions and movement, bounds input rates, and disconnects superseded account connections. This is a playable alpha with one shared world, procedural graphics, fixed discoverable recipes, twelve bakery plots occupied during a player session, player homes, and a compact economy. Swimming changes speed and height; free diving is not implemented. World geometry blocks movement and projectiles, with door openings for accessible buildings. The connection limit is a guardrail, not a measured capacity guarantee; public launch would benefit from load testing, playtesting/balance, monitoring, and a transactional database for multiple server instances.
 
 One goroutine owns the world and receives typed commands through a bounded in-memory channel. Connection readers validate messages before submitting them; connection writers encode and send snapshots independently. A separate disk worker saves detached profiles, keeps at most one newer pending save, and completes the final save before shutdown. Disk writes and socket backpressure do not pause the simulation. Initial snapshots include the static map; periodic updates omit that copy and construct only entities visible in the player's world.
 
-The browser interpolates confirmed movement samples with a 120 ms local-position buffer and a 150 ms buffer for other players and animals. Mouse look remains immediate; stalled connections hold the last confirmed position. Teleports and reconnects reset the buffer. Stationary plants and ground decorations share spatial rendering batches while retaining individual chopping and regrowth visibility. These changes reduce update jitter and rendering work; they do not guarantee a particular frame rate on every device.
+As soon as a connection closes, the server unloads its live player, releases occupied activities and bakery resources, and retains only saved account progress. There is no offline player cache or reconnect grace period. Reconnecting, including replacing an existing tab, creates a fresh player at the forest spawn with full health and cleared temporary effects, movement, and activity state. Inventory, coins, homes, camels, production jobs, and other saved progression remain intact. Persistent profiles stay available to shared-world features such as homes, friends, and leaderboards; disconnected players no longer retain a runtime session.
+
+The browser interpolates confirmed movement samples with a 120 ms local-position buffer and a 150 ms buffer for other players and reactive animals. Planned animals use the same delayed world clock, capped at the latest confirmed simulation time. Mouse look remains immediate; stalled connections hold the last confirmed position. Teleports and reconnects reset the buffer. Stationary plants and ground decorations share spatial rendering batches while retaining individual chopping and regrowth visibility. These changes reduce update jitter and rendering work; they do not guarantee a particular frame rate on every device.
 
 Three.js is vendored under its MIT license in `web/vendor/THREE-LICENSE.txt`.

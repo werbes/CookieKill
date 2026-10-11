@@ -164,8 +164,8 @@ func TestFriendViewsResolveOnlyRelationshipsWithCurrentProfilePrecedence(t *test
 	w.Join("friend", "Saved friend")
 	w.players["friend"].profile.CallName = "Online friend"
 	w.Join("request", "Saved request")
+	w.players["request"].profile.CallName = "Offline request"
 	w.Leave("request")
-	w.offline["request"].profile.CallName = "Offline request"
 	p.profile.Friends = map[string]bool{"friend": true, "missing": true, "ignored": false}
 	p.profile.FriendRequests = map[string]bool{"friend": true, "request": true, "ignored": false}
 	views := w.friendViews(p)

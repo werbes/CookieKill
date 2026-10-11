@@ -79,8 +79,8 @@ func TestCamelCasualLobbyActionsConcurrentIsolationAndHostTransfer(t *testing.T)
 		t.Fatal("repeated start reset countdown")
 	}
 	w.Leave("two")
-	if len(w.casualRaces) != 1 || w.casualRaces[other.island] != other || w.offline["two"].island != "" {
-		t.Fatal("logout did not clean only its own race and restore the player")
+	if len(w.casualRaces) != 1 || w.casualRaces[other.island] != other || w.players["two"] != nil {
+		t.Fatal("logout did not clean only its own race and unload the player")
 	}
 }
 
@@ -260,6 +260,7 @@ func TestCamelRaceReminderDisconnectedAndReconnectedSessions(t *testing.T) {
 	}
 	w.time = 1140
 	w.Join("one", "Returned")
+	p = w.players["one"]
 	if p.raceReminderStart != 1200 || !strings.Contains(p.raceReminder.Text, "60 seconds") {
 		t.Fatal("reconnected player did not receive the current countdown")
 	}

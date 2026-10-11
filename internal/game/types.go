@@ -226,24 +226,27 @@ type Node struct {
 }
 
 type Animal struct {
-	ID                                                    string  `json:"id"`
-	Species                                               string  `json:"species"`
-	X                                                     float64 `json:"x"`
-	Z                                                     float64 `json:"z"`
-	Health                                                float64 `json:"health"`
-	MaxHealth                                             float64 `json:"maxHealth"`
-	Need                                                  string  `json:"need"`
-	Disposition                                           string  `json:"disposition"`
-	Group                                                 string  `json:"group"`
-	Speed                                                 float64 `json:"speed"`
-	Yaw                                                   float64 `json:"yaw"`
-	Y                                                     float64 `json:"y"`
-	Heading                                               float64 `json:"heading"`
-	Scale                                                 float64 `json:"scale"`
-	GroupID                                               string  `json:"groupId"`
-	Egg                                                   bool    `json:"egg"`
-	HatchIn                                               float64 `json:"hatchIn"`
-	Age                                                   float64 `json:"age"`
+	ID                                                    string        `json:"id"`
+	Species                                               string        `json:"species"`
+	X                                                     float64       `json:"x"`
+	Z                                                     float64       `json:"z"`
+	Health                                                float64       `json:"health"`
+	MaxHealth                                             float64       `json:"maxHealth"`
+	Need                                                  string        `json:"need"`
+	Disposition                                           string        `json:"disposition"`
+	Group                                                 string        `json:"group"`
+	Speed                                                 float64       `json:"speed"`
+	Yaw                                                   float64       `json:"yaw"`
+	Y                                                     float64       `json:"y"`
+	Heading                                               float64       `json:"heading"`
+	Scale                                                 float64       `json:"scale"`
+	GroupID                                               string        `json:"groupId"`
+	Egg                                                   bool          `json:"egg"`
+	HatchIn                                               float64       `json:"hatchIn"`
+	Age                                                   float64       `json:"age"`
+	Motion                                                *AnimalMotion `json:"motion,omitempty"`
+	motionGroup                                           string
+	motionX, motionZ                                      float64
 	lifespan, sickUntil, eggSince, jumpPhase, wanderPhase float64
 	groupX, groupZ, orbitRadius, baseSpeed, injuryRate    float64
 	homeX                                                 float64
@@ -378,7 +381,6 @@ type World struct {
 	time               float64
 	sequence           uint64
 	players            map[string]*player
-	offline            map[string]*player
 	profiles           map[string]Profile
 	nodes              []*Node
 	drops              map[string]groundDrop

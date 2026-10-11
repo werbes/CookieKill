@@ -127,9 +127,6 @@ func (w *World) townSnapshot(self string) TownView {
 	for id, p := range w.profiles {
 		profiles[id] = p
 	}
-	for id, p := range w.offline {
-		profiles[id] = p.profile
-	}
 	for id, p := range w.players {
 		profiles[id] = p.profile
 	}

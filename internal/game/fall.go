@@ -11,7 +11,7 @@ const (
 )
 
 // Rolls are in thousandths: 0.1% initially, plus one percentage point per
-// alcoholic drink. Runtime state survives reconnects but a respawn clears it.
+// alcoholic drink. Respawning or reconnecting clears this runtime state.
 func fallOdds(p *player) int { return min(1000, 1+10*p.alcoholDrinks) }
 
 func resetFall(p *player) {

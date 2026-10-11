@@ -70,9 +70,9 @@ type inspectCommand struct {
 	reply chan ownerView
 }
 type ownerView struct {
-	snapshot          game.Snapshot
-	players, departed int
-	closing           bool
+	snapshot game.Snapshot
+	players  int
+	closing  bool
 }
 
 type serverTiming struct{ tick, snapshot, autosave time.Duration }
@@ -87,7 +87,6 @@ type coordinator struct {
 	server                           *Server
 	world                            *game.World
 	peers                            map[string]*peer
-	departed                         map[string]time.Time
 	closing                          bool
 	timing                           serverTiming
 	ticker                           *time.Ticker
@@ -101,7 +100,7 @@ func newServer(a *auth.Service, db *store.Store, profiles map[string]game.Profil
 		logger = slog.Default()
 	}
 	s := &Server{auth: a, store: db, logger: logger, commands: make(chan ownerCommand, commandCapacity), done: make(chan struct{}), closeStarted: make(chan struct{}, 1), saveSlots: make(chan struct{}, 8), saves: make(chan saveJob, 1), finalSaved: make(chan error, 1), saveDone: make(chan struct{})}
-	c := &coordinator{server: s, world: game.New(profiles), peers: make(map[string]*peer), departed: make(map[string]time.Time), timing: timing}
+	c := &coordinator{server: s, world: game.New(profiles), peers: make(map[string]*peer), timing: timing}
 	go s.saveWorker(persist)
 	go c.ownWorld()
 	return s
@@ -309,12 +308,6 @@ func (c *coordinator) tick(now time.Time) {
 		c.world.Tick(c.timing.tick.Seconds())
 	}
 	c.lastTick = now
-	for id, deadline := range c.departed {
-		if !now.Before(deadline) {
-			c.world.Leave(id)
-			delete(c.departed, id)
-		}
-	}
 	clockNow := now.Add(clockTolerance)
 	if !clockNow.Before(c.nextSnapshot) {
 		for id, p := range c.peers {
@@ -353,6 +346,9 @@ func (c *coordinator) handle(raw ownerCommand) {
 			return
 		}
 		if old := c.peers[command.id]; old != nil {
+			// A reconnect may win the race with the previous socket's detach.
+			// Rebuild its runtime from saved progress in this case too.
+			c.world.Leave(command.id)
 			go func() {
 				if old.conn != nil {
 					old.conn.Close(websocket.StatusCode(4001), "This account was opened in another tab")
@@ -363,17 +359,15 @@ func (c *coordinator) handle(raw ownerCommand) {
 			}()
 		}
 		c.peers[command.id] = command.peer
-		delete(c.departed, command.id)
 		c.world.Join(command.id, command.name)
 		c.enqueueSnapshot(command.id, command.peer)
 		command.reply <- true
 	case detachCommand:
 		if c.peers[command.id] == command.peer && !c.closing {
 			delete(c.peers, command.id)
-			c.world.Input(command.id, game.Input{})
-			c.world.SetConnected(command.id, false)
-			c.world.ReleaseBakeryPlot(command.id)
-			c.departed[command.id] = time.Now().Add(10 * time.Second)
+			// Leave saves account progress and releases all player runtime now,
+			// even before Run starts or after simulation ticking has stopped.
+			c.world.Leave(command.id)
 		}
 	case playerCommand:
 		var err error
@@ -391,7 +385,7 @@ func (c *coordinator) handle(raw ownerCommand) {
 	case layoutCommand:
 		command.reply <- c.world.StaticLayout()
 	case inspectCommand:
-		command.reply <- ownerView{snapshot: c.world.Snapshot(command.id), players: len(c.peers), departed: len(c.departed), closing: c.closing}
+		command.reply <- ownerView{snapshot: c.world.Snapshot(command.id), players: len(c.peers), closing: c.closing}
 	case runCommand:
 		if !command.start {
 			c.stopTicker()

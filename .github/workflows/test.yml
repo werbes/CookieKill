@@ -18,6 +18,8 @@ jobs:
       - run: go vet ./...
       - run: go build ./...
       - run: node --check web/game.js
+      - run: node --check web/touch-controls.js
+      - run: node --test scripts/touch-controls.test.cjs
       - run: node --check web/panels.js
       - run: node --check web/state-sync.js
       - run: node --check web/island-scene.js
@@ -67,6 +69,7 @@ jobs:
       - run: node --check web/flower-scenery.js
       - run: node --check web/trader-scenery.js
       - run: node --check web/motion.js
+      - run: node --check web/animal-motion.js
       - run: node --check web/scenery-batches.js
       - run: node --test scripts/state-sync.test.cjs
       - run: node --test scripts/cave-scenery.test.cjs
@@ -83,6 +86,7 @@ jobs:
       - run: node --test scripts/camel-training-ui.test.cjs scripts/achievements.test.cjs scripts/bouquets.test.cjs
       - run: node --test scripts/home-upgrades.test.cjs
       - run: node --test scripts/motion.test.cjs scripts/scenery-batches.test.cjs
+      - run: node --test scripts/animal-interaction.test.cjs scripts/animal-motion.test.cjs
       - run: node scripts/island-panels.test.cjs
       - run: node --test scripts/island-building-panels.test.cjs scripts/teleport-ui.test.cjs
   windows:

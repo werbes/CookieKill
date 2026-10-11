@@ -216,12 +216,14 @@ func TestClubSeatsExclusiveAndReleasedByMovementAndTravel(t *testing.T) {
 		t.Fatal("disconnect did not release chair:", err)
 	}
 	w.Join("one", "Returning visitor")
+	p = w.players["one"]
 	if p.clubSeatID != "" || p.posture != "" {
 		t.Fatal("reconnecting stole another player's chair")
 	}
 	if err := w.Act("two", Action{Action: "club_sit", Target: "club_seat_1"}); err != nil {
 		t.Fatal(err)
 	}
+	p.x, p.z, p.inCave = -213, -243, true
 	mustAct(t, w, Action{Action: "club_sit", Target: "club_seat_1"})
 	w.setIsland(p, "")
 	if p.clubSeatID != "" || p.posture != "" {

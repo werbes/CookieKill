@@ -191,7 +191,7 @@ func (w *World) camelParkingClear(p *player, point Point, y float64) bool {
 }
 
 // Housing is an explicit owner assignment. Logout returns only assigned camels;
-// all other camels retain the existing parking and mounted-reconnect behavior.
+// all other camels retain their last parking position when the rider unloads.
 func (w *World) houseOfflineCamels(p *player) {
 	if isCamelRaceIsland(p.island) || p.island == CamelTrainingIsland {
 		return

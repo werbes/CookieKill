@@ -306,11 +306,16 @@ func TestStaleInputAndReconnectDoNotReplayHeldJump(t *testing.T) {
 	}
 	w.Leave("one")
 	w.Join("one", "Baker")
+	p = w.players["one"]
+	if !grounded(p) || p.jumpHeld || p.jumpQueued {
+		t.Fatal("reconnect retained held Space state")
+	}
 	w.Input("one", Input{Jump: true})
 	w.Tick(.05)
-	if !grounded(p) {
-		t.Fatal("reconnecting replayed a held Space press")
+	if grounded(p) {
+		t.Fatal("fresh Space press was lost after reconnecting")
 	}
+	advance(w, 1)
 	w.Input("one", Input{})
 	w.Input("one", Input{Jump: true})
 	w.Tick(.05)

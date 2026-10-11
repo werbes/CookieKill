@@ -197,7 +197,7 @@ func TestCamelPenCapacityAssignmentProtectionAndRelease(t *testing.T) {
 	}
 }
 
-func TestAssignedCamelReturnsHomeOnLogoutGraceAndRestart(t *testing.T) {
+func TestAssignedCamelReturnsHomeOnDisconnectLogoutAndRestart(t *testing.T) {
 	w, p := penWorld(1)
 	mustAct(t, w, Action{Action: "camel_house", Target: "one_camel_1", Item: "home_pen"})
 	home := p.profile.Camels[0]
@@ -221,6 +221,7 @@ func TestAssignedCamelReturnsHomeOnLogoutGraceAndRestart(t *testing.T) {
 	}
 	w.Leave("one")
 	w.Join("one", "Returning owner")
+	p = w.players["one"]
 	if p.ridingCamel || p.profile.Camels[0] != home || p.island != "" {
 		t.Fatal("reconnect stole housed camel back from the island")
 	}

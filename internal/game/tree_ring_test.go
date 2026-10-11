@@ -230,8 +230,9 @@ func TestCookieArenaReturnDisconnectAndRaceGatherCleanup(t *testing.T) {
 	}
 	w.Leave("one")
 	w.Join("one", "Returning fighter")
-	if p.island != "" || playerY(p) != 12 {
-		t.Fatal("reconnect lost tree hut return")
+	p = w.players["one"]
+	if p.island != "" || playerY(p) != 0 || p.cookieArena != nil {
+		t.Fatal("reconnect did not spawn outside the abandoned arena")
 	}
 	p.x, p.z = -227, 20
 	p.y = 0

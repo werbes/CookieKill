@@ -76,13 +76,8 @@ func (w *World) eachHome(visit func(Home) bool) bool {
 			return true
 		}
 	}
-	for id, p := range w.offline {
-		if inspect(id, p.profile.Home, p.profile.CallName, p.profile.Username) {
-			return true
-		}
-	}
 	for id, p := range w.profiles {
-		if w.players[id] != nil || w.offline[id] != nil {
+		if w.players[id] != nil {
 			continue
 		}
 		if inspect(id, p.Home, p.CallName, p.Username) {
@@ -109,9 +104,6 @@ func (w *World) profileViews() map[string]Profile {
 	out := make(map[string]Profile, len(w.profiles)+len(w.players))
 	for id, p := range w.profiles {
 		out[id] = p
-	}
-	for id, p := range w.offline {
-		out[id] = p.profile
 	}
 	for id, p := range w.players {
 		out[id] = p.profile
@@ -201,11 +193,6 @@ func (w *World) damageHome(owner string, damage float64) {
 	}
 	if p := w.players[owner]; p != nil {
 		update(&p.profile)
-		return
-	}
-	if p := w.offline[owner]; p != nil {
-		update(&p.profile)
-		w.profiles[owner] = cloneProfile(p.profile)
 		return
 	}
 	p, ok := w.profiles[owner]

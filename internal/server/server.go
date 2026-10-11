@@ -153,6 +153,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		// Old tabs keep receiving full snapshots until reloaded. Each new
 		// connection starts with a full baseline, including the world layout.
 		encoder := stateEncoder{delta: r.URL.Query().Get("updates") == "delta-v1"}
+		encoder.animalPaths = encoder.delta && r.URL.Query().Get("animals") == "paths-v1"
 		baselineWritten := false
 		for {
 			select {

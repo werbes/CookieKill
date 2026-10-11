@@ -261,9 +261,6 @@ func (w *World) returnCamelRaceEntrants(r *camelRace) {
 	}
 	for id, entry := range r.entries {
 		p := w.players[id]
-		if p == nil {
-			p = w.offline[id]
-		}
 		if p != nil && !entry.returned {
 			if entry.Status == "racing" {
 				entry.Status = "dnf"

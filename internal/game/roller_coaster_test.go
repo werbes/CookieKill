@@ -170,7 +170,11 @@ func TestRollerCoasterDisconnectWorldChangeAndRaceGatherClearRide(t *testing.T) 
 				w.tickRollerCoaster()
 			case "logout":
 				w.Leave("one")
+				if p.coaster != nil || p.x != rollerCoasterX || p.z != rollerCoasterZ+3 {
+					t.Fatal("logout failed to leave the coaster before saving")
+				}
 				w.Join("one", "Returned")
+				p = w.players["one"]
 			case "home":
 				p.profile.HomeIsland = &Island{Owner: "one", Visitors: true}
 				w.setIsland(p, "one")
@@ -188,7 +192,7 @@ func TestRollerCoasterDisconnectWorldChangeAndRaceGatherClearRide(t *testing.T) 
 			if p.coaster != nil || p.y != 0 || p.fallen {
 				t.Fatal("session transition left a floating or active coaster rider")
 			}
-			if exit != "home" && exit != "respawn" && (p.x != rollerCoasterX || p.z != rollerCoasterZ+3) {
+			if exit != "home" && exit != "respawn" && exit != "logout" && (p.x != rollerCoasterX || p.z != rollerCoasterZ+3) {
 				t.Fatal("transition lost the safe station return location")
 			}
 		})

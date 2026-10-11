@@ -36,6 +36,8 @@ import {createFlowerScenery} from './flower-scenery.js';
 import {createTraderScenery} from './trader-scenery.js';
 import {createSceneryBatches} from './scenery-batches.js';
 import {createMotionClock,createMotionTrack,LOCAL_MOTION_DELAY_MS,REMOTE_MOTION_DELAY_MS} from './motion.js';
+import {projectAnimalSnapshot,sampleAnimalMotion} from './animal-motion.js';
+import {createTouchControls} from './touch-controls.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
@@ -53,6 +55,8 @@ const cookieNote = (key) => isKnown(key) ? (cookieNotes[key] || '') : 'Bake this
 const materialEmoji = {flower_daisy:'🌼',flower_tulip:'🌷',flower_lavender:'✿',bouquet_daisies:'🌼',bouquet_tulips:'🌷',bouquet_lavender:'✿',flower_bouquet:'💐',swift_dates:'●',spring_carrot:'🥕',stamina_oats:'🌾',happy_apple:'🍎',funny_cake:'🍰',cosmic_cake:'🍰',wood:'🪵',stick:'╱',stone:'◈',dough:'◕',berry:'●',nut:'◉',cactus:'♧',sea_salt:'✧',shell:'🐚',trash:'♻',pearl:'○',treasure:'♜',old_coin:'◎',protein_powder:'▥',protein_drink:'▤'};
 const buffNames = {speed:'QUICK FEET',slow:'SLOWED',weaken:'WEAKER THROWS',weak:'WEAKER THROWS',range:'LONG THROW',short:'SHORT THROW',swim:'OCEAN LEGS',superstrength:'SUPERSTRENGTH',protein:'PROTEIN BOOST',training:'TRAINING BOOST',funny_cake:'FUNNY CAKE'};
 const state = {player:null,snapshot:null,ws:null,connected:false,playing:false,locked:false,modal:null,menuOpen:false,context:null,email:'',yaw:0,pitch:0,keys:new Set(),lastInput:0,selected:'sugar',selectedSlot:0,hotkeys:[],nodes:new Map(),animals:new Map(),players:new Map(),homes:new Map(),projectiles:new Map(),events:new Set(),nearest:null,lastHealth:100,localPosition:new THREE.Vector3(-35,1.7,-35),handSwing:0,lastThrow:0,lastSnapshot:0,hasPlayed:false,wasModalLocked:false,worldReady:false,serverRecipes:[],intentYaw:false};
+// On touch devices, locked means gameplay has focus without browser pointer lock.
+let touchControls;
 let renderer, scene, camera, clock, worldGroup, hand, water, waterPositions, landingTime=0, lastUI=0, lastMinimap=0, lastFrame=0, lastAnimation=0, lastPanelRefresh=0, miniContext;
 let islandScene, buildGhost, riddenCamel, flowerScenery, caveScenery, forestClub, bakeryScene, bakeryFurnishings, productionScene, nightScene, funnyCakeEffects, daylight, skylight;
 const nearForestClub=me=>!!me&&!me.island&&me.x>-229&&me.x<-175&&me.z<-184;
@@ -481,8 +485,8 @@ function connect(){
   if(!state.player||state.sessionReplaced)return;
   clearTimeout(reconnectTimer);
   const decoder=createSnapshotDecoder();
-  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws?updates=delta-v1');state.ws=ws;
-  ws.addEventListener('open',()=>{if(state.ws!==ws)return;state.connected=true;$('disconnect-banner').hidden=true;$('connection-state').innerHTML='<i></i> CONNECTED';});
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws?updates=delta-v1&animals=paths-v1');state.ws=ws;
+  ws.addEventListener('open',()=>{if(state.ws!==ws)return;state.connected=true;updateTouchUI();$('disconnect-banner').hidden=true;$('connection-state').innerHTML='<i></i> CONNECTED';});
   ws.addEventListener('message',(event)=>{
     if(state.ws!==ws||ws.readyState!==WebSocket.OPEN)return;
     let snapshot;
@@ -497,9 +501,9 @@ function connect(){
     if(state.ws!==ws||!state.player)return;
     panels?.connectionLost?.();
     nightScene?.clear();ambientAudio.clear();
-    state.connected=false;state.keys.clear();$('disconnect-banner').hidden=false;$('connection-state').textContent='RECONNECTING';
+    state.connected=false;clearControls();updateTouchUI();$('disconnect-banner').hidden=false;$('connection-state').textContent='RECONNECTING';
     if(event.code===4001||event.code===1008){
-      state.sessionReplaced=true;if(document.pointerLockElement)document.exitPointerLock();
+      state.sessionReplaced=true;pauseControls();if(document.pointerLockElement)document.exitPointerLock();
       const message=event.code===4001?'Account opened in another tab. Reload to reconnect.':'Your session ended. Reload to sign in again.';
       $('disconnect-banner').textContent=message;$('connection-state').textContent='DISCONNECTED';toast(message,'error');return;
     }
@@ -513,18 +517,20 @@ function action(actionName,extra={}){
   if(state.snapshot?.me.fallen&&actionName!=='stand'){toast(fallPrompt(state.snapshot.me));return;}
   send({type:'action',action:actionName,...extra});
 }
-function fallPrompt(me){return me.standIn>0?'You fell over. Rest for '+me.standIn.toFixed(1)+'s before standing.':'Press E, Space, or move to stand up.';}
+function fallPrompt(me){return me.standIn>0?'You fell over. Rest for '+me.standIn.toFixed(1)+'s before standing.':state.touchControls?'Tap Interact, Jump, or move to stand up.':'Press E, Space, or move to stand up.';}
 function movement(){
-  if(!state.locked||state.modal||!state.connected||state.snapshot?.rollerCoaster?.ride)return{x:0,z:0,sprint:false,jump:false};
-  const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')?1:0);
-  const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')?1:0);
-  const size=Math.hypot(forward,side)||1;
-  return {x:(-Math.sin(state.yaw)*forward+Math.cos(state.yaw)*side)/size,z:(-Math.cos(state.yaw)*forward-Math.sin(state.yaw)*side)/size,sprint:state.keys.has('ShiftLeft')||state.keys.has('ShiftRight'),jump:state.keys.has('Space')};
+  if(!state.locked||state.modal||state.menuOpen||!state.connected||state.snapshot?.rollerCoaster?.ride)return{x:0,z:0,sprint:false,jump:false};
+  const touch=touchControls?.movement();
+  const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')?1:0)+(touch?.forward||0);
+  const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')?1:0)+(touch?.side||0);
+  const size=Math.max(1,Math.hypot(forward,side));
+  return {x:(-Math.sin(state.yaw)*forward+Math.cos(state.yaw)*side)/size,z:(-Math.cos(state.yaw)*forward-Math.sin(state.yaw)*side)/size,sprint:!!touch?.sprint||state.keys.has('ShiftLeft')||state.keys.has('ShiftRight'),jump:!!touch?.jump||state.keys.has('Space')};
 }
 function sendMovement(){if(state.connected)send({type:'input',...movement(),yaw:state.yaw,pitch:state.pitch});}
 setInterval(sendMovement,50);
 function receiveSnapshot(snapshot){
   if(!snapshot.me)return;
+  snapshot=projectAnimalSnapshot(snapshot);
   const first=!state.snapshot,old=state.snapshot?.me,oldRide=state.snapshot?.rollerCoaster?.ride,oldTraining=state.snapshot?.camelTraining?.exercise,oldExercise=state.snapshot?.cookiePractice?.exercise?.station;
   if(snapshot.layout&&state.layout?.version!==snapshot.layout.version)createEnvironment(snapshot.layout);
   else if(snapshot.layout)state.layout=snapshot.layout;
@@ -538,10 +544,10 @@ function receiveSnapshot(snapshot){
   if(state.building){const bakery=state.building.scope==='bakery',mode=bakery?snapshot.me.bakeryBuildMode:snapshot.me.buildMode,editing=bakery?snapshot.me.editingBakeryFurnitureId:snapshot.me.editingBuildId;if(!mode||state.building.object&&editing!==state.building.object.id)cancelBuild({notify:false});}
   if(state.pendingBakeryEdit&&!snapshot.me.bakeryBuildMode)state.pendingBakeryEdit=null;
   if(state.building?.scope==='bakery'&&state.building.object){const current=snapshot.me.bakeryFurniture?.find(o=>o.id===state.building.object.id),color=current?.color||snapshot.me.paint?.[current?.kind]||'';if(current&&color!==state.building.color){const rotation=state.building.rotation;beginBuild({object:current,acquired:true,scope:'bakery',silent:true});if(state.building)state.building.rotation=rotation;}}
-  if(old&&old.island!==snapshot.me.island){cancelBuild({notify:!activityArena(snapshot.me.island)});state.zone=null;updateHeldCookie();if(activityArena(old.island)||activityArena(snapshot.me.island)||nutIsland(old.island)||nutIsland(snapshot.me.island)){state.yaw=snapshot.me.island==='camel_training'?Math.PI:snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.keys.clear();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}}
-  if(old?.island==='camel_training'&&snapshot.me.island==='camel_training'&&oldTraining!==snapshot.camelTraining?.exercise){state.yaw=Math.PI;state.pitch=snapshot.me.pitch||0;state.keys.clear();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}
-  if(snapshot.me.island==='cookie_practice'&&oldExercise!==snapshot.cookiePractice?.exercise?.station&&snapshot.cookiePractice?.exercise?.station&&snapshot.cookiePractice.exercise.station!=='practice_pool'){state.yaw=0;state.pitch=snapshot.cookiePractice.exercise.station==='practice_treadmill'?-.22:-.62;state.keys.clear();}
-  if((oldRide?.id||'')!==(snapshot.rollerCoaster?.ride?.id||'')){state.keys.clear();state.coasterYaw=snapshot.rollerCoaster?.ride?.yaw??null;state.yaw=snapshot.me.yaw||0;state.pitch=-.08;if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}
+  if(old&&old.island!==snapshot.me.island){cancelBuild({notify:!activityArena(snapshot.me.island)});state.zone=null;updateHeldCookie();if(activityArena(old.island)||activityArena(snapshot.me.island)||nutIsland(old.island)||nutIsland(snapshot.me.island)){state.yaw=snapshot.me.island==='camel_training'?Math.PI:snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;clearControls();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}}
+  if(old?.island==='camel_training'&&snapshot.me.island==='camel_training'&&oldTraining!==snapshot.camelTraining?.exercise){state.yaw=Math.PI;state.pitch=snapshot.me.pitch||0;clearControls();if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}
+  if(snapshot.me.island==='cookie_practice'&&oldExercise!==snapshot.cookiePractice?.exercise?.station&&snapshot.cookiePractice?.exercise?.station&&snapshot.cookiePractice.exercise.station!=='practice_pool'){state.yaw=0;state.pitch=snapshot.cookiePractice.exercise.station==='practice_treadmill'?-.22:-.62;clearControls();}
+  if((oldRide?.id||'')!==(snapshot.rollerCoaster?.ride?.id||'')){clearControls();state.coasterYaw=snapshot.rollerCoaster?.ride?.yaw??null;state.yaw=snapshot.me.yaw||0;state.pitch=-.08;if(state.modal)closeModal({resume:false});if(!state.locked)capturePrompt();}
   if(first){state.yaw=snapshot.me.yaw||0;state.pitch=snapshot.me.pitch||0;state.selected=snapshot.me.selected||'sugar';updateHeldCookie();}
   if(old&&snapshot.me.health<old.health-1){$('damage-overlay').style.opacity='.5';setTimeout(()=>$('damage-overlay').style.opacity='0',240);}
   if(old&&!old.sprintExhausted&&snapshot.me.sprintExhausted)toast('Out of stamina — walking to recover. Release Shift, then sprint again once stamina reaches 20%.');
@@ -561,7 +567,7 @@ function receiveSnapshot(snapshot){
   });
   syncObjects((snapshot.animals||[]).filter((a)=>a.health>0||a.egg),state.animals,()=>new THREE.Group(),(o,a)=>{if(o.userData.egg!==a.egg||!o.children.length){for(const child of [...o.children]){o.remove(child);disposeObject(child);}const animal=makeAnimal(a);o.add(animal);o.userData.label=animal.userData.label;o.userData.egg=a.egg;o.userData.lastNeed=null;}
     o.userData.motion??=createMotionTrack();o.userData.pose??={};
-    if(acceptMotion&&o.userData.motion.push(motionTime,{x:a.x,y:a.y||0,z:a.z,yaw:Number.isFinite(a.heading)?a.heading:o.rotation.y},{key:a.egg?'egg':'animal',epoch:motionClock.generation})){o.position.set(a.x,a.y||0,a.z);o.rotation.y=Number.isFinite(a.heading)?a.heading:o.rotation.y;}
+    if(acceptMotion&&o.userData.motion.push(motionTime,{x:a.x,y:a.y||0,z:a.z,yaw:Number.isFinite(a.heading)?a.heading:o.rotation.y},{key:(a.egg?'egg':'animal')+'|'+(a.motion?'route':'reactive'),epoch:motionClock.generation})){o.position.set(a.x,a.y||0,a.z);o.rotation.y=Number.isFinite(a.heading)?a.heading:o.rotation.y;}
     o.scale.setScalar(a.egg?1:(a.scale||1));o.userData.animal=a;
   });
   syncObjects((snapshot.homes||[]).map(h=>({...h,id:h.owner})),state.homes,()=>new THREE.Group(),(o,h)=>{const signature=JSON.stringify([h.x,h.z,h.kind,h.safe,h.username,h.callName]);if(o.userData.signature!==signature){for(const child of [...o.children]){o.remove(child);disposeObject(child);}o.add(homeObject(h));o.userData.signature=signature;}});
@@ -606,6 +612,7 @@ function updateZone(me){
 }
 function updateHUD(){
   const me=state.snapshot?.me;if(!me)return;
+  updateTouchUI();
   updateZone(me);
   const clubToggle=$('club-light-toggle');clubToggle.hidden=!nearForestClub(me)&&!cakeEffectActive(me)&&!rainbowEffectActive();clubToggle.textContent='L · Flashing lights: '+(clubReducedFlashing()?'reduced':'on');clubToggle.setAttribute('aria-pressed',String(clubReducedFlashing()));
   $('coin-count').textContent=me.coins||0;$('player-name').textContent=me.callName||me.name;
@@ -623,7 +630,8 @@ function updateHUD(){
   const selected=slots[state.selectedSlot]||{item:'',count:0};
   $('selected-cookie-label').innerHTML=selected.item?escapeHTML(itemName(selected.item).toUpperCase())+' <span>'+escapeHTML(cookieNames[selected.item]?cookieNote(selected.item):heldCamelTreat(state.snapshot)?'Press E near your camel to feed it':'Ready in your hotbar')+'</span>':'EMPTY SLOT <span>Move an item here from your inventory</span>';
   if(cookieArena(me.island))$('selected-cookie-label').innerHTML='ARENA COOKIES <span>Unlimited cookies for this area · Left click to throw</span>';
-  if(state.building)$('selected-cookie-label').textContent='PLACE '+pretty(state.building.item).toUpperCase()+' · R rotate'+(state.building.scope==='bakery'?' · F pack · T destroy':' · PgUp/PgDn height')+' · click place · Esc cancel';
+  if(state.building&&state.touchControls)$('selected-cookie-label').textContent='PLACE '+pretty(state.building.item).toUpperCase();
+  else if(state.building)$('selected-cookie-label').textContent='PLACE '+pretty(state.building.item).toUpperCase()+' · R rotate'+(state.building.scope==='bakery'?' · F pack · T destroy':' · PgUp/PgDn height')+' · click place · Esc cancel';
   if(me.fallen)$('selected-cookie-label').textContent=fallPrompt(me);
   $('buffs').innerHTML=Object.entries(me.buffs||{}).filter(([,seconds])=>seconds>0).map(([key,seconds])=>'<div class="buff"><span>✦</span><strong>'+escapeHTML(buffNames[key]||pretty(key).toUpperCase())+'</strong><span>'+Math.ceil(seconds)+'s</span></div>').join('');
   $('buffs').insertAdjacentHTML('beforeend','<div class="buff" title="A fall roll every 50 metres walked or run. Each alcoholic drink adds 1 percentage point until respawn."><strong>FALL CHANCE</strong><span>'+(me.fallChance??.1).toFixed(1)+'% / 50m</span></div>');
@@ -653,12 +661,23 @@ function toast(message,type=''){
 }
 function chooseCookie(key){if(activityArena(state.snapshot?.me.island)||state.snapshot?.rollerCoaster?.ride)return;const slot=typeof key==='number'?key:(state.snapshot?.me.hotbar||[]).findIndex(s=>s.item===key);if(slot===5){if(nutIsland(state.snapshot?.me.island)){openModal('nut_island');return;}if(insideOwnBakery(state.snapshot)){openModal('bakery_build');return;}if(state.snapshot?.me.homeIsland||state.snapshot?.me.island){openModal('build');return;}}if(slot<0||slot>4)return;cancelBuild();if(state.snapshot?.me.bakeryBuildMode)action('bakery_build_mode',{enabled:false});if(state.snapshot?.me.buildMode)action('build_mode',{enabled:false});state.selectedSlot=slot;state.selected=state.snapshot?.me.hotbar?.[slot]?.item||'';action('select',{slot});updateHeldCookie();updateHUD();}
 function toggleBakeryBuild(){if(!insideOwnBakery(state.snapshot)&&!state.snapshot?.me.bakeryBuildMode){toast('Step inside your own bakery to redecorate.');return;}cancelBuild();action('bakery_build_mode',{enabled:!state.snapshot.me.bakeryBuildMode});}
-$('hotbar').addEventListener('click',(event)=>{const button=event.target.closest('[data-slot]');if(button)chooseCookie(Number(button.dataset.slot));});
+let touchedHotbarSlot=null;
+$('hotbar').addEventListener('pointerdown',event=>{
+  touchedHotbarSlot=null;
+  if(event.pointerType!=='touch'&&event.pointerType!=='pen')return;
+  const button=event.target.closest('[data-slot]');if(!button)return;
+  event.preventDefault();touchedHotbarSlot=button;chooseCookie(Number(button.dataset.slot));
+});
+$('hotbar').addEventListener('click',event=>{
+  const button=event.target.closest('[data-slot]');if(!button)return;
+  if(event.detail!==0&&(button===touchedHotbarSlot||event.pointerType==='touch'||event.pointerType==='pen')){touchedHotbarSlot=null;return;}
+  chooseCookie(Number(button.dataset.slot));
+});
 function toggleClubLighting(){setClubReducedFlashing(!clubReducedFlashing());updateHUD();if(state.modal)renderModal();}
 $('club-light-toggle').addEventListener('click',toggleClubLighting);
 function throwCookie(){
   if(camelArena(state.snapshot?.me.island)||state.snapshot?.rollerCoaster?.ride)return;
-  if(document.pointerLockElement!==$('world')||state.modal||!state.snapshot||performance.now()-state.lastThrow<160)return;
+  if(!state.locked||state.modal||state.menuOpen||!state.snapshot||performance.now()-state.lastThrow<160)return;
   if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}
   if(state.building){placeBuild();return;}
   if(state.snapshot.me.buildMode||state.snapshot.me.bakeryBuildMode){toast('Press 6 to choose a build, or look at an object and press E to edit.');return;}
@@ -666,6 +685,7 @@ function throwCookie(){
   state.lastThrow=performance.now();send({type:'input',...movement(),yaw:state.yaw,pitch:state.pitch});action('throw',{item:cookieArena(state.snapshot.me.island)?'sugar':state.selected});state.handSwing=1;
 }
 function eatCookie(){if(!state.snapshot||!state.selected||activityArena(state.snapshot.me.island)||state.snapshot.rollerCoaster?.ride)return;if(state.snapshot.me.fallen){toast(fallPrompt(state.snapshot.me));return;}action(state.snapshot.clubDrinks?.some(d=>d.id===state.selected)?'drink':['protein_powder','protein_drink'].includes(state.selected)?'consume_protein':'eat',{item:state.selected});state.handSwing=-1;}
+// Interaction targets include nodes with a kind and animals with only a species.
 function nearby(){
   const me=state.snapshot?.me;if(!me)return null;const feedingTarget=heldTreatTarget(state.snapshot);if(feedingTarget)return feedingTarget;let found=null,best=5;
   for(const node of state.snapshot.nodes||[]){if(['tree_golden_cookie','tree_silver_cookie'].includes(node.kind)&&(Math.abs((node.y||0)-(me.y||0))>2||Math.hypot(node.x-me.x,node.z-me.z)>3.2))continue;if(!node.available||node.kind==='camel'&&(node.owner!==me.id||me.ridingCamel||Math.abs((node.y||0)-(me.y||0))>2))continue;if(node.kind==='item_drop'&&Math.abs((node.y||0)-(me.y||0))>2)continue;const underground=!!node.inCave||['pink_lollipop','blue_lollipop','green_lollipop'].includes(node.kind);if(underground&&!me.inCave||!underground&&me.inCave)continue;const d=node.kind==='bakery_plot'?Math.min(Math.hypot(node.x-me.x,node.z-me.z),Math.hypot(node.x-2.7-me.x,node.z+8.6-me.z)):Math.hypot(node.x-me.x,node.z-me.z);if((node.kind==='club_seat'||node.kind==='bakery_chair')&&d>2.5||node.kind==='island_portal'&&d>3||['bakery_oven','bakery_mixer','bakery_cooling_table','bakery_display','bakery_fridge'].includes(node.kind)&&d>2.6)continue;if(d<best){best=d;found={...node,distance:d,isAnimal:false};}}
@@ -684,7 +704,7 @@ function updateInteraction(){
   else state.nearest=nearby();const n=state.nearest;$('interaction-prompt').hidden=!n||!state.locked;
   if(!n)return;
   if(['cookie_ring_exit','cookie_practice_exit'].includes(n.kind)){$('interaction-label').textContent='Return to the treehut';$('interaction-detail').textContent='E to go back to the southern tree';return;}
-  if(n.kind.startsWith('practice_')){$('interaction-label').textContent=n.label||'Practice';$('interaction-detail').textContent=n.kind==='practice_pool'?'Swim to the far end and back in one lane':'E to use this equipment';return;}
+  if(n.kind?.startsWith('practice_')){$('interaction-label').textContent=n.label||'Practice';$('interaction-detail').textContent=n.kind==='practice_pool'?'Swim to the far end and back in one lane':'E to use this equipment';return;}
   if(n.kind==='tree_golden_cookie'||n.kind==='tree_silver_cookie'){$('interaction-label').textContent=n.kind==='tree_golden_cookie'?'Eat the golden cookie':'Eat the silver cookie';$('interaction-detail').textContent=n.kind==='tree_golden_cookie'?'Enter the cookie fighting ring':'Visit aim practice and the physical gym';return;}
   if(n.kind==='green_lollipop'){$('interaction-label').textContent='The green lollipop';$('interaction-detail').textContent=state.snapshot.me.nutIsland?'Visit your nut island':'Unlock your nut island for 1,000 coins';return;}
   if(n.kind==='nut_return'){$('interaction-label').textContent='Return to the desert cave';$('interaction-detail').textContent='E to leave your nut island';return;}
@@ -695,11 +715,11 @@ function updateInteraction(){
   if(n.kind==='flower_shop'||n.kind==='betty'){$('interaction-label').textContent=n.kind==='betty'?'Have a chat with Betty':'Visit Betty’s flower shop';$('interaction-detail').textContent='Sell single flowers · Buy a bouquet · Make someone smile';return;}
   if(n.kind==='pet_shop'){$('interaction-label').textContent='Visit the pet store';$('interaction-detail').textContent='Treats for speed, jumping, stamina, and happiness';return;}
   if(n.kind==='leaderboard_board'){$('interaction-label').textContent=n.label;$('interaction-detail').textContent='Four leaderboards · Your place in Crumb City';return;}
-  if(n.kind.startsWith('flower_')){$('interaction-label').textContent='Pick '+itemName(n.kind);$('interaction-detail').textContent='Sell a single flower to Betty for coins';return;}
+  if(n.kind?.startsWith('flower_')){$('interaction-label').textContent='Pick '+itemName(n.kind);$('interaction-detail').textContent='Sell a single flower to Betty for coins';return;}
   if(n.isBakeryFurniture){$('interaction-label').textContent='Edit '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent='E selects - R rotates - T destroys - F packs';return;}
   if(n.kind==='bakery_chair'){$('interaction-label').textContent=state.snapshot.me.bakerySeatId===n.id?'Stand up':'Sit in cafe chair';$('interaction-detail').textContent=n.occupiedBy&&n.occupiedBy!==state.snapshot.me.id?'This chair is occupied':'Relax in the cafe';return;}
   if(n.kind==='club_cake_seller'){$('interaction-label').textContent='Buy funny cakes';$('interaction-detail').textContent='Disco Duke · Strange colors and a wandering world';return;}
-  if(n.kind.startsWith('club_')){$('interaction-label').textContent=n.kind==='club_bar'?'Order a drink':n.kind==='club_casino'?'Play the fortune wheel':state.snapshot.me.posture==='sitting'?'Stand up':'Take a seat';$('interaction-detail').textContent=n.kind==='club_bar'?'Shakes, soft drinks, and bar favorites':n.kind==='club_casino'?'Choose your stake in game coins · View all seven outcomes':'Relax in the Wildwood underground';return;}
+  if(n.kind?.startsWith('club_')){$('interaction-label').textContent=n.kind==='club_bar'?'Order a drink':n.kind==='club_casino'?'Play the fortune wheel':state.snapshot.me.posture==='sitting'?'Stand up':'Take a seat';$('interaction-detail').textContent=n.kind==='club_bar'?'Shakes, soft drinks, and bar favorites':n.kind==='club_casino'?'Choose your stake in game coins · View all seven outcomes':'Relax in the Wildwood underground';return;}
   if(n.kind==='item_drop'){$('interaction-label').textContent='Pick up '+itemName(n.item)+' ('+(n.amount||1)+')';$('interaction-detail').textContent='E to collect this item or bundle';return;}
   if(state.building){$('interaction-prompt').hidden=true;return;}
   if(state.snapshot?.me.buildMode&&n.isBuild){$('interaction-label').textContent='Edit '+pretty(n.kind).toLowerCase();$('interaction-detail').textContent=n.editingBy&&n.editingBy!==state.snapshot.me.id?'Another builder is editing this object':'E takes control · R rotates · T destroys · F packs';return;}
@@ -739,7 +759,7 @@ function interact(){
   if(n.kind==='island_chest'){openModal('chest',n);return;}
   if(n.kind==='island_portal'){cancelBuild();action('teleport_cave');return;}
   if(['cookie_ring_exit','cookie_practice_exit'].includes(n.kind)){action('cookie_arena_leave');return;}
-  if(n.kind.startsWith('practice_')){if(n.kind!=='practice_target')action('practice_exercise',{target:n.id});return;}
+  if(n.kind?.startsWith('practice_')){if(n.kind!=='practice_target')action('practice_exercise',{target:n.id});return;}
   if(n.kind==='camel'){action('interact',{target:n.id});if(heldCamelTreat(state.snapshot))state.handSwing=.8;return;}
   if(n.egg){toast('Stay at least two metres away so this egg can hatch undisturbed.');return;}
   if(n.isAnimal&&n.need==='wounded'&&['fish','turtle'].includes(n.species)){openModal('animal',n);return;}
@@ -759,7 +779,7 @@ function beginBuild({item,object=null,packed='',acquired=false,scope='island',si
   buildGhost=bakery?bakeryFurnishings.objectView(definition,state.snapshot.bakeryFurnitureCatalog):islandScene.objectView(definition,state.snapshot.buildCatalog);
   (bakery?bakeryFurnishings:islandScene).setEditing(object?.id||'');
   buildGhost.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.userData.ghostColor=o.material.color.clone();o.material.transparent=true;o.material.opacity=.48;o.material.depthWrite=false;o.castShadow=false;}});scene.add(buildGhost);
-  if(!silent){toast('R rotates - T destroys - F packs - Left click places - Esc cancels.');if(!state.locked&&!state.modal)setPlaying();}
+  if(!silent){toast(state.touchControls?'Use the build buttons to rotate, change height, pack, destroy, or cancel. Tap Place when ready.':'R rotates - T destroys - F packs - Left click places - Esc cancels.');if(!state.locked&&!state.modal)setPlaying();}
 }
 function updateBuildGhost(){
   if(!state.building||!buildGhost||!state.snapshot)return;
@@ -776,12 +796,71 @@ function placeBuild(){
   action(b.scope==='bakery'?(b.object?'bakery_move':'bakery_place'):(b.object?'move_build':'build'),{item:b.item,from:b.packed||'',target:b.object?.id||'',x:b.x,y:b.y,z:b.z,rotation:b.rotation});state.lastThrow=performance.now();
   if(!b.object)cancelBuild({notify:false});
 }
+function clearControls(){state.keys.clear();touchControls?.reset();sendMovement();}
+function pauseControls(){state.locked=false;state.playing=false;clearControls();updateTouchUI();}
+function setTouchMode(enabled){
+  state.touchControls=enabled;document.body.classList.toggle('touch-controls-enabled',enabled);
+  touchControls?.setEnabled(enabled);clearControls();
+  $('touch-mode-toggle').textContent='Touch controls '+(enabled?'on':'off');
+  $('touch-mode-toggle').setAttribute('aria-pressed',String(enabled));
+  $('interaction-prompt').querySelector('kbd').textContent=enabled?'Tap Interact':'E';
+  $('capture-prompt').innerHTML=enabled?'Tap to return to the world':'Click to look around <kbd>ESC</kbd> menu';
+  if(state.playing&&!state.modal&&!state.menuOpen){
+    if(enabled){if(document.pointerLockElement)document.exitPointerLock();}
+    else {pauseControls();capturePrompt();}
+  }
+  updateTouchUI();
+}
+function updateTouchUI(){
+  touchControls?.setActive(state.touchControls&&state.locked&&state.connected&&!state.modal&&!state.menuOpen);
+  if(!state.touchControls)return;
+  const me=state.snapshot?.me,b=state.building,ride=state.snapshot?.rollerCoaster?.ride,exercise=state.snapshot?.cookiePractice?.exercise?.station;
+  $('touch-throw').textContent=b?'Place':'Throw';
+  $('touch-eat').textContent=ride?'Ride':exercise?'Stop':activityArena(me?.island)?'Activity':me?.ridingCamel?'Dismount':'Eat';
+  $('touch-activity').hidden=!ride&&!activityArena(me?.island);
+  $('touch-bakery-build').hidden=!me?.bakeryBuildMode&&!insideOwnBakery(state.snapshot);
+  $('touch-bakery-build').textContent=me?.bakeryBuildMode?'Finish build':'Decorate';
+  $('touch-bakery-build').setAttribute('aria-pressed',String(!!me?.bakeryBuildMode));
+  $('touch-build-controls').hidden=!b;
+  $('touch-pack').hidden=$('touch-destroy').hidden=!b?.object;
+  $('touch-raise').hidden=$('touch-lower').hidden=!b||b.scope==='bakery';
+  $('interaction-prompt').querySelector('kbd').textContent='Tap Interact';
+}
+function useSelected(){
+  if(state.snapshot?.rollerCoaster?.ride)openModal('coaster');
+  else if(state.snapshot?.cookiePractice?.exercise?.station)action('practice_stop');
+  else if(cookieArena(state.snapshot?.me.island))openModal('cookie_activity');
+  else if(camelArena(state.snapshot?.me.island))openModal(state.snapshot.me.island==='camel_training'?'training':'race');
+  else if(state.snapshot?.me.ridingCamel)action('camel_dismount');
+  else eatCookie();
+}
+function buildControl(control){
+  const b=state.building;if(!b)return;
+  if(control==='cancel'){cancelBuild();updateTouchUI();return;}
+  if(control==='rotate')b.rotation=(b.rotation+45)%360;
+  if(b.scope!=='bakery'&&(control==='raise'||control==='lower'))b.y=clamp(b.y+(control==='raise'?.5:-.5),0,12);
+  if(['pack','destroy'].includes(control)&&b.object&&!state.buildOperationPending){state.buildOperationPending=true;action(b.scope==='bakery'?(control==='destroy'?'bakery_destroy':'bakery_pack'):(control==='destroy'?'destroy_build':'pack_build'),{target:b.object.id});}
+}
+function touchAction(control){
+  if(!state.locked||state.modal||state.menuOpen||!state.connected)return;
+  if(control==='menu'){toggleMenu();return;}
+  if(['inventory','recipes','map'].includes(control)){openModal(control);return;}
+  if(control==='throw')throwCookie();
+  else if(control==='interact')interact();
+  else if(control==='eat')useSelected();
+  else if(control==='catch')rodentCaptureHUD?.catchNearest();
+  else if(control==='bakery-build')toggleBakeryBuild();
+  else if(control==='activity')openModal(state.snapshot?.rollerCoaster?.ride?'coaster':cookieArena(state.snapshot?.me.island)?'cookie_activity':state.snapshot?.me.island==='camel_training'?'training':'race');
+  else buildControl(control);
+  updateTouchUI();
+}
 function capturePrompt(){if(state.player&&!state.modal&&!state.menuOpen&&state.hasPlayed)$('capture-prompt').hidden=false;}
 function setPlaying(){
   if(state.sessionReplaced){location.reload();return;}
   if(!state.snapshot||!state.connected){toast('Your world is still connecting. Just a moment.');return;}
   if(!state.hasPlayed)state.zone=null;
   state.menuOpen=false;state.hasPlayed=true;$('play-overlay').hidden=true;$('start-overlay').hidden=true;$('capture-prompt').hidden=true;
+  if(state.touchControls){clearControls();state.locked=true;state.playing=true;updateTouchUI();return;}
   try{const promise=$('world').requestPointerLock();if(promise?.catch)promise.catch(capturePrompt);}
   catch{capturePrompt();}
 }
@@ -789,7 +868,7 @@ function toggleMenu(){
   if(!state.player)return;
   if(state.menuOpen){setPlaying();return;}
   if(state.modal)closeModal({resume:false});
-  state.menuOpen=true;state.keys.clear();$('start-overlay').hidden=true;$('capture-prompt').hidden=true;$('play-overlay').hidden=false;
+  state.menuOpen=true;pauseControls();$('start-overlay').hidden=true;$('capture-prompt').hidden=true;$('play-overlay').hidden=false;
   if(document.pointerLockElement)document.exitPointerLock();
   $('play-button').focus();
 }
@@ -805,27 +884,30 @@ $('capture-prompt').addEventListener('click',setPlaying);
 $('customize-button').addEventListener('click',()=>openModal('customize'));
 $('world').addEventListener('click',()=>{if(state.player&&!state.locked&&!state.modal&&!state.menuOpen)setPlaying();});
 document.addEventListener('pointerlockchange',()=>{
-  state.locked=document.pointerLockElement===$('world');state.playing=state.locked;
-  state.keys.clear();sendMovement();
+  const touchPlaying=!!(state.touchControls&&state.playing&&!state.modal&&!state.menuOpen);
+  state.locked=document.pointerLockElement===$('world')||touchPlaying;state.playing=state.locked;
+  // Switching from a mouse to touch exits pointer lock asynchronously; keep the
+  // new finger gesture that started the switch.
+  if(touchPlaying){state.keys.clear();sendMovement();}else clearControls();
+  updateTouchUI();
   if(state.locked){state.hasPlayed=true;state.menuOpen=false;$('play-overlay').hidden=true;$('start-overlay').hidden=true;$('capture-prompt').hidden=true;}
   else capturePrompt();
 });
 document.addEventListener('pointerlockerror',capturePrompt);
-document.addEventListener('mousemove',(event)=>{if(!state.locked)return;state.yaw-=event.movementX*.002;state.pitch=clamp(state.pitch-event.movementY*.002,-1.35,1.35);});
+document.addEventListener('mousemove',(event)=>{if(state.touchControls||document.pointerLockElement!==$('world')||!state.locked)return;state.yaw-=event.movementX*.002;state.pitch=clamp(state.pitch-event.movementY*.002,-1.35,1.35);});
 document.addEventListener('pointerdown',()=>{nightScene?.unlockAudio();ambientAudio.unlock();});
-document.addEventListener('mousedown',(event)=>{if(document.pointerLockElement!==$('world')||state.modal)return;if(event.button===0)throwCookie();if(event.button===2)eatCookie();});
+document.addEventListener('mousedown',(event)=>{if(state.touchControls||document.pointerLockElement!==$('world')||state.modal)return;if(event.button===0)throwCookie();if(event.button===2)eatCookie();});
 document.addEventListener('contextmenu',(event)=>{if(state.player)event.preventDefault();});
 const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight']);
 document.addEventListener('keydown',(event)=>{
   nightScene?.unlockAudio();ambientAudio.unlock();
-  const pointerLocked=document.pointerLockElement===$('world');
   if(event.code==='Escape'){if(event.repeat)return;event.preventDefault();escapeHandled=true;if(state.building){cancelBuild();return;}toggleMenu();return;}
   if(event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLSelectElement||event.ctrlKey||event.metaKey||event.altKey)return;
   if(!state.player)return;
   if(state.locked&&movementKeys.has(event.code)){event.preventDefault();state.keys.add(event.code);}
   if(event.repeat)return;
   if(state.locked&&movementKeys.has(event.code)){sendMovement();return;}
-  if(state.building&&pointerLocked&&!state.modal){if(['KeyT','KeyF'].includes(event.code)&&state.building.object&&!state.buildOperationPending){event.preventDefault();state.buildOperationPending=true;action(state.building.scope==='bakery'?(event.code==='KeyT'?'bakery_destroy':'bakery_pack'):(event.code==='KeyT'?'destroy_build':'pack_build'),{target:state.building.object.id});return;}if(event.code==='KeyR'){state.building.rotation=(state.building.rotation+45)%360;return;}if(state.building.scope!=='bakery'&&(event.code==='PageUp'||event.code==='PageDown')){event.preventDefault();state.building.y=clamp(state.building.y+(event.code==='PageUp'?.5:-.5),0,12);return;}}
+  if(state.building&&state.locked&&!state.modal){const control={KeyT:'destroy',KeyF:'pack',KeyR:'rotate',PageUp:'raise',PageDown:'lower'}[event.code];if(control){event.preventDefault();buildControl(control);return;}}
   if(event.code==='Enter'&&!state.locked&&!state.modal)setPlaying();
   if(state.menuOpen)return;
   if(event.code==='KeyB'&&!state.modal){event.preventDefault();toggleBakeryBuild();return;}
@@ -838,12 +920,14 @@ document.addEventListener('keydown',(event)=>{
   if(event.code==='KeyR'&&cookieArena(state.snapshot?.me.island))toggleModal('cookie_activity');
   if(event.code==='KeyR'&&camelArena(state.snapshot?.me.island))toggleModal(state.snapshot.me.island==='camel_training'?'training':'race');
   if(event.code==='KeyE'&&state.locked)interact();
-  if(event.code==='KeyQ'&&state.locked){if(state.snapshot?.rollerCoaster?.ride)openModal('coaster');else if(state.snapshot?.cookiePractice?.exercise?.station)action('practice_stop');else if(cookieArena(state.snapshot?.me.island))openModal('cookie_activity');else if(camelArena(state.snapshot?.me.island))openModal(state.snapshot.me.island==='camel_training'?'training':'race');else if(state.snapshot?.me.ridingCamel)action('camel_dismount');else eatCookie();}
+  if(event.code==='KeyQ'&&state.locked)useSelected();
   if(/^Digit[1-6]$/.test(event.code)&&!state.modal)chooseCookie(Number(event.code.slice(5))-1);
 });
 document.addEventListener('keyup',(event)=>{const held=state.keys.delete(event.code);if(held&&movementKeys.has(event.code))sendMovement();if(event.code==='Escape'){if(!escapeHandled)toggleMenu();escapeHandled=false;}});
-window.addEventListener('blur',()=>{state.keys.clear();escapeHandled=false;sendMovement();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){state.keys.clear();sendMovement();ambientAudio.clear();}});
+window.addEventListener('blur',()=>{clearControls();escapeHandled=false;});
+window.addEventListener('pagehide',clearControls);
+window.addEventListener('resize',clearControls);
+document.addEventListener('visibilitychange',()=>{if(document.hidden){clearControls();ambientAudio.clear();}});
 $('help-button').addEventListener('click',()=>openModal('help'));
 $('objective-help').addEventListener('click',()=>openModal('help'));
 $('menu-button').addEventListener('click',()=>openModal('inventory'));
@@ -854,10 +938,28 @@ function closeModal(options){panels?.closeModal(options);}
 function toggleModal(tab){if(panels)panels.toggleModal(tab);}
 function renderModal(){panels?.renderModal();}
 let interactionRing;
+function animateAnimals(now,remoteTime,me){
+  // Advance only through confirmed world time, so a stalled connection holds
+  // animals still just like the other server-driven movement tracks.
+  const animalTime=Math.min(remoteTime,motionClock.latestTime??0)/1000;
+  for(const object of state.animals.values()){
+    const animal=object.userData.animal;
+    const pose=sampleAnimalMotion(animal,animalTime,animal)||object.userData.motion?.sample(remoteTime,object.userData.pose);if(!pose)continue;
+    animal.x=pose.x;animal.y=pose.y;animal.z=pose.z;animal.heading=pose.yaw;animal.yaw=pose.yaw;
+    object.position.set(pose.x,pose.y+Math.sin(now*.0017+pose.x)*.002,pose.z);object.rotation.y=pose.yaw;
+    if(animal.egg){if(object.userData.label)object.userData.label.visible=!!me&&Math.hypot(animal.x-me.x,animal.z-me.z)<16;continue;}
+    const plastic=object.getObjectByName('rescue-plastic');if(plastic)plastic.visible=animal.need==='trapped';const wound=object.getObjectByName('animal-wound');if(wound)wound.visible=animal.need==='wounded'; const animalStatus=animal.need+'|'+animal.disposition; if(object.userData.lastNeed!==animalStatus){
+      object.userData.lastNeed=animalStatus;const old=object.userData.label;if(old){old.parent?.remove(old);old.material.map.dispose();old.material.dispose();}
+      const label=textSprite(pretty(animal.species)+(animal.need?' · '+pretty(animal.need):animal.disposition==='hostile'?' · ANGRY':''),'#fff3dc','#294b43b0',512,90);label.position.y=(animal.species==='whale'?3:1.4);label.scale.set(2.8,.5,1);object.add(label);object.userData.label=label;
+    }
+    if(object.userData.label)object.userData.label.visible=!!me&&Math.hypot(animal.x-me.x,animal.z-me.z)<22;
+  }
+}
 function animate(now){
   requestAnimationFrame(animate);
   const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;landingTime+=dt;
-  const me=state.snapshot?.me;
+  const me=state.snapshot?.me,remoteTime=motionClock.time(now,REMOTE_MOTION_DELAY_MS);
+  animateAnimals(now,remoteTime,me);
   const underground=me?.inCave&&!me.island?clamp(-(me.y||0)/7,0,1):0;
   const inClub=!!me?.inCave&&!me.island&&me.x<0;
   if(daylight){const night=nightFactor(state.snapshot?.dayCycle);daylight.intensity=(3.25*(1-night)+.2*night)*(1-underground)+.04*underground;daylight.color.set('#fff1cf').lerp(new THREE.Color('#a7bce8'),night);skylight.intensity=(2.15*(1-night)+.5*night)*(1-underground)+(inClub?1.05:.13)*underground;scene.fog.color.set('#a9c1a5').lerp(new THREE.Color('#17283d'),night).lerp(new THREE.Color(inClub?'#101224':'#261307'),underground);scene.fog.near=75-63*underground;scene.fog.far=235-185*underground;scene.background.copy(new THREE.Color('#b7cbb8')).lerp(new THREE.Color('#101d35'),night).lerp(new THREE.Color(inClub?'#090c19':'#1b0c05'),underground);}
@@ -901,23 +1003,11 @@ function animate(now){
     if(riddenCamel)riddenCamel.visible=false;
     camera.position.set(-27+Math.sin(landingTime*.05)*.55,3.4+Math.sin(landingTime*.12)*.07,-23+Math.cos(landingTime*.05)*.3);camera.lookAt(-42,2,-44);
   }
-  const remoteTime=motionClock.time(now,REMOTE_MOTION_DELAY_MS);
   for(const object of state.players.values()){
     const pose=object.userData.motion?.sample(remoteTime,object.userData.pose);if(!pose)continue;
     const coasterPose=rollerCoasterScene?.poseForPlayer(object.userData.player?.id);
     object.position.set(pose.x,pose.y,pose.z);object.rotation.order='YXZ';object.rotation.set(coasterPose?.pitch||0,coasterPose?.yaw??pose.yaw,coasterPose?.bank||0);
     const station=state.snapshot?.cookiePractice?.stations?.find(s=>s.occupiedBy===object.userData.player?.id);animatePracticeAvatar(object.userData.practiceRig,!!station?.active,now/1000);
-  }
-  for(const object of state.animals.values()){
-    const pose=object.userData.motion?.sample(remoteTime,object.userData.pose);if(!pose)continue;
-    object.position.set(pose.x,pose.y+Math.sin(now*.0017+pose.x)*.002,pose.z);object.rotation.y=pose.yaw;
-    const animal=object.userData.animal;
-    if(animal.egg){if(object.userData.label)object.userData.label.visible=!!me&&Math.hypot(animal.x-me.x,animal.z-me.z)<16;continue;}
-    const plastic=object.getObjectByName('rescue-plastic');if(plastic)plastic.visible=animal.need==='trapped';const wound=object.getObjectByName('animal-wound');if(wound)wound.visible=animal.need==='wounded'; const animalStatus=animal.need+'|'+animal.disposition; if(object.userData.lastNeed!==animalStatus){
-      object.userData.lastNeed=animalStatus;const old=object.userData.label;if(old){old.parent?.remove(old);old.material.map.dispose();old.material.dispose();}
-      const label=textSprite(pretty(animal.species)+(animal.need?' · '+pretty(animal.need):animal.disposition==='hostile'?' · ANGRY':''),'#fff3dc','#294b43b0',512,90);label.position.y=(animal.species==='whale'?3:1.4);label.scale.set(2.8,.5,1);object.add(label);object.userData.label=label;
-    }
-    if(object.userData.label)object.userData.label.visible=!!me&&Math.hypot(animal.x-me.x,animal.z-me.z)<22;
   }
   ambientAudio.update(state.snapshot,{enabled:state.connected&&state.hasPlayed&&!!state.player,hidden:document.hidden,listener:me?{...me,x:camera.position.x,y:camera.position.y,z:camera.position.z,yaw:state.yaw}:null,layout:state.layout,players:[...state.players.values()].map(o=>({...o.userData.player,x:o.position.x,y:o.position.y,z:o.position.z})),animals:[...state.animals.values()].filter(o=>o.userData.animal?.species==='dolphin').map(o=>({...o.userData.animal,x:o.position.x,y:o.position.y,z:o.position.z}))});
   const prediction=Math.min(.15,(now-state.lastSnapshot)/1000);
@@ -934,9 +1024,12 @@ function animate(now){
 window.addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 $('world').addEventListener('webglcontextlost',(event)=>{event.preventDefault();toast('The graphics connection was interrupted. Reload to return to your world.','error');});
 Object.assign(buffNames,{slowed:'SLOWED',weakened:'WEAKER THROWS',spawn_shield:'FRESHLY BAKED · PROTECTED'});
+touchControls=createTouchControls({root:$('touch-controls'),joystick:$('touch-joystick'),stick:$('touch-stick'),sprintButton:$('touch-sprint'),jumpButton:$('touch-jump'),lookSurface:$('world'),onMove:sendMovement,onLook:(dx,dy)=>{if(!state.locked||!state.connected||state.modal||state.menuOpen)return;state.yaw-=dx*.004;state.pitch=clamp(state.pitch-dy*.004,-1.35,1.35);},onAction:touchAction,onActivate:()=>{if(!state.touchControls)setTouchMode(true);}});
+setTouchMode(matchMedia('(pointer: coarse)').matches);
+document.addEventListener('pointerdown',event=>{if((event.pointerType==='touch'||event.pointerType==='pen')&&!state.touchControls)setTouchMode(true);},{capture:true});
+$('touch-mode-toggle').addEventListener('click',()=>setTouchMode(!state.touchControls));
 initializeRenderer();
 if(scene){interactionRing=new THREE.Mesh(new THREE.TorusGeometry(.8,.022,5,40),new THREE.MeshBasicMaterial({color:'#f6d299',transparent:true,opacity:.45,depthWrite:false}));interactionRing.rotation.x=-Math.PI/2;interactionRing.visible=false;scene.add(interactionRing);}
-import('./panels.js').then(({createPanels})=>{panels=createPanels({$,state,action,toast,chooseCookie,itemCount,itemName,cookieName,cookieNote,isKnown,cookieIcon,itemIcon,materialEmoji:{...materialEmoji,...bakingIngredientIcons},bakingItemName,cookieNames,cookieNotes,escapeHTML,pretty,beginBuild,cancelBuild,toggleBakeryBuild,insideOwnBakery:()=>insideOwnBakery(state.snapshot),resume:setPlaying});}).catch((error)=>{console.warn('Field guide unavailable',error);toast('The field guide could not load. Please reload the page.','error');});
+import('./panels.js').then(({createPanels})=>{panels=createPanels({$,state,action,toast,chooseCookie,itemCount,itemName,cookieName,cookieNote,isKnown,cookieIcon,itemIcon,materialEmoji:{...materialEmoji,...bakingIngredientIcons},bakingItemName,cookieNames,cookieNotes,escapeHTML,pretty,beginBuild,cancelBuild,toggleBakeryBuild,insideOwnBakery:()=>insideOwnBakery(state.snapshot),pause:pauseControls,resume:setPlaying});}).catch((error)=>{console.warn('Field guide unavailable',error);toast('The field guide could not load. Please reload the page.','error');});
 api('/api/world').then(({layout})=>{if(layout&&scene&&state.layout?.version!==layout.version)createEnvironment(layout);}).catch(()=>{});
 api('/api/session').then((session)=>{if(session.authenticated&&session.player)enterGame(session.player);}).catch(()=>{$('server-status').textContent='CONNECTING TO THE WORLD';});
-if(matchMedia('(pointer: coarse)').matches){$('mobile-note').hidden=false;}

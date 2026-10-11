@@ -155,6 +155,7 @@ func TestCamelTrainingMeasuredLapsTreatBoostAndPersistence(t *testing.T) {
 	}
 	w.Leave("one")
 	w.Join("one", "Returning trainer")
+	p = w.players["one"]
 	if p.training != nil || p.island != "" || p.profile.Camels[0] != trained {
 		t.Fatal("logout did not preserve training and return")
 	}

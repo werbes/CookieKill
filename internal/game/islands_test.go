@@ -99,6 +99,7 @@ func TestFriendCodesRequestsPrivacyAndOfflinePersistence(t *testing.T) {
 	if err := w.Act("two", Action{Action: "friend_accept", Target: "one"}); err != nil {
 		t.Fatal(err)
 	}
+	other = w.players["two"]
 	if !p.profile.Friends["two"] || !other.profile.Friends["one"] {
 		t.Fatal("friendship not reciprocal")
 	}
@@ -179,7 +180,7 @@ func TestIslandVisitorBuilderChestIsolationAndRevocation(t *testing.T) {
 	w.Leave("two")
 	mustAct(t, w, Action{Action: "island_visitors", Enabled: false})
 	w.Join("two", "Friend")
-	if friend.island != "" {
+	if w.players["two"] == friend || w.players["two"].island != "" {
 		t.Fatal("offline visitor bypassed closed island")
 	}
 }

@@ -49,8 +49,8 @@ type johnPork struct {
 	eating                            bool
 }
 
-// SetConnected excludes disconnected sessions immediately, including the
-// server's reconnect grace period before their player is moved offline.
+// SetConnected controls activity eligibility while a player is loaded.
+// The server calls Leave on disconnect to unload the runtime entirely.
 func (w *World) SetConnected(id string, connected bool) {
 	if p := w.players[id]; p != nil {
 		p.disconnected = !connected

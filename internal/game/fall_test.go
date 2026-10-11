@@ -201,7 +201,7 @@ func TestOnlySuccessfullyConsumedAlcoholRaisesFallChance(t *testing.T) {
 	}
 }
 
-func TestFallStateSurvivesReconnectAndClearsOnRespawn(t *testing.T) {
+func TestFallStateClearsOnReconnectAndRespawn(t *testing.T) {
 	w, p := movementWorld()
 	p.alcoholDrinks = 7
 	w.fallRandom = func() int { return 0 }
@@ -217,12 +217,11 @@ func TestFallStateSurvivesReconnectAndClearsOnRespawn(t *testing.T) {
 	w.Leave("one")
 	w.Join("one", "Returning")
 	p = w.players["one"]
-	if !p.fallen || p.fallDistance != .5 || p.alcoholDrinks != 7 || p.posture != "lying" {
-		t.Fatal("reconnect cleared runtime fall state")
+	if p.fallen || p.fallDistance != 0 || p.alcoholDrinks != 0 || p.posture != "" {
+		t.Fatal("reconnect restored discarded runtime fall state")
 	}
-	if err := w.Act("one", Action{Action: "stand"}); err == nil {
-		t.Fatal("reconnect bypassed the rest timer")
-	}
+	p.alcoholDrinks = 7
+	w.recordFootTravel(p, 50.5)
 	p.buffs = map[string]float64{}
 	if !w.damagePlayer(nil, p, 1000, "a cookie") {
 		t.Fatal("respawn fixture did not die")

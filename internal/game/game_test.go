@@ -122,7 +122,7 @@ func TestMovementIsAuthoritativeAndFinite(t *testing.T) {
 	}
 }
 
-func TestReconnectPreservesHealthPositionAndProductionJob(t *testing.T) {
+func TestReconnectRespawnsAndPreservesProductionJob(t *testing.T) {
 	w, p := testWorld()
 	p.profile.Bakery = true
 	p.profile.BakeryPlot = "bakery_plot_0"
@@ -137,22 +137,21 @@ func TestReconnectPreservesHealthPositionAndProductionJob(t *testing.T) {
 	advance(w, 1)
 	w.Join("one", "Baker")
 	p = w.players["one"]
-	if p.health != 35 || p.x != x || p.z != z {
-		t.Fatal("reconnect healed or relocated player")
+	if p.health != 100 || p.x == x && p.z == z || !w.active(p, "spawn_shield") {
+		t.Fatal("reconnect did not spawn a fresh player")
 	}
 	if p.input.X != 0 || p.input.Sprint {
 		t.Fatal("reconnect retained movement input")
 	}
+	nodePosition(w, p, "bakery_plot_0")
 	mustAct(t, w, Action{Action: "buy_land", Target: "bakery_plot_0"})
+	nodePosition(w, p, "bakery_plot_0_mixer")
 	mustAct(t, w, Action{Action: "make_dough"})
 	if len(p.profile.Production["bakery_mixer"].Queue) != 1 {
 		t.Fatal("second paid batch was not queued behind the saved batch")
 	}
 	if job := p.profile.Production["bakery_mixer"].Job; job == nil || job.Remaining != 40 || p.profile.Inventory["dough"] != 0 {
 		t.Fatal("reconnect advanced or lost the paused dough batch")
-	}
-	if w.active(p, "spawn_shield") {
-		t.Fatal("reconnect granted new combat protection")
 	}
 	advance(w, 40)
 	nodePosition(w, p, "bakery_plot_0_mixer")

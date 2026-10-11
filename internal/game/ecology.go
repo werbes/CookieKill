@@ -62,6 +62,20 @@ func (w *World) seedAnimals() {
 			w.injureAnimal(w.animals[start+i])
 		}
 	}
+	groups := map[string][]*Animal{}
+	for _, a := range w.animals {
+		groups[a.GroupID] = append(groups[a.GroupID], a)
+	}
+	for _, group := range groups {
+		average := 0.0
+		for _, a := range group {
+			average += a.baseSpeed
+		}
+		w.planAnimalGroup(group, average/float64(len(group)))
+		for _, a := range group {
+			sampleAnimalMotion(a, w.time)
+		}
+	}
 }
 
 func (w *World) injureAnimal(a *Animal) {
@@ -108,6 +122,7 @@ func (w *World) disturbEgg(p *player, a *Animal) error {
 		return errors.New("Swim closer to that egg.")
 	}
 	a.eggSince, a.HatchIn = w.time, eggHatchSeconds
+	a.Motion = w.stillAnimalMotion(a)
 	p.cooldowns["interact"] = w.time + .5
 	w.eventActor("The egg was disturbed. Give it two quiet minutes to hatch.", "animal", a.X, a.Z, p.profile.ID)
 	return nil
@@ -117,12 +132,14 @@ func (w *World) beginEgg(a *Animal) {
 	a.Egg, a.Health, a.Need, a.Age = true, 1, "", 0
 	a.Speed, a.Y, a.Disposition = 0, .02, "nesting"
 	a.eggSince, a.HatchIn, a.sickUntil = w.time, eggHatchSeconds, 0
+	a.Motion = w.stillAnimalMotion(a)
 	// Reputation belongs to the species and survives individual lifecycles.
 }
 
 func (w *World) hatchEgg(a *Animal) {
 	a.Egg, a.Health, a.Need, a.Disposition = false, a.MaxHealth, "", "calm"
 	a.Age, a.HatchIn, a.needAt = 0, 0, w.time+180
+	a.Motion = nil
 	// Hatch where the egg rested; a distant pod must not pull it across the ocean.
 	a.GroupID = fmt.Sprintf("%s_hatch_%d", a.ID, int(w.time))
 	a.Group = a.GroupID
@@ -140,6 +157,7 @@ func (w *World) moveAnimals(dt float64) {
 	old := map[*Animal]Point{}
 	for _, a := range w.animals {
 		if a.Health <= 0 {
+			a.Motion = nil
 			if a.respawnAt <= w.time {
 				w.beginEgg(a)
 			}
@@ -152,6 +170,9 @@ func (w *World) moveAnimals(dt float64) {
 				}
 			}
 			a.HatchIn = math.Max(0, eggHatchSeconds-(w.time-a.eggSince))
+			if a.Motion == nil || a.Motion.HatchAt != a.eggSince+eggHatchSeconds {
+				a.Motion = w.stillAnimalMotion(a)
+			}
 			if a.HatchIn <= 0 {
 				w.hatchEgg(a)
 			}
@@ -165,6 +186,7 @@ func (w *World) moveAnimals(dt float64) {
 		}
 		if (a.lifespan > 0 && a.Age >= a.lifespan) || (a.sickUntil > 0 && a.sickUntil <= w.time) {
 			a.Health, a.Speed, a.Need, a.respawnAt = 0, 0, "", w.time+30
+			a.Motion = nil
 			continue
 		}
 		groups[a.GroupID] = append(groups[a.GroupID], a)
@@ -176,7 +198,15 @@ func (w *World) moveAnimals(dt float64) {
 			average += a.baseSpeed
 		}
 		average /= float64(len(group))
+		if !w.reactiveAnimalGroup(group) {
+			w.planAnimalGroup(group, average)
+			for _, a := range group {
+				sampleAnimalMotion(a, w.time)
+			}
+			continue
+		}
 		for _, a := range group {
+			a.Motion = nil
 			speed := a.baseSpeed
 			if speed == 0 {
 				speed = 4

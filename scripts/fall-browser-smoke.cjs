@@ -132,10 +132,16 @@ const {chromium} = require(require.resolve('playwright', {paths: [path.resolve(_
     assert.equal(snapshot.me.posture, ''); assert.equal(snapshot.me.fallChance, 100);
     await until(() => page.locator('#interaction-prompt').isHidden(), 'stand prompt clears');
     await shot('standing-after-fall');
-    await page.reload({waitUntil: 'networkidle'}); await until(() => snapshot?.me.alcoholDrinks === 100, 'reconnect keeps alcohol');
-    assert.equal(snapshot.me.fallChance, 100);
+    const savedInventory = {...snapshot.me.inventory};
+    await page.reload({waitUntil: 'networkidle'}); await until(() => snapshot?.me.alcoholDrinks === 0, 'reconnect starts a fresh session');
+    assert.equal(snapshot.me.fallChance, .1);
+    assert.equal(snapshot.me.fallen, false);
+    assert.equal(snapshot.me.posture, '');
+    assert.equal(snapshot.me.island, '', 'reconnect returns to the mainland spawn');
+    assert.deepEqual(snapshot.me.inventory, savedInventory, 'consumed drinks stay consumed and saved items survive reconnect');
+    assert.equal(snapshot.me.inventory.sugar, 10);
     assert.deepEqual(pageErrors, []); assert.deepEqual(failed, []); assert.equal(actionErrors.length, 2);
-    console.log('PASS: 0.1% base, +1 point per alcohol, no effect from water, 100% cap, actual 50m walk, lying camera/HUD, two-second action/movement lock, E stand, reconnect retention.');
+    console.log('PASS: 0.1% base, +1 point per alcohol, no effect from water, 100% cap, actual 50m walk, lying camera/HUD, two-second action/movement lock, E stand, fresh reconnect with saved inventory.');
     console.log('Screenshots: ' + output);
   } catch (error) {
     if (page) await shot('failure').catch(() => {});
