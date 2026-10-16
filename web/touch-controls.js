@@ -1,6 +1,17 @@
 const DEAD_ZONE=.12;
 const touchPointer=event=>event.pointerType==='touch'||event.pointerType==='pen';
 
+// Pointer media queries describe input hardware, so a touchscreen PC can match
+// the same queries as a phone. Keep mobile controls limited to mobile platforms.
+export function isPhoneOrTablet(device={}){
+  const userAgent=device.userAgent||'',platform=[device.platform,device.userAgentData?.platform].filter(Boolean).join(' ');
+  const identity=platform+' '+userAgent;
+  if(/\b(?:Windows|Win32|Win64|WinCE|CrOS|Chrome OS)\b/i.test(identity))return false;
+  if(/\b(?:Android|iPhone|iPad|iPod|iOS)\b/i.test(identity))return true;
+  // iPadOS can identify itself as desktop Safari on a Mac.
+  return (/\bMacIntel\b/i.test(platform)||/\bMacintosh\b/i.test(userAgent))&&device.maxTouchPoints>1;
+}
+
 // Each finger owns just one control. Pointer capture keeps held inputs reliable
 // when a finger leaves its button; document listeners also cover capture failure.
 export function createTouchControls({root,joystick,stick,sprintButton,jumpButton,lookSurface,onMove=()=>{},onLook=()=>{},onAction=()=>{},onActivate=()=>{}}){

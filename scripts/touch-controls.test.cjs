@@ -2,6 +2,42 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const modulePromise=import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../web/touch-controls.js'),'utf8')).toString('base64'));
 const idle={forward:0,side:0,sprint:false,jump:false};
 
+test('phone/tablet eligibility preserves Android phones, Android tablets and iOS',async()=>{
+  const {isPhoneOrTablet}=await modulePromise;
+  for(const [name,device] of [
+    ['Android phone',{userAgent:'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/143.0.0.0 Mobile Safari/537.36',platform:'Linux armv8l',maxTouchPoints:5}],
+    ['Android tablet without mobile hint',{userAgent:'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36',platform:'Linux armv8l',userAgentData:{platform:'Android',mobile:false},maxTouchPoints:5}],
+    ['Android client hints',{userAgentData:{platform:'Android',mobile:false},maxTouchPoints:5}],
+    ['iPhone',{userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',platform:'iPhone',maxTouchPoints:5}],
+    ['iPad',{userAgent:'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',platform:'iPad',maxTouchPoints:5}],
+    ['iPod',{platform:'iPod',maxTouchPoints:5}],
+    ['iOS client hints',{userAgentData:{platform:'iOS'},maxTouchPoints:5}],
+    ['desktop-mode iPad',{userAgent:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',platform:'MacIntel',maxTouchPoints:5}],
+    ['desktop-mode iPad with only platform',{platform:'MacIntel',maxTouchPoints:5}],
+    ['desktop-mode iPad with only user agent',{userAgent:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',maxTouchPoints:5}],
+  ])assert.equal(isPhoneOrTablet(device),true,name);
+});
+
+test('touchscreen desktops are ineligible even with many touch points or mobile hints',async()=>{
+  const {isPhoneOrTablet}=await modulePromise;
+  for(const [name,device] of [
+    ['Windows Chrome touchscreen',{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36',platform:'Win32',userAgentData:{platform:'Windows',mobile:false},maxTouchPoints:10}],
+    ['Windows platform alone',{platform:'Win32',maxTouchPoints:10}],
+    ['Windows user agent alone',{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',maxTouchPoints:10}],
+    ['Windows client hints override mobile UA',{userAgent:'Mozilla/5.0 (Linux; Android 10; K)',userAgentData:{platform:'Windows',mobile:true},maxTouchPoints:10}],
+    ['Windows platform overrides iPad-like touch metadata',{platform:'Win32',userAgent:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',maxTouchPoints:10}],
+    ['ChromeOS touchscreen',{userAgent:'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36',platform:'Linux x86_64',maxTouchPoints:10}],
+    ['ChromeOS client hints override mobile UA',{userAgent:'Mozilla/5.0 (Linux; Android 10; K)',userAgentData:{platform:'Chrome OS',mobile:true},maxTouchPoints:10}],
+    ['Linux touchscreen',{userAgent:'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36',platform:'Linux x86_64',maxTouchPoints:10}],
+    ['Mac desktop',{userAgent:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',platform:'MacIntel',maxTouchPoints:0}],
+    ['Mac without multitouch',{platform:'MacIntel',maxTouchPoints:1}],
+    ['unknown touchscreen',{maxTouchPoints:10}],
+    ['mobile flag without a known platform',{userAgentData:{mobile:true},maxTouchPoints:10}],
+    ['missing device information',{}],
+  ])assert.equal(isPhoneOrTablet(device),false,name);
+  assert.equal(isPhoneOrTablet(),false);
+});
+
 class Element{
   constructor(parent=null,dataset={}){this.parent=parent;this.ownerDocument=parent?.ownerDocument||parent;this.dataset=dataset;this.style={};this.attributes={};this.listeners=new Map();this.captured=new Set();this.rect={left:0,top:0,width:100,height:100};}
   addEventListener(type,fn){if(!this.listeners.has(type))this.listeners.set(type,[]);this.listeners.get(type).push(fn);}

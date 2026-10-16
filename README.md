@@ -24,7 +24,7 @@ On Windows, if Go is installed but absent from PATH:
 
 ## Controls
 
-On phones and tablets, touch controls appear automatically. Drag the left thumbstick to move and swipe the world to look around; both work at the same time. Tap **Sprint** to toggle running, and press and release **Jump** for each jump. Use **Throw**, **Interact**, **Eat** (or **Dismount** while riding), and **Catch** on the right. Tap a hotbar slot to select it, and use **Bag**, **Recipes**, **Map**, or **Menu** at the top. Building shows buttons for placement, rotation, height, packing, destruction, and canceling. Controls adapt to portrait and landscape, and held input clears when a panel opens or the app loses focus. The game menu includes a **Touch controls** switch for devices with both a touchscreen and a mouse.
+On Android phones/tablets and iPhones/iPads that use touch as their primary input, touch controls appear automatically, including iPads using desktop browser mode. Drag the left thumbstick to move and swipe the world to look around; both work at the same time. Tap **Sprint** to toggle running, and press and release **Jump** for each jump. Use **Throw**, **Interact**, **Eat** (or **Dismount** while riding), and **Catch** on the right. Tap a hotbar slot to select it, and use **Bag**, **Recipes**, **Map**, or **Menu** at the top. Building shows buttons for placement, rotation, height, packing, destruction, and canceling. Controls adapt to portrait and landscape, and held input clears when a panel opens or the app loses focus. The **Touch controls** switch is available only on these touch devices. Desktop PCs keep keyboard/mouse controls, including when a Windows touchscreen reports the same pointer capabilities as a phone; touch/pen input and browser resizing cannot enable touch mode on a PC.
 
 | Input | Action |
 | --- | --- |
@@ -398,7 +398,7 @@ The smoke check creates a local test account and checks rendering, login, author
 
 `node scripts/auth-browser-smoke.cjs` uses the same `CK_TEST_URL` server to check both login steps at laptop sizes, the opt-in checkbox, browser-session versus 30-day cookies, remembered sign-in after reopening, and sign-out revocation.
 
-`node scripts/touch-browser-smoke.cjs` starts an isolated server and checks mobile multi-touch movement, looking, jumping, actions and hotbar selection, menu/panel input cleanup, disconnects, portrait/landscape layouts, and desktop keyboard/mouse controls. It saves screenshots and control bounds under `test-results/`.
+`node scripts/touch-browser-smoke.cjs` starts an isolated server and checks mobile multi-touch movement, looking, jumping, actions and hotbar selection, menu/panel input cleanup, disconnects, portrait/landscape layouts, desktop keyboard/mouse controls, Windows touchscreens reporting coarse/no-hover input, and iPads using desktop browser mode. It saves screenshots and control bounds under `test-results/`.
 
 `node scripts/camel-browser-smoke.cjs` starts its own isolated server with a saved herd and home island, checks naming in Friends, **E/Q** mounting controls, mounted travel between home and cave, and saved names and parking locations after reconnecting. It chooses a free local port automatically; `CK_CAMEL_TEST_PORT` can override it.
 

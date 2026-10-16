@@ -37,7 +37,7 @@ import {createTraderScenery} from './trader-scenery.js';
 import {createSceneryBatches} from './scenery-batches.js';
 import {createMotionClock,createMotionTrack,LOCAL_MOTION_DELAY_MS,REMOTE_MOTION_DELAY_MS} from './motion.js';
 import {projectAnimalSnapshot,sampleAnimalMotion} from './animal-motion.js';
-import {createTouchControls} from './touch-controls.js';
+import {createTouchControls,isPhoneOrTablet} from './touch-controls.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
@@ -56,6 +56,8 @@ const materialEmoji = {flower_daisy:'🌼',flower_tulip:'🌷',flower_lavender:'
 const buffNames = {speed:'QUICK FEET',slow:'SLOWED',weaken:'WEAKER THROWS',weak:'WEAKER THROWS',range:'LONG THROW',short:'SHORT THROW',swim:'OCEAN LEGS',superstrength:'SUPERSTRENGTH',protein:'PROTEIN BOOST',training:'TRAINING BOOST',funny_cake:'FUNNY CAKE'};
 const state = {player:null,snapshot:null,ws:null,connected:false,playing:false,locked:false,modal:null,menuOpen:false,context:null,email:'',yaw:0,pitch:0,keys:new Set(),lastInput:0,selected:'sugar',selectedSlot:0,hotkeys:[],nodes:new Map(),animals:new Map(),players:new Map(),homes:new Map(),projectiles:new Map(),events:new Set(),nearest:null,lastHealth:100,localPosition:new THREE.Vector3(-35,1.7,-35),handSwing:0,lastThrow:0,lastSnapshot:0,hasPlayed:false,wasModalLocked:false,worldReady:false,serverRecipes:[],intentYaw:false};
 // On touch devices, locked means gameplay has focus without browser pointer lock.
+const touchInput=matchMedia('(pointer: coarse) and (hover: none)');
+const touchDevice=isPhoneOrTablet(navigator);
 let touchControls;
 let renderer, scene, camera, clock, worldGroup, hand, water, waterPositions, landingTime=0, lastUI=0, lastMinimap=0, lastFrame=0, lastAnimation=0, lastPanelRefresh=0, miniContext;
 let islandScene, buildGhost, riddenCamel, flowerScenery, caveScenery, forestClub, bakeryScene, bakeryFurnishings, productionScene, nightScene, funnyCakeEffects, daylight, skylight;
@@ -799,6 +801,12 @@ function placeBuild(){
 function clearControls(){state.keys.clear();touchControls?.reset();sendMovement();}
 function pauseControls(){state.locked=false;state.playing=false;clearControls();updateTouchUI();}
 function setTouchMode(enabled){
+  // PCs can report coarse/no-hover input too; reserve these controls for phones/tablets.
+  const available=touchDevice&&touchInput.matches;
+  enabled=!!enabled&&available;
+  $('touch-mode-settings').hidden=!available;
+  $('touch-mode-toggle').disabled=!available;
+  if(state.touchControls===enabled)return;
   state.touchControls=enabled;document.body.classList.toggle('touch-controls-enabled',enabled);
   touchControls?.setEnabled(enabled);clearControls();
   $('touch-mode-toggle').textContent='Touch controls '+(enabled?'on':'off');
@@ -1025,7 +1033,8 @@ window.addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWid
 $('world').addEventListener('webglcontextlost',(event)=>{event.preventDefault();toast('The graphics connection was interrupted. Reload to return to your world.','error');});
 Object.assign(buffNames,{slowed:'SLOWED',weakened:'WEAKER THROWS',spawn_shield:'FRESHLY BAKED · PROTECTED'});
 touchControls=createTouchControls({root:$('touch-controls'),joystick:$('touch-joystick'),stick:$('touch-stick'),sprintButton:$('touch-sprint'),jumpButton:$('touch-jump'),lookSurface:$('world'),onMove:sendMovement,onLook:(dx,dy)=>{if(!state.locked||!state.connected||state.modal||state.menuOpen)return;state.yaw-=dx*.004;state.pitch=clamp(state.pitch-dy*.004,-1.35,1.35);},onAction:touchAction,onActivate:()=>{if(!state.touchControls)setTouchMode(true);}});
-setTouchMode(matchMedia('(pointer: coarse)').matches);
+setTouchMode(touchInput.matches);
+touchInput.addEventListener('change',()=>setTouchMode(touchInput.matches));
 document.addEventListener('pointerdown',event=>{if((event.pointerType==='touch'||event.pointerType==='pen')&&!state.touchControls)setTouchMode(true);},{capture:true});
 $('touch-mode-toggle').addEventListener('click',()=>setTouchMode(!state.touchControls));
 initializeRenderer();

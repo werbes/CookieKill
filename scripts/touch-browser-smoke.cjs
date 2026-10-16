@@ -13,7 +13,7 @@ const {chromium} = require(require.resolve('playwright', {paths: [path.resolve(_
   const out = path.join(root, 'test-results', 'touch-browser-' + Date.now());
   const data = path.join(out, 'data');
   fs.mkdirSync(data, {recursive: true});
-  const emails = ['touch-baker@example.com', 'keyboard-baker@example.com'];
+  const emails = ['touch-baker@example.com', 'keyboard-baker@example.com', 'hover-baker@example.com', 'windows-touch-baker@example.com'];
   const slots = n => Array.from({length: n}, () => ({item: '', count: 0}));
   const profiles = Object.fromEntries(emails.map((email, index) => {
     const id = 'u_' + crypto.createHash('sha256').update(email).digest('hex').slice(0, 32);
@@ -21,7 +21,7 @@ const {chromium} = require(require.resolve('playwright', {paths: [path.resolve(_
     hotbar[0] = {item: 'sugar', count: 20};
     hotbar[1] = {item: 'berry_cookie', count: 10};
     return [id, {id, name: index ? 'Keyboard Baker' : 'Touch Baker', callName: index ? 'Keyboard Baker' : 'Touch Baker',
-      username: index ? 'keyboard_baker' : 'touch_baker', coins: 1000, inventoryVersion: 3,
+      username: index ? 'keyboard_baker_' + index : 'touch_baker', coins: 1000, inventoryVersion: 3,
       hotbar, bagSlots: slots(20), selectedSlot: 0, levels: {}, discovered: {sugar: true, berry_cookie: true}}];
   }));
   fs.writeFileSync(path.join(data, 'players.json'), JSON.stringify({version: 3, profiles}));
@@ -57,6 +57,42 @@ const {chromium} = require(require.resolve('playwright', {paths: [path.resolve(_
     await until(async () => {const s = await read(); return s.locked && !s.modal && !s.menuOpen;}, 'touch play resumes');
     assert.equal((await read()).pointerLock, false, 'touch play must not require pointer lock');
     assert.equal(await page.locator('#touch-controls').isVisible(), true);
+  }
+  async function checkDesktopControls(label) {
+    assert.equal(await page.locator('body').evaluate(el => el.classList.contains('touch-controls-enabled')), false, 'desktop is not touch mode');
+    assert.equal(await page.locator('#touch-controls').isVisible(), false, 'desktop controls hidden');
+    assert.equal(await page.locator('#touch-mode-settings').evaluate(el => el.hidden), true, 'desktop touch settings hidden');
+    assert.equal(await page.locator('#touch-mode-toggle').isDisabled(), true, 'desktop touch toggle disabled');
+    await page.locator('#start-button').click();
+    await until(async () => (await read()).pointerLock && (await read()).locked, 'desktop pointer lock');
+    await page.keyboard.down('w');
+    assert.ok(Math.hypot((await read()).movement.x, (await read()).movement.z) > .9, 'desktop W movement');
+    const desktopMovement = (await read()).movement;
+    for (const pointerType of ['touch', 'pen']) for (const target of ['document', 'world']) {
+      await page.evaluate(({pointerType, target}) => {
+        const element = target === 'document' ? document : document.getElementById(target);
+        element.dispatchEvent(new PointerEvent('pointerdown', {pointerType, pointerId: 51,
+          clientX: 50, clientY: 50, bubbles: true, cancelable: true}));
+        document.dispatchEvent(new PointerEvent('pointerup', {pointerType, pointerId: 51, bubbles: true}));
+      }, {pointerType, target});
+      const current = await read(), label = 'desktop ' + pointerType + ' on ' + target;
+      assert.equal(current.touchControls, false, label + ' cannot enable mobile controls');
+      assert.equal(current.pointerLock && current.locked, true, label + ' preserves pointer lock');
+      assert.deepEqual(current.movement, desktopMovement, label + ' preserves held keyboard movement');
+    }
+    await page.locator('#touch-mode-toggle').dispatchEvent('click');
+    const afterToggle = await read();
+    assert.equal(afterToggle.touchControls, false, 'forced desktop toggle click cannot enable mobile controls');
+    assert.equal(afterToggle.pointerLock && afterToggle.locked, true, 'forced desktop toggle preserves pointer lock');
+    assert.deepEqual(afterToggle.movement, desktopMovement, 'forced desktop toggle preserves held keyboard movement');
+    await page.keyboard.down('Space');
+    assert.equal((await read()).movement.jump, true, 'desktop keyboard jump');
+    await page.keyboard.up('Space');
+    await page.keyboard.up('w');
+    assert.equal(stopped(await read()), true, 'desktop keyboard release');
+    await page.screenshot({path: path.join(out, label + '-play.png')});
+    await page.setViewportSize({width: 390, height: 844});
+    assert.equal(await page.locator('#touch-controls').isVisible(), false, 'narrow desktop does not enable touch');
   }
   async function setup(context, email) {
     const next = await context.newPage();
@@ -147,19 +183,30 @@ const {chromium} = require(require.resolve('playwright', {paths: [path.resolve(_
     await until(() => fetch(base + '/healthz').then(r => r.ok).catch(() => false), 'server starts');
     browser = await chromium.launch({executablePath: process.env.CK_CHROME || (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined),
       headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl']});
-    const mobile = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 1, isMobile: true, hasTouch: true});
+    const mobile = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 1, isMobile: true, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'});
+    await mobile.addInitScript(() => {
+      Object.defineProperties(navigator, {
+        platform: {value: 'Linux armv8l'}, maxTouchPoints: {value: 5},
+        userAgentData: {value: {platform: 'Android', mobile: true}},
+      });
+    });
     page = await setup(mobile, emails[0]);
     assert.equal(await page.locator('body').evaluate(el => el.classList.contains('touch-controls-enabled')), true);
     assert.equal(await page.locator('#touch-controls').isVisible(), false, 'controls hidden before play');
+    assert.equal(await page.locator('#touch-mode-settings').evaluate(el => el.hidden), false, 'phone offers touch settings');
+    assert.equal(await page.locator('#touch-mode-toggle').isEnabled(), true, 'phone touch toggle enabled');
     await page.screenshot({path: path.join(out, 'phone-start.png')});
     await resume();
     assert.equal((await read()).touchControls, true);
     await geometry('phone-390x844');
-    for (const viewport of [{width: 844, height: 390}, {width: 320, height: 568}]) {
+    for (const viewport of [{width: 844, height: 390}, {width: 320, height: 568}, {width: 1024, height: 768}]) {
       await page.setViewportSize(viewport);
       await geometry('phone-' + viewport.width + 'x' + viewport.height);
       await actionButton('menu').tap();
       await page.locator('#play-overlay').waitFor({state: 'visible'});
+      assert.equal(await page.locator('#touch-mode-toggle').isVisible(), true, 'phone/tablet menu offers touch toggle');
+      assert.equal(await page.locator('#touch-mode-toggle').isEnabled(), true, 'phone/tablet touch toggle enabled');
       await page.screenshot({path: path.join(out, 'menu-' + viewport.width + 'x' + viewport.height + '.png')});
       await resume();
       await actionButton('inventory').tap();
@@ -304,23 +351,78 @@ const {chromium} = require(require.resolve('playwright', {paths: [path.resolve(_
 
     const desktop = await browser.newContext({viewport: {width: 1280, height: 800}, hasTouch: false});
     page = await setup(desktop, emails[1]);
-    assert.equal(await page.locator('body').evaluate(el => el.classList.contains('touch-controls-enabled')), false, 'desktop is not touch mode');
-    assert.equal(await page.locator('#touch-controls').isVisible(), false, 'desktop controls hidden');
-    await page.locator('#start-button').click();
-    await until(async () => (await read()).pointerLock && (await read()).locked, 'desktop pointer lock');
-    await page.keyboard.down('w');
-    assert.ok(Math.hypot((await read()).movement.x, (await read()).movement.z) > .9, 'desktop W movement');
-    await page.keyboard.down('Space');
-    assert.equal((await read()).movement.jump, true, 'desktop keyboard jump');
-    await page.keyboard.up('Space');
-    await page.keyboard.up('w');
-    assert.equal(stopped(await read()), true, 'desktop keyboard release');
-    await page.screenshot({path: path.join(out, 'desktop-play.png')});
-    await page.setViewportSize({width: 390, height: 844});
-    assert.equal(await page.locator('#touch-controls').isVisible(), false, 'narrow desktop does not enable touch');
+    await checkDesktopControls('desktop');
+    await desktop.close();
+
+    // Windows touch hardware can natively report the same input media as a phone.
+    const windowsTouch = await browser.newContext({viewport: {width: 1920, height: 1080}, isMobile: false, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'});
+    await windowsTouch.addInitScript(() => {
+      Object.defineProperties(navigator, {
+        platform: {value: 'Win32'}, maxTouchPoints: {value: 10},
+        userAgentData: {value: {platform: 'Windows', mobile: false}},
+      });
+    });
+    page = await setup(windowsTouch, emails[3]);
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse) and (hover: none)').matches), true,
+      'Windows touchscreen reproduces the phone-like media query without overriding matchMedia');
+    await checkDesktopControls('windows-touch');
+    await windowsTouch.close();
+
+    // Model coarse input with hover, then a device changing between touch and
+    // mouse input on an iPad using its desktop browser identity.
+    const hybrid = await browser.newContext({viewport: {width: 1024, height: 768}, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'});
+    await hybrid.addInitScript(() => {
+      Object.defineProperties(navigator, {
+        platform: {value: 'MacIntel'}, maxTouchPoints: {value: 5}, userAgentData: {value: undefined},
+      });
+      let profile = {pointer: 'coarse', hover: 'hover'};
+      const nativeMatchMedia = window.matchMedia.bind(window), queries = new Set();
+      window.matchMedia = query => {
+        const features = [...query.matchAll(/\((pointer|hover):\s*(\w+)\)/g)];
+        const media = nativeMatchMedia(query);
+        if (!features.length) return media;
+        Object.defineProperty(media, 'matches', {get: () => features.every(([, name, value]) => profile[name] === value)});
+        queries.add(media);
+        return media;
+      };
+      window.__setPointerProfile = next => {
+        const before = new Map([...queries].map(media => [media, media.matches]));
+        profile = next;
+        for (const media of queries) if (media.matches !== before.get(media)) {
+          media.dispatchEvent(new MediaQueryListEvent('change', {matches: media.matches, media: media.media}));
+        }
+      };
+    });
+    page = await setup(hybrid, emails[2]);
+    assert.equal((await read()).touchControls, false, 'coarse input with hover stays in desktop mode');
+    assert.equal(await page.locator('#touch-mode-settings').evaluate(el => el.hidden), true, 'hover device hides touch settings');
+    assert.equal(await page.locator('#touch-mode-toggle').isDisabled(), true, 'hover device disables touch toggle');
+    await page.locator('#touch-mode-toggle').dispatchEvent('click');
+    assert.equal((await read()).touchControls, false, 'hover device cannot force touch mode');
+    await page.evaluate(() => window.__setPointerProfile({pointer: 'coarse', hover: 'none'}));
+    assert.equal((await read()).touchControls, true, 'changing to touch input enables mobile controls');
+    assert.equal(await page.locator('#touch-mode-settings').evaluate(el => el.hidden), false, 'touch input exposes its settings');
+    assert.equal(await page.locator('#touch-mode-toggle').isEnabled(), true, 'touch input enables its toggle');
+    await resume();
+    await page.locator('#touch-sprint').tap();
+    const hybridStick = await center('#touch-joystick');
+    await page.locator('#touch-joystick').dispatchEvent('pointerdown', {pointerType: 'touch', pointerId: 71,
+      clientX: hybridStick.x, clientY: hybridStick.y - 40});
+    assert.equal((await read()).movement.sprint, true, 'touch sprint active before changing input');
+    assert.ok(Math.hypot((await read()).movement.x, (await read()).movement.z) > .4, 'touch movement active before changing input');
+    await page.evaluate(() => window.__setPointerProfile({pointer: 'fine', hover: 'hover'}));
+    const afterInputChange = await read();
+    assert.equal(afterInputChange.touchControls, false, 'changing to mouse input disables mobile controls');
+    assert.equal(afterInputChange.locked || afterInputChange.playing, false, 'changing input waits for desktop pointer lock');
+    assert.equal(stopped(afterInputChange), true, 'changing input clears held touch movement and sprint');
+    assert.equal(await page.locator('#touch-controls').isVisible(), false, 'changing to mouse input hides touch controls');
+    assert.equal(await page.locator('#touch-mode-settings').evaluate(el => el.hidden), true, 'changing to mouse input hides touch settings');
+    assert.equal(await page.locator('#touch-mode-toggle').isDisabled(), true, 'changing to mouse input disables touch toggle');
     assert.deepEqual(errors, [], 'no browser runtime errors');
     assert.deepEqual(requestsFailed, [], 'no failed HTTP requests');
-    console.log('PASS: real mobile movement, simultaneous look/jump, cancellation, panels/menu, hotbar, throw/eat, blur/disconnect, 3 viewport layouts, and desktop keyboard/pointer-lock regression.');
+    console.log('PASS: Android multi-touch controls, desktop-mode iPad controls, phone/tablet layouts, Windows coarse/no-hover touchscreen rejection, desktop keyboard/pointer-lock preservation, and input-device changes.');
     console.log('Screenshots and geometry: ' + out);
   } catch (error) {
     if (page) {
