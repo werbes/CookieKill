@@ -46,12 +46,29 @@ const {chromium}=require(require.resolve('playwright',{paths:[path.resolve(__dir
   assert.equal(await page.locator('.club-odds > div').count(),7);assert.deepEqual(await page.locator('.club-odds > div span').allTextContents().then(rows=>rows.map(row=>parseInt(row))),[7,10,10,10,30,30,3]);const before=snapshot.me.coins;
   await page.locator('#club-stake').fill('37');await page.getByRole('button',{name:'Spin the wheel',exact:true}).click();await until(()=>snapshot.me.clubResult?.stake===37,'spin result');
   let result=snapshot.me.clubResult;assert.ok([5,3,2,1,.5,.1,10].includes(result.multiplier));assert.equal(result.payout,Math.floor(37*Math.round(result.multiplier*10)/10));assert.equal(snapshot.me.coins,before-37+result.payout);await shot('coin-wheel-result');
-  await page.waitForTimeout(1300);const balance=snapshot.me.coins,lastID=result.id;
+  await page.waitForTimeout(1300);
+  const spinActions=()=>actions.filter(message=>message.action==='club_gamble'),reopenWheel=async()=>{await resume();await page.keyboard.press('e');await page.locator('#club-spin-form').waitFor({state:'visible'});};
+  const assertStopped=async(label)=>{const count=spinActions().length;await page.waitForTimeout(2500);assert.equal(spinActions().length,count,label);};
+  assert.equal(await page.locator('#club-auto-spin').isChecked(),false,'auto-spin starts off');
+  await page.locator('#club-stake').fill('2');const autoStart=spinActions().length,previousResult=snapshot.me.clubResult.id;
+  await page.locator('#club-auto-spin').check();await until(()=>snapshot.me.clubResult?.id!==previousResult,'first automatic spin result');
+  const firstAutoResult=snapshot.me.clubResult.id;assert.equal(snapshot.me.clubResult.stake,2);
+  await until(()=>snapshot.me.clubResult?.id!==firstAutoResult,'second automatic spin result');assert.equal(snapshot.me.clubResult.stake,2);assert.ok(spinActions().length>=autoStart+2,'auto-spin repeats');
+  await shot('coin-wheel-auto-spin');await page.locator('#club-auto-spin').uncheck();
+  assert.ok(spinActions().slice(autoStart).every(message=>message.amount===2),'automatic spins keep the chosen stake');
+  await assertStopped('unchecking auto-spin stops future requests');
+  const beforeClose=spinActions().length;await page.locator('#club-auto-spin').check();await until(()=>spinActions().length>beforeClose,'automatic spin before closing');
+  await page.locator('#close-modal').click();await assertStopped('closing the wheel stops future requests');
+  await reopenWheel();assert.equal(await page.locator('#club-auto-spin').isChecked(),false,'reopened wheel does not restart auto-spin');await assertStopped('reopening the wheel leaves auto-spin off');
+  const beforeTab=spinActions().length;await page.locator('#club-auto-spin').check();await until(()=>spinActions().length>beforeTab,'automatic spin before switching tab');
+  await page.locator('#modal-tabs [data-tab="inventory"]').click();await assertStopped('switching to inventory stops future requests');
+  await reopenWheel();assert.equal(await page.locator('#club-auto-spin').isChecked(),false,'returning from inventory leaves auto-spin off');
+  const balance=snapshot.me.coins,lastID=snapshot.me.clubResult.id;
   await page.locator('#club-stake').fill(String(balance));await page.getByRole('button',{name:'Spin the wheel',exact:true}).click();await until(()=>snapshot.me.clubResult?.id!==lastID,'whole wallet stake');assert.equal(snapshot.me.clubResult.stake,balance);assert.equal(snapshot.me.coins,snapshot.me.clubResult.payout);await shot('whole-wallet-spin');
   await resume();await page.keyboard.press('l');assert.match(await page.locator('#club-light-toggle').innerText(),/reduced/);await face(-202,-238,.05);await shot('club-steady-lights');
   await travel(-202,-229);await travel(-202,-197);assert.equal(snapshot.me.inCave,false);assert.equal(snapshot.me.y,0);
   await action('teleport_home');await until(()=>snapshot.me.island===id,'go home');await action('teleport_main');await until(()=>snapshot.me.island===''&&snapshot.me.z>-74,'desert surface return');await travel(120,-58);await face(120,-83,.06);await shot('desert-cave-outside-rocks');
-  assert.deepEqual(errors,[],'browser or action errors');assert.deepEqual(failed,[],'failed requests');console.log('PASS: real forest trail and underground club; disco and reduced lights; drinks purchase/consume; chairs; exact coin outcomes and whole-wallet stake; return to surface; desert exterior rocks; no browser errors.');console.log('Screenshots: '+out);
+  assert.deepEqual(errors,[],'browser or action errors');assert.deepEqual(failed,[],'failed requests');console.log('PASS: real forest trail and underground club; disco and reduced lights; drinks purchase/consume; chairs; exact coin outcomes and whole-wallet stake; auto-spin repeats and stops on toggle off, closing, and tab switch; return to surface; desert exterior rocks; no browser errors.');console.log('Screenshots: '+out);
  }catch(e){if(page)await shot('failure').catch(()=>{});console.error({errors,failed,me:snapshot?.me});throw e;}
  finally{if(browser)await browser.close();server.kill();await Promise.race([new Promise(r=>server.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);fs.writeFileSync(path.join(out,'server.log'),log);fs.writeFileSync(path.join(out,'actions.json'),JSON.stringify(actions,null,2));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

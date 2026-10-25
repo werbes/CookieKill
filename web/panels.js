@@ -329,12 +329,14 @@ export function createPanels(deps) {
     if(next==='shop'&&(state.modal!=='shop'||state.context?.id!==context?.id))bakeryNameDraft=null;
     if(next==='customize'&&state.modal!=='customize'){avatarDraft=null;pendingCustomization=null;customizationSaved=false;}
     state.modal=next;if(context)state.context=context;
+    if(next!=='shop'||state.context?.kind!=='club_casino')clubPanels.stopAutoSpin();
     state.menuOpen=false;state.keys?.clear();state.wasModalLocked=state.locked||!!document.pointerLockElement;
     deps.pause?.();
     if(document.pointerLockElement)document.exitPointerLock();
     $('play-overlay').hidden=true;$('modal').hidden=false;previousMarkup='';$('modal-content').scrollTop=0;renderModal();$('close-modal').focus();
   }
   function closeModal({resume=true}={}) {
+    clubPanels.stopAutoSpin();
     state.modal=null;state.context=null;selectedSlot=null;bakeryStationOpen=false;$('modal').hidden=true;previousMarkup='';
     if(resume&&(state.player||state.snapshot)) {
       const resumeGame=deps.resume||deps.resumeFromPanel;
@@ -408,5 +410,5 @@ export function createPanels(deps) {
       @media(max-width:700px){.storage-grid{gap:6px}.storage-slot{padding:26px 4px 9px;min-height:90px}.storage-slot .cookie-icon{width:27px;height:27px}.storage-name{font-size:8px}.storage-number{font-size:7px;left:6px}.storage-count{font-size:9px;right:6px}.customize-layout{grid-template-columns:1fr;gap:20px}.avatar-preview{min-height:260px;padding:15px}.avatar-preview-figure{transform:scale(.85);margin-top:-15px;margin-bottom:-20px}.avatar-preview>strong{margin-top:5px}.customize-save{align-items:flex-start;flex-direction:column}.skin-swatches{gap:14px}.modal-tabs{gap:17px}.section-label{flex-wrap:wrap;gap:5px}}
     `;document.head.appendChild(style);
   }
-  return {renderModal,openModal,closeModal,toggleModal,drawWorldMap,drawMinimap,actionFailed:clubPanels.actionFailed,connectionLost:clubPanels.connectionLost};
+  return {renderModal,openModal,closeModal,toggleModal,drawWorldMap,drawMinimap,sync:clubPanels.sync,actionFailed:clubPanels.actionFailed,connectionLost:clubPanels.connectionLost};
 }

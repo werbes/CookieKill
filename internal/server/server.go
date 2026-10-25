@@ -27,6 +27,7 @@ type peer struct {
 	out           chan outbound
 	cancel        context.CancelFunc
 	baselineReady chan struct{} // Writer closes after the first successful snapshot.
+	resumeID      string
 }
 
 // Queue complete, independent snapshots. Only the connection writer computes
@@ -111,6 +112,11 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sign in to enter the world", http.StatusUnauthorized)
 		return
 	}
+	resumeID := r.URL.Query().Get("resume")
+	if len(resumeID) > 128 {
+		http.Error(w, "Invalid reconnect identifier", http.StatusBadRequest)
+		return
+	}
 	// Browser websocket upgrades must be same origin, including the scheme.
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
@@ -135,7 +141,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	// net/http clears its deadlines on hijack. These loops own the connection's
 	// lifetime and set their own deadlines independently of the HTTP request.
 	ctx, cancel := context.WithCancel(context.Background())
-	client := &peer{conn: c, out: make(chan outbound, 2), cancel: cancel, baselineReady: make(chan struct{})}
+	client := &peer{conn: c, out: make(chan outbound, 2), cancel: cancel, baselineReady: make(chan struct{}), resumeID: resumeID}
 	// Capacity may have changed while the network handshake was in progress.
 	if !s.attach(ctx, p.ID, p.Name, client) {
 		cancel()
@@ -143,10 +149,11 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.SetReadLimit(2048)
+	resume := false
 	defer func() {
 		cancel()
 		c.CloseNow()
-		s.submit(context.Background(), detachCommand{id: p.ID, peer: client})
+		s.submit(context.Background(), detachCommand{id: p.ID, peer: client, resume: resume})
 	}()
 	go func() {
 		defer cancel()
@@ -193,6 +200,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		kind, b, err := c.Read(readCtx)
 		done()
 		if err != nil {
+			resume = resumableDisconnect(err)
 			return
 		}
 		now := time.Now()
@@ -201,6 +209,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		tokens = math.Min(80, tokens+elapsed*40)
 		actionTokens = math.Min(12, actionTokens+elapsed*8)
 		if tokens < 1 {
+			resume = false
 			cancel()
 			return
 		}
@@ -217,6 +226,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if _, valid := s.auth.Authenticate(r); !valid {
+			resume = false
 			c.Close(websocket.StatusPolicyViolation, "Your session ended; sign in again")
 			return
 		}
@@ -251,6 +261,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 			err = s.apply(ctx, command)
 		}
 		if errors.Is(err, errReplaced) {
+			resume = false
 			c.Close(websocket.StatusCode(4001), "This account was opened in another tab")
 			return
 		}
@@ -260,6 +271,19 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.sendError(client, err.Error())
 		}
+	}
+}
+
+// Transient transport failures may resume the retained runtime. Normal page
+// navigation and explicit policy closes still unload it immediately.
+func resumableDisconnect(err error) bool {
+	switch websocket.CloseStatus(err) {
+	case -1, websocket.StatusAbnormalClosure,
+		websocket.StatusServiceRestart, websocket.StatusTryAgainLater, websocket.StatusBadGateway,
+		websocket.StatusCode(4000), websocket.StatusCode(4002):
+		return true
+	default:
+		return false
 	}
 }
 

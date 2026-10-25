@@ -17,7 +17,10 @@ var (
 	errReplaced = errors.New("This account was opened in another tab")
 )
 
-const commandCapacity = 256
+const (
+	commandCapacity = 256
+	reconnectGrace  = 30 * time.Second
+)
 
 type ownerCommand interface{ worldCommand() }
 type commandTag struct{}
@@ -37,8 +40,9 @@ type attachCommand struct {
 }
 type detachCommand struct {
 	commandTag
-	id   string
-	peer *peer
+	id     string
+	peer   *peer
+	resume bool
 }
 type playerCommand struct {
 	commandTag
@@ -81,12 +85,17 @@ type saveJob struct {
 	waiters  []chan error
 	final    bool
 }
+type suspendedSession struct {
+	resumeID string
+	until    time.Time
+}
 
 // coordinator is never shared: only ownWorld may access its mutable fields.
 type coordinator struct {
 	server                           *Server
 	world                            *game.World
 	peers                            map[string]*peer
+	suspended                        map[string]suspendedSession
 	closing                          bool
 	timing                           serverTiming
 	ticker                           *time.Ticker
@@ -100,7 +109,7 @@ func newServer(a *auth.Service, db *store.Store, profiles map[string]game.Profil
 		logger = slog.Default()
 	}
 	s := &Server{auth: a, store: db, logger: logger, commands: make(chan ownerCommand, commandCapacity), done: make(chan struct{}), closeStarted: make(chan struct{}, 1), saveSlots: make(chan struct{}, 8), saves: make(chan saveJob, 1), finalSaved: make(chan error, 1), saveDone: make(chan struct{})}
-	c := &coordinator{server: s, world: game.New(profiles), peers: make(map[string]*peer), timing: timing}
+	c := &coordinator{server: s, world: game.New(profiles), peers: make(map[string]*peer), suspended: make(map[string]suspendedSession), timing: timing}
 	go s.saveWorker(persist)
 	go c.ownWorld()
 	return s
@@ -297,6 +306,7 @@ func (c *coordinator) stopTicker() {
 }
 
 func (c *coordinator) tick(now time.Time) {
+	c.expireSuspended(now)
 	// Ticker timestamps jitter by nanoseconds. Accumulate elapsed time into
 	// exact simulation steps rather than invoking Tick(.050000001), which
 	// would perform an entire second world update for the trailing nanosecond.
@@ -318,6 +328,18 @@ func (c *coordinator) tick(now time.Time) {
 	if !clockNow.Before(c.nextSave) {
 		c.queueSave(nil, false)
 		c.nextSave = advanceDeadline(c.nextSave, clockNow, c.timing.autosave)
+	}
+}
+
+func (c *coordinator) expireSuspended(now time.Time) {
+	for id, session := range c.suspended {
+		if now.Before(session.until) {
+			continue
+		}
+		delete(c.suspended, id)
+		if c.peers[id] == nil {
+			c.world.Leave(id)
+		}
 	}
 }
 
@@ -345,10 +367,22 @@ func (c *coordinator) handle(raw ownerCommand) {
 			command.reply <- false
 			return
 		}
+		now := time.Now()
+		resumes := false
+		if session, suspended := c.suspended[command.id]; suspended {
+			delete(c.suspended, command.id)
+			resumes = command.peer.resumeID != "" && session.resumeID == command.peer.resumeID && now.Before(session.until)
+			if !resumes {
+				c.world.Leave(command.id)
+			}
+		}
 		if old := c.peers[command.id]; old != nil {
-			// A reconnect may win the race with the previous socket's detach.
-			// Rebuild its runtime from saved progress in this case too.
-			c.world.Leave(command.id)
+			// A reconnect can win the race with the previous socket's detach.
+			// A matching resume identifier keeps the runtime; another client
+			// still receives a fresh session and replaces the old socket.
+			if command.peer.resumeID == "" || old.resumeID != command.peer.resumeID {
+				c.world.Leave(command.id)
+			}
 			go func() {
 				if old.conn != nil {
 					old.conn.Close(websocket.StatusCode(4001), "This account was opened in another tab")
@@ -360,14 +394,21 @@ func (c *coordinator) handle(raw ownerCommand) {
 		}
 		c.peers[command.id] = command.peer
 		c.world.Join(command.id, command.name)
+		// Every physical connection starts with a complete keyframe. This
+		// resets the delta stream without resetting the retained player session.
 		c.enqueueSnapshot(command.id, command.peer)
 		command.reply <- true
 	case detachCommand:
 		if c.peers[command.id] == command.peer && !c.closing {
 			delete(c.peers, command.id)
-			// Leave saves account progress and releases all player runtime now,
-			// even before Run starts or after simulation ticking has stopped.
-			c.world.Leave(command.id)
+			if command.resume && command.peer.resumeID != "" {
+				c.world.Disconnect(command.id)
+				c.suspended[command.id] = suspendedSession{resumeID: command.peer.resumeID, until: time.Now().Add(reconnectGrace)}
+			} else {
+				delete(c.suspended, command.id)
+				// Explicit departures still save and release runtime immediately.
+				c.world.Leave(command.id)
+			}
 		}
 	case playerCommand:
 		var err error

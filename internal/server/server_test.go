@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -70,10 +71,18 @@ func signIn(t *testing.T, base, email string) *http.Client {
 }
 
 func dial(t *testing.T, base string, client *http.Client) *websocket.Conn {
+	return dialWithResume(t, base, client, "")
+}
+
+func dialWithResume(t *testing.T, base string, client *http.Client, resumeID string) *websocket.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(base, "http")+"/ws", &websocket.DialOptions{HTTPClient: client, HTTPHeader: http.Header{"Origin": {base}}})
+	endpoint := "ws" + strings.TrimPrefix(base, "http") + "/ws"
+	if resumeID != "" {
+		endpoint += "?resume=" + url.QueryEscape(resumeID)
+	}
+	c, _, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{HTTPClient: client, HTTPHeader: http.Header{"Origin": {base}}})
 	if err != nil {
 		t.Fatal(err)
 	}

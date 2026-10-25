@@ -5,21 +5,50 @@ export {CLUB_MULTIPLIERS,CLUB_CHANCES};
 const wheelGradient=CLUB_CHANCES.map((chance,i)=>`${sectorColors[i]} ${CLUB_STARTS[i]}% ${CLUB_STARTS[i]+chance}%`).join(',');
 export function createClubPanels({$,state,action,toast,escapeHTML,button,shopRow,renderModal}){
   if(typeof document!=='undefined'&&!document.getElementById('club-panels-style')){const style=document.createElement('style');style.id='club-panels-style';style.textContent=`
-    .club-intro{padding:22px 26px;margin-bottom:18px;border-radius:12px;background:linear-gradient(125deg,#243937,#3f3048);color:#f3e4ce}.club-intro>span{font-size:8px;letter-spacing:2.4px;color:#a9d7bb}.club-intro h3{font:28px Georgia,serif;margin:11px 0}.club-intro p{font-size:11px;line-height:1.75;max-width:530px;margin:0;color:#d3cec4}.club-light-setting{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 15px;background:#e8ecdf;border-radius:8px;margin:0 0 22px}.club-light-setting strong{font-size:11px}.club-light-setting span{display:block;font-size:10px;color:#73806b;margin-top:5px}.club-casino-layout{display:grid;grid-template-columns:240px 1fr;align-items:center;gap:25px;margin:25px 0}.club-wheel-wrap{height:236px;display:grid;place-items:center;position:relative}.club-wheel-pointer{position:absolute;top:-4px;z-index:2;color:#e5b56d;font-size:27px;text-shadow:0 2px 3px #253a2d}.club-wheel{position:relative;width:216px;height:216px;border:8px solid #ccb080;border-radius:50%;box-shadow:0 0 0 4px #45534c,0 8px 22px #28493622;background:conic-gradient(from 90deg,${wheelGradient})}.club-wheel>span{position:absolute;left:calc(50% - 15px);top:calc(50% - 8px);width:30px;text-align:center;font:bold 13px Arial;color:#fff4d5}.club-wheel>b{position:absolute;left:calc(50% - 33px);top:calc(50% - 33px);width:66px;height:66px;border-radius:50%;border:3px solid #c7aa7a;background:#30413b;color:#e6d7b7;font-size:8px;letter-spacing:1px;line-height:1.6;display:grid;place-content:center;text-align:center}.club-wheel.spinning{animation:club-spin 1.8s linear infinite}@keyframes club-spin{to{transform:rotate(720deg)}}.club-result strong{font:21px Georgia,serif;color:#435c43}.club-result p{font-size:11px;line-height:1.7;color:#78826c}.club-casino-layout form label{font-size:8px;letter-spacing:1px;margin:20px 0 9px}.club-casino-layout input{width:100%;min-width:60px;padding:10px;background:#fffaf0;color:#355238;border:1px solid #c9d3bb;border-radius:6px}.club-odds{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}.club-odds>div{padding:12px 6px;text-align:center;border-radius:6px;background:#e9ecdf;border-top:4px solid var(--sector)}.club-odds strong{display:block;font:20px Georgia,serif}.club-odds span{display:block;font-size:8px;line-height:1.65;margin-top:5px;color:#75816c}.club-error{font-size:11px;line-height:1.7;color:#a75c4d}@media(max-width:700px){.club-casino-layout{grid-template-columns:1fr;gap:10px}.club-light-setting{flex-wrap:wrap}.club-odds{grid-template-columns:repeat(4,1fr)}.club-intro{padding:20px}.club-intro h3{font-size:25px}.club-casino-layout .inline-fields{flex-direction:row}}
+    .club-intro{padding:22px 26px;margin-bottom:18px;border-radius:12px;background:linear-gradient(125deg,#243937,#3f3048);color:#f3e4ce}.club-intro>span{font-size:8px;letter-spacing:2.4px;color:#a9d7bb}.club-intro h3{font:28px Georgia,serif;margin:11px 0}.club-intro p{font-size:11px;line-height:1.75;max-width:530px;margin:0;color:#d3cec4}.club-light-setting{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 15px;background:#e8ecdf;border-radius:8px;margin:0 0 22px}.club-light-setting strong{font-size:11px}.club-light-setting span{display:block;font-size:10px;color:#73806b;margin-top:5px}.club-casino-layout{display:grid;grid-template-columns:240px 1fr;align-items:center;gap:25px;margin:25px 0}.club-wheel-wrap{height:236px;display:grid;place-items:center;position:relative}.club-wheel-pointer{position:absolute;top:-4px;z-index:2;color:#e5b56d;font-size:27px;text-shadow:0 2px 3px #253a2d}.club-wheel{position:relative;width:216px;height:216px;border:8px solid #ccb080;border-radius:50%;box-shadow:0 0 0 4px #45534c,0 8px 22px #28493622;background:conic-gradient(from 90deg,${wheelGradient})}.club-wheel>span{position:absolute;left:calc(50% - 15px);top:calc(50% - 8px);width:30px;text-align:center;font:bold 13px Arial;color:#fff4d5}.club-wheel>b{position:absolute;left:calc(50% - 33px);top:calc(50% - 33px);width:66px;height:66px;border-radius:50%;border:3px solid #c7aa7a;background:#30413b;color:#e6d7b7;font-size:8px;letter-spacing:1px;line-height:1.6;display:grid;place-content:center;text-align:center}.club-wheel.spinning{animation:club-spin 1.8s linear infinite}@keyframes club-spin{to{transform:rotate(720deg)}}.club-result strong{font:21px Georgia,serif;color:#435c43}.club-result p{font-size:11px;line-height:1.7;color:#78826c}.club-casino-layout form label{font-size:8px;letter-spacing:1px;margin:20px 0 9px}.club-casino-layout input[type=number]{width:100%;min-width:60px;padding:10px;background:#fffaf0;color:#355238;border:1px solid #c9d3bb;border-radius:6px}.club-odds{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}.club-odds>div{padding:12px 6px;text-align:center;border-radius:6px;background:#e9ecdf;border-top:4px solid var(--sector)}.club-odds strong{display:block;font:20px Georgia,serif}.club-odds span{display:block;font-size:8px;line-height:1.65;margin-top:5px;color:#75816c}.club-error{font-size:11px;line-height:1.7;color:#a75c4d}@media(max-width:700px){.club-casino-layout{grid-template-columns:1fr;gap:10px}.club-light-setting{flex-wrap:wrap}.club-odds{grid-template-columns:repeat(4,1fr)}.club-intro{padding:20px}.club-intro h3{font-size:25px}.club-casino-layout .inline-fields{flex-direction:row}}
+    .club-casino-layout form .club-auto-spin{display:flex;align-items:center;gap:9px;font-size:11px;letter-spacing:0;cursor:pointer}.club-auto-spin input[type=checkbox]{width:16px;height:16px;margin:0;padding:0;flex-shrink:0;accent-color:#527d6d}
   `;document.head.appendChild(style);}
   const esc=value=>escapeHTML(String(value??'')),me=()=>state.snapshot?.me||{},catalog=()=>state.snapshot?.clubDrinks||[];
-  let stakeDraft='10',pending=null,error='',nextSpinAt=0;
+  let stakeDraft='10',pending=null,error='',nextSpinAt=0,autoSpin=false,autoSpinTimer=null;
   const maxStake=()=>Math.max(0,Math.min(me().coins||0,Math.floor((Number.MAX_SAFE_INTEGER-(me().coins||0))/9)));
-  const reconcile=()=>{const result=me().clubResult;if(pending&&result?.id!==pending.resultId){pending=null;error='';}return result;};
+  const validStake=amount=>Number.isSafeInteger(amount)&&amount>=1&&amount<=maxStake();
+  const wheelOpen=()=>state.modal==='shop'&&state.context?.kind==='club_casino';
+  function nearWheel(){
+    const p=me(),node=state.snapshot?.nodes?.find(n=>n.id==='club_casino'&&n.kind==='club_casino');
+    return !!p.inCave&&!p.island&&!p.fallen&&!!node&&node.available!==false&&Math.hypot(p.x-node.x,p.z-node.z)<=5&&Math.abs((p.y||0)-node.y)<=2;
+  }
+  const canAutoSpin=()=>state.connected&&wheelOpen()&&nearWheel()&&validStake(Number(stakeDraft));
+  const reconcile=()=>{const result=me().clubResult;if(pending&&result&&result.id!==pending.resultId){pending=null;error='';}return result;};
+  function stopAutoSpin(){autoSpin=false;clearTimeout(autoSpinTimer);autoSpinTimer=null;}
+  function scheduleAutoSpin(){
+    if(autoSpin&&!pending&&autoSpinTimer===null)autoSpinTimer=setTimeout(runAutoSpin,Math.max(0,nextSpinAt-Date.now()));
+  }
+  function runAutoSpin(){
+    clearTimeout(autoSpinTimer);autoSpinTimer=null;
+    if(!autoSpin)return;
+    reconcile();
+    if(!canAutoSpin()){stopAutoSpin();if(wheelOpen())renderModal();return;}
+    if(pending)return;
+    if(Date.now()<nextSpinAt){scheduleAutoSpin();return;}
+    spin();
+  }
+  // Snapshots also catch movement and results that return the stake unchanged.
+  function sync(){
+    const wasPending=pending,wasAutoSpin=autoSpin;
+    reconcile();
+    if(autoSpin){if(canAutoSpin())scheduleAutoSpin();else stopAutoSpin();}
+    if(wheelOpen()&&(wasPending!==pending||wasAutoSpin!==autoSpin))renderModal();
+  }
   function lighting(){return `<div class="club-light-setting"><div><strong>Settle into the night</strong><span>${clubReducedFlashing()?'Steady lights and a still mirror ball.':'Soft color changes and small, gentle light pulses.'}</span></div>${button(clubReducedFlashing()?'Reduced flashing: on':'Reduced flashing: off','club-light-setting',{enabled:!clubReducedFlashing()})}</div>`;}
   function bar(){const p=me();return `<div class="club-intro"><span>THE ROOT ROOM</span><h3>Something for your night.</h3><p>From Smirnoff Ice to a chocolate shake. Buy with in-game coins, then choose Drink from your inventory.</p></div>${lighting()}<div class="notice good">${esc(p.coins||0)} in-game coins available</div><div class="shop-list">${catalog().map(drink=>{const effects=[drink.alcoholic?'Alcoholic · +1 percentage point falling chance':'Alcohol-free'];if(drink.heal)effects.push('Restores '+drink.heal+' health');if(drink.stamina)effects.push('Restores '+drink.stamina+' stamina');effects.push((p.inventory?.[drink.id]||0)+' in your inventory');return shopRow(drink.id.includes('shake')?'◒':'♧',drink.name,drink.price+' coins · '+effects.join(' · '),button('Buy · '+drink.price,'buy_drink',{item:drink.id,amount:1,target:'club_bar'},p.coins<drink.price,true));}).join('')}</div>`;}
   function casino(){
-    const p=me(),result=reconcile(),stake=Number(stakeDraft),valid=Number.isSafeInteger(stake)&&stake>=1&&stake<=maxStake(),busy=!!pending||Date.now()<nextSpinAt;
+    if(autoSpin&&!canAutoSpin())stopAutoSpin();
+    const p=me(),result=reconcile(),stake=Number(stakeDraft),valid=validStake(stake),busy=!!pending||Date.now()<nextSpinAt;
     const angle=result?-90-clubSectorCenter(result.sector)*360:0;
     const wheel=`<div class="club-wheel-wrap" aria-hidden="true"><span class="club-wheel-pointer">▼</span><div class="club-wheel${pending&&!clubReducedFlashing()?' spinning':''}" style="transform:rotate(${angle}deg)">${CLUB_MULTIPLIERS.map((value,i)=>`<span style="transform:rotate(${clubSectorCenter(i)*360}deg) translateX(78px) rotate(-${clubSectorCenter(i)*360}deg)">${value}×</span>`).join('')}<b>ROOT<br>ROOM</b></div></div>`;
     const resultText=result?`${result.multiplier}× · ${result.payout} coins returned`:'Your next story starts with a spin.';
     const detail=result?`Stake: ${result.stake} coins. ${result.payout>=result.stake?'Net gain: '+(result.payout-result.stake):'Net loss: '+(result.stake-result.payout)} coins.`:'Every result is chosen by the server using the odds below.';
-    return `<div class="club-intro"><span>THE ROOT ROOM / FORTUNE WHEEL</span><h3>A little twist of fortune.</h3><p>Play with in-game coins. Choose a whole-coin stake and spin once.</p></div>${lighting()}<div class="club-casino-layout">${wheel}<div><div class="club-result" role="status"><strong>${esc(pending?'Spinning…':resultText)}</strong><p>${esc(pending?'Waiting for your result.':detail)}</p></div><form id="club-spin-form"><label for="club-stake">YOUR STAKE · ${esc(p.coins||0)} COINS AVAILABLE</label><div class="inline-fields"><input id="club-stake" type="number" min="1" max="${maxStake()}" step="1" inputmode="numeric" value="${esc(stakeDraft)}" required${pending?' disabled':''}><button class="small-button accent" type="submit"${busy||!valid||!state.connected?' disabled':''}>${pending?'Spinning…':'Spin the wheel'}</button></div><p class="field-hint">The stake is deducted first. Payout is stake × multiplier, rounded down to whole coins.</p>${error?`<p class="club-error" role="alert">${esc(error)}</p>`:''}</form></div></div><div class="section-label">SEVEN POSSIBLE OUTCOMES <span>Jackpot chance: 3%</span></div><div class="club-odds">${CLUB_MULTIPLIERS.map((value,i)=>`<div style="--sector:${sectorColors[i]}"><strong>${value}×</strong><span data-club-payout="${i}">${CLUB_CHANCES[i]}%${valid?' · '+String(BigInt(stake)*BigInt(Math.round(value*10))/10n)+' coins':''}</span></div>`).join('')}</div><p class="field-hint">The 1× outcome returns your stake. The displayed payout includes the stake.</p>`;
+    return `<div class="club-intro"><span>THE ROOT ROOM / FORTUNE WHEEL</span><h3>A little twist of fortune.</h3><p>Play with in-game coins. Choose a whole-coin stake and spin, or turn on auto-spin.</p></div>${lighting()}<div class="club-casino-layout">${wheel}<div><div class="club-result" role="status"><strong>${esc(pending?'Spinning…':resultText)}</strong><p>${esc(pending?'Waiting for your result.':detail)}</p></div><form id="club-spin-form"><label for="club-stake">YOUR STAKE · ${esc(p.coins||0)} COINS AVAILABLE</label><div class="inline-fields"><input id="club-stake" type="number" min="1" max="${maxStake()}" step="1" inputmode="numeric" value="${esc(stakeDraft)}" required${pending?' disabled':''}><button class="small-button accent" type="submit"${busy||!valid||!state.connected?' disabled':''}>${pending?'Spinning…':'Spin the wheel'}</button></div><label class="club-auto-spin" for="club-auto-spin"><input id="club-auto-spin" type="checkbox" aria-describedby="club-auto-spin-hint"${autoSpin?' checked':''}${!autoSpin&&(!valid||!state.connected||!nearWheel())?' disabled':''}>Auto-spin</label><p id="club-auto-spin-hint" class="field-hint">Repeats your stake until you switch it off, leave the wheel, or cannot afford another spin.</p><p class="field-hint">The stake is deducted first. Payout is stake × multiplier, rounded down to whole coins.</p>${error?`<p class="club-error" role="alert">${esc(error)}</p>`:''}</form></div></div><div class="section-label">SEVEN POSSIBLE OUTCOMES <span>Jackpot chance: 3%</span></div><div class="club-odds">${CLUB_MULTIPLIERS.map((value,i)=>`<div style="--sector:${sectorColors[i]}"><strong>${value}×</strong><span data-club-payout="${i}">${CLUB_CHANCES[i]}%${valid?' · '+String(BigInt(stake)*BigInt(Math.round(value*10))/10n)+' coins':''}</span></div>`).join('')}</div><p class="field-hint">The 1× outcome returns your stake. The displayed payout includes the stake.</p>`;
   }
   function cakes(){
     const p=me(),node=state.snapshot?.nodes?.find(n=>n.id==='club_cake_seller');
@@ -29,12 +58,39 @@ export function createClubPanels({$,state,action,toast,escapeHTML,button,shopRow
     return `<div class="club-intro"><span>THE ROOT ROOM / AFTER DARK</span><h3>Disco Duke's funny cakes.</h3><p>A purple suit, a feathered hat, and a very unusual bakery. The disco's midnight pimp sells cakes that make the world sway and its colors wander. Buy a slice, then choose Eat one in your inventory. Another slice refreshes the effect.</p></div>${lighting()}<div class="notice${open&&nearby?' good':''}">${esc(status)}</div><div class="shop-list">${(state.snapshot?.clubCakes||[]).map(cake=>shopRow('🍰',cake.name,`${cake.price} coins · ${cake.duration} seconds of strange movement and colors · ${p.inventory?.[cake.id]||0} in your inventory`,button('Buy · '+cake.price,'buy_club_cake',{item:cake.id,amount:1,target:'club_cake_seller'},!open||!nearby||!state.connected||(p.coins||0)<cake.price,true))).join('')}</div><p class="field-hint">Reduced flashing keeps cake colors still and turns off the sway. Press L while a cake effect is active, wherever you are.</p>`;
   }
   function shop(kind){return kind==='club_bar'?bar():kind==='club_casino'?casino():kind==='club_cake_seller'?cakes():null;}
-  function input(event){if(event.target.id==='club-stake'){stakeDraft=event.target.value;const submit=$('club-spin-form')?.querySelector('button[type="submit"]'),n=Number(stakeDraft);if(submit)submit.disabled=!!pending||Date.now()<nextSpinAt||!Number.isSafeInteger(n)||n<1||n>maxStake()||!state.connected;const valid=Number.isSafeInteger(n)&&n>=1&&n<=maxStake();if(typeof document!=='undefined')document.querySelectorAll('[data-club-payout]').forEach(label=>{const i=Number(label.dataset.clubPayout);label.textContent=CLUB_CHANCES[i]+'%'+(valid?' · '+String(BigInt(n)*BigInt(Math.round(CLUB_MULTIPLIERS[i]*10))/10n)+' coins':'');});}}
-  function submit(event){if(event.target.id!=='club-spin-form')return false;event.preventDefault();reconcile();if(pending||Date.now()<nextSpinAt)return true;const amount=Number($('club-stake')?.value??stakeDraft);if(!state.connected){error='Reconnect before spinning.';renderModal();return true;}if(!Number.isSafeInteger(amount)||amount<1||amount>maxStake()){error='Choose a whole-coin stake within your available balance.';renderModal();return true;}stakeDraft=String(amount);error='';pending={resultId:me().clubResult?.id};nextSpinAt=Date.now()+1100;action('club_gamble',{amount,target:'club_casino'});renderModal();setTimeout(()=>{if(state.modal==='shop'&&state.context?.kind==='club_casino')renderModal();},1150);return true;}
+  function input(event){
+    if(event.target.id==='club-auto-spin'){
+      if(event.target.checked){
+        stakeDraft=$('club-stake')?.value??stakeDraft;
+        autoSpin=!!canAutoSpin();
+        if(autoSpin)runAutoSpin();
+      }else stopAutoSpin();
+      renderModal();return;
+    }
+    if(event.target.id==='club-stake'){
+      stakeDraft=event.target.value;
+      const submit=$('club-spin-form')?.querySelector('button[type="submit"]'),n=Number(stakeDraft),valid=validStake(n);
+      if(submit)submit.disabled=!!pending||Date.now()<nextSpinAt||!valid||!state.connected;
+      const toggle=$('club-auto-spin');
+      if(toggle)toggle.disabled=!autoSpin&&(!valid||!state.connected||!nearWheel());
+      if(typeof document!=='undefined')document.querySelectorAll('[data-club-payout]').forEach(label=>{const i=Number(label.dataset.clubPayout);label.textContent=CLUB_CHANCES[i]+'%'+(valid?' · '+String(BigInt(n)*BigInt(Math.round(CLUB_MULTIPLIERS[i]*10))/10n)+' coins':'');});
+      sync();
+    }
+  }
+  function spin(){
+    reconcile();if(pending||Date.now()<nextSpinAt)return;
+    const amount=Number($('club-stake')?.value??stakeDraft);
+    if(!state.connected){error='Reconnect before spinning.';stopAutoSpin();renderModal();return;}
+    if(!validStake(amount)){error='Choose a whole-coin stake within your available balance.';stopAutoSpin();renderModal();return;}
+    stakeDraft=String(amount);error='';pending={resultId:me().clubResult?.id};nextSpinAt=Date.now()+1100;
+    action('club_gamble',{amount,target:'club_casino'});renderModal();
+    setTimeout(()=>{if(wheelOpen())renderModal();},1150);
+  }
+  function submit(event){if(event.target.id!=='club-spin-form')return false;event.preventDefault();spin();return true;}
   function handle(kind,data){if(kind!=='club-light-setting')return false;setClubReducedFlashing(data.enabled);if(data.enabled===false&&clubReducedFlashing())toast('Your device requests reduced motion, so the club lights stay steady.');renderModal();return true;}
-  function actionFailed(message){if(pending){pending=null;error=message||'The spin was not accepted.';renderModal();}}
-  function connectionLost(){if(pending){pending=null;error='Connection interrupted. Check the latest result after reconnecting before you spin again.';renderModal();}}
+  function actionFailed(message){const wasAutoSpin=autoSpin;stopAutoSpin();if(pending||wasAutoSpin){pending=null;error=message||'The spin was not accepted.';renderModal();}}
+  function connectionLost(){const wasAutoSpin=autoSpin;stopAutoSpin();if(pending||wasAutoSpin){pending=null;error='Connection interrupted. Check the latest result after reconnecting before you spin again.';renderModal();}}
   function drinkName(id){return catalog().find(drink=>drink.id===id)?.name;}
   function cakeName(id){return state.snapshot?.clubCakes?.find(cake=>cake.id===id)?.name;}
-  return {shop,input,submit,handle,actionFailed,connectionLost,drinkName,cakeName};
+  return {shop,input,submit,handle,sync,stopAutoSpin,actionFailed,connectionLost,drinkName,cakeName};
 }

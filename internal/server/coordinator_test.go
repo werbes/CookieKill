@@ -37,8 +37,12 @@ func coordinatorServer(t *testing.T, persist func(map[string]game.Profile) error
 }
 
 func attachTestPeer(t *testing.T, s *Server, id string) *peer {
+	return attachTestPeerWithResume(t, s, id, "")
+}
+
+func attachTestPeerWithResume(t *testing.T, s *Server, id, resumeID string) *peer {
 	t.Helper()
-	p := &peer{out: make(chan outbound, 2), cancel: func() {}, baselineReady: make(chan struct{})}
+	p := &peer{out: make(chan outbound, 2), cancel: func() {}, baselineReady: make(chan struct{}), resumeID: resumeID}
 	if !s.attach(context.Background(), id, id, p) {
 		t.Fatalf("cannot attach %s", id)
 	}
@@ -345,6 +349,26 @@ func TestReplacementRebuildsPlayerAndIgnoresLateDetach(t *testing.T) {
 	applyTestCommand(t, s, "alice", replacement, &game.Input{Yaw: 1.2}, nil)
 	if got := inspectTestOwner(t, s, "alice").snapshot.Me.Yaw; got != 1.2 {
 		t.Fatalf("replacement cannot receive input: yaw=%v", got)
+	}
+}
+
+func TestMatchingResumeIdentifierPreservesPlayerBeforeLateDetach(t *testing.T) {
+	s := coordinatorServer(t, nil, serverTiming{10 * time.Millisecond, 20 * time.Millisecond, time.Hour})
+	old := attachTestPeerWithResume(t, s, "alice", "same-tab")
+	applyTestCommand(t, s, "alice", old, &game.Input{Yaw: 2.1, X: 1, Jump: true}, nil)
+	applyTestCommand(t, s, "alice", old, nil, &game.Action{Action: "move_item", From: "hotbar", FromSlot: 0, To: "bag", ToSlot: 0})
+
+	replacement := attachTestPeerWithResume(t, s, "alice", "same-tab")
+	keyframe := (<-replacement.out).snapshot
+	if keyframe == nil || keyframe.Layout == nil || keyframe.Me.Yaw != 2.1 || keyframe.Me.BagSlots[0].Count != 10 {
+		t.Fatal("matching reconnect did not preserve transient state or account progress")
+	}
+	if err := s.submit(context.Background(), detachCommand{id: "alice", peer: old, resume: true}); err != nil {
+		t.Fatal(err)
+	}
+	view := inspectTestOwner(t, s, "alice")
+	if view.players != 1 || view.snapshot.Me.ID != "alice" || view.snapshot.Me.Yaw != 2.1 {
+		t.Fatal("late detach interrupted the resumed session")
 	}
 }
 

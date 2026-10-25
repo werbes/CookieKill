@@ -195,6 +195,22 @@ func (w *World) Join(id, name string) {
 	w.remindCamelRace(p)
 }
 
+// Disconnect keeps the live runtime available for a short reconnect window.
+// Controls stop immediately, while position and activity state remain intact
+// so the next authoritative keyframe can resume the same session.
+func (w *World) Disconnect(id string) {
+	p, ok := w.players[id]
+	if !ok {
+		return
+	}
+	p.disconnected = true
+	p.input = Input{}
+	p.jumpQueued = false
+	p.jumpHeld = false
+	p.sprintHeld = false
+	p.sprinting = false
+}
+
 func (w *World) Leave(id string) {
 	w.ReleaseBakeryPlot(id)
 	if p, ok := w.players[id]; ok {
@@ -347,7 +363,7 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 		if p.profile.Bakery && p.profile.BakeryPlot != "" {
 			owners[p.profile.BakeryPlot] = p
 		}
-		if pid != id && (viewer == nil || p.island == viewer.island) {
+		if pid != id && !p.disconnected && (viewer == nil || p.island == viewer.island) {
 			playerCount++
 		}
 	}
@@ -379,7 +395,7 @@ func (w *World) snapshot(id string, includeLayout bool) Snapshot {
 	out.CamelRace = w.camelRaceSnapshot(id)
 	out.Town = w.townSnapshot(id)
 	for pid, p := range w.players {
-		if viewer != nil && p.island != viewer.island {
+		if (pid != id && p.disconnected) || (viewer != nil && p.island != viewer.island) {
 			continue
 		}
 		buffs := w.remainingBuffs(p)

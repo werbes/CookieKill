@@ -54,7 +54,7 @@ const cookieName = (key) => isKnown(key) ? cookieNames[key] : 'Unidentified cook
 const cookieNote = (key) => isKnown(key) ? (cookieNotes[key] || '') : 'Bake this recipe to discover it';
 const materialEmoji = {flower_daisy:'🌼',flower_tulip:'🌷',flower_lavender:'✿',bouquet_daisies:'🌼',bouquet_tulips:'🌷',bouquet_lavender:'✿',flower_bouquet:'💐',swift_dates:'●',spring_carrot:'🥕',stamina_oats:'🌾',happy_apple:'🍎',funny_cake:'🍰',cosmic_cake:'🍰',wood:'🪵',stick:'╱',stone:'◈',dough:'◕',berry:'●',nut:'◉',cactus:'♧',sea_salt:'✧',shell:'🐚',trash:'♻',pearl:'○',treasure:'♜',old_coin:'◎',protein_powder:'▥',protein_drink:'▤'};
 const buffNames = {speed:'QUICK FEET',slow:'SLOWED',weaken:'WEAKER THROWS',weak:'WEAKER THROWS',range:'LONG THROW',short:'SHORT THROW',swim:'OCEAN LEGS',superstrength:'SUPERSTRENGTH',protein:'PROTEIN BOOST',training:'TRAINING BOOST',funny_cake:'FUNNY CAKE'};
-const state = {player:null,snapshot:null,ws:null,connected:false,playing:false,locked:false,modal:null,menuOpen:false,context:null,email:'',yaw:0,pitch:0,keys:new Set(),lastInput:0,selected:'sugar',selectedSlot:0,hotkeys:[],nodes:new Map(),animals:new Map(),players:new Map(),homes:new Map(),projectiles:new Map(),events:new Set(),nearest:null,lastHealth:100,localPosition:new THREE.Vector3(-35,1.7,-35),handSwing:0,lastThrow:0,lastSnapshot:0,hasPlayed:false,wasModalLocked:false,worldReady:false,serverRecipes:[],intentYaw:false};
+const state = {player:null,snapshot:null,ws:null,connected:false,awaitingSnapshot:false,sessionReplaced:false,resumeID:'',playing:false,locked:false,modal:null,menuOpen:false,context:null,email:'',yaw:0,pitch:0,keys:new Set(),lastInput:0,selected:'sugar',selectedSlot:0,hotkeys:[],nodes:new Map(),animals:new Map(),players:new Map(),homes:new Map(),projectiles:new Map(),events:new Set(),nearest:null,lastHealth:100,localPosition:new THREE.Vector3(-35,1.7,-35),handSwing:0,lastThrow:0,lastSnapshot:0,hasPlayed:false,wasModalLocked:false,worldReady:false,serverRecipes:[],intentYaw:false};
 // On touch devices, locked means gameplay has focus without browser pointer lock.
 const touchInput=matchMedia('(pointer: coarse) and (hover: none)');
 const touchDevice=isPhoneOrTablet(navigator);
@@ -476,19 +476,40 @@ $('code-form').addEventListener('submit',async(event)=>{
 });
 $('change-email').addEventListener('click',()=>{$('email-stage').hidden=false;$('code-stage').hidden=true;authMessage('');$('email').focus();});
 $('logout-button').addEventListener('click',async()=>{
-  try{await api('/api/logout',{});nightScene?.clear();ambientAudio.clear();state.player=null;state.connected=false;if(state.ws)state.ws.close();location.reload();}catch(error){toast(error.message,'error');}
+  try{await api('/api/logout',{});nightScene?.clear();ambientAudio.clear();state.player=null;state.connected=false;try{sessionStorage.removeItem('cookiekill-resume-id');}catch{}if(state.ws)state.ws.close(1000,'Signed out');location.reload();}catch(error){toast(error.message,'error');}
 });
 function enterGame(player){
   state.player=player;$('landing').hidden=true;document.body.classList.add('playing');$('hud').hidden=false;$('player-name').textContent=player.callName||player.name;$('start-overlay').hidden=false;
   connect();
 }
 let reconnectTimer;
+function resumeID(){
+  if(state.resumeID)return state.resumeID;
+  const key='cookiekill-resume-id';
+  try{state.resumeID=sessionStorage.getItem(key)||'';}catch{}
+  if(!state.resumeID)state.resumeID=crypto.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+  try{sessionStorage.setItem(key,state.resumeID);}catch{}
+  return state.resumeID;
+}
+function reconnectBanner(message='Reconnecting to your world… <span>Your progress is saved.</span>'){
+  const banner=$('disconnect-banner');banner.innerHTML=message;banner.hidden=false;
+}
+function scheduleReconnect(delay=2000){
+  clearTimeout(reconnectTimer);
+  if(!state.player||state.sessionReplaced||state.ws?.readyState===WebSocket.OPEN||state.ws?.readyState===WebSocket.CONNECTING)return;
+  reconnectTimer=setTimeout(connect,delay);
+}
 function connect(){
   if(!state.player||state.sessionReplaced)return;
   clearTimeout(reconnectTimer);
   const decoder=createSnapshotDecoder();
-  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws?updates=delta-v1&animals=paths-v1');state.ws=ws;
-  ws.addEventListener('open',()=>{if(state.ws!==ws)return;state.connected=true;updateTouchUI();$('disconnect-banner').hidden=true;$('connection-state').innerHTML='<i></i> CONNECTED';});
+  const resumed=!!state.snapshot;
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws?updates=delta-v1&animals=paths-v1&resume='+encodeURIComponent(resumeID()));state.ws=ws;
+  ws.addEventListener('open',()=>{
+    if(state.ws!==ws)return;
+    state.awaitingSnapshot=true;updateTouchUI();$('connection-state').textContent='SYNCING';
+    if(resumed)reconnectBanner('Connection restored. Restoring your last game state… <span>This takes a moment.</span>');
+  });
   ws.addEventListener('message',(event)=>{
     if(state.ws!==ws||ws.readyState!==WebSocket.OPEN)return;
     let snapshot;
@@ -497,22 +518,29 @@ function connect(){
       if(message.type==='error'){state.pendingBuildEdit=null;state.pendingBakeryEdit=null;state.buildOperationPending=false;panels?.actionFailed?.(message.message);toast(message.message||'That action is not available.','error');return;}
       snapshot=decoder.apply(message);
     }catch(error){console.warn('Could not read game update; reconnecting',error);state.connected=false;ws.close(4000,'Game state resync');return;}
-    if(snapshot)receiveSnapshot(snapshot);
+    if(snapshot){
+      if(state.awaitingSnapshot){
+        state.awaitingSnapshot=false;state.connected=true;updateTouchUI();$('disconnect-banner').hidden=true;$('connection-state').innerHTML='<i></i> CONNECTED';
+      }
+      receiveSnapshot(snapshot);
+    }
   });
   ws.addEventListener('close',(event)=>{
     if(state.ws!==ws||!state.player)return;
     panels?.connectionLost?.();
     nightScene?.clear();ambientAudio.clear();
-    state.connected=false;clearControls();updateTouchUI();$('disconnect-banner').hidden=false;$('connection-state').textContent='RECONNECTING';
+    state.connected=false;state.awaitingSnapshot=false;clearControls();updateTouchUI();reconnectBanner();$('connection-state').textContent='RECONNECTING';
     if(event.code===4001||event.code===1008){
       state.sessionReplaced=true;pauseControls();if(document.pointerLockElement)document.exitPointerLock();
       const message=event.code===4001?'Account opened in another tab. Reload to reconnect.':'Your session ended. Reload to sign in again.';
       $('disconnect-banner').textContent=message;$('connection-state').textContent='DISCONNECTED';toast(message,'error');return;
     }
-    reconnectTimer=setTimeout(connect,2000);
+    scheduleReconnect();
   });
   ws.addEventListener('error',()=>{if(state.ws===ws)state.connected=false;});
 }
+window.addEventListener('offline',()=>{if(state.ws&&state.ws.readyState===WebSocket.OPEN)state.ws.close(4002,'Network offline');});
+window.addEventListener('online',()=>scheduleReconnect(0));
 function send(message){if(state.ws&&state.ws.readyState===WebSocket.OPEN){state.ws.send(JSON.stringify(message));return true;}return false;}
 function action(actionName,extra={}){
   if(!state.connected){toast(state.sessionReplaced?'Account opened in another tab. Reload to reconnect.':'Reconnect to the world to do that.','error');return;}
@@ -537,6 +565,7 @@ function receiveSnapshot(snapshot){
   if(snapshot.layout&&state.layout?.version!==snapshot.layout.version)createEnvironment(snapshot.layout);
   else if(snapshot.layout)state.layout=snapshot.layout;
   state.snapshot=snapshot;state.serverRecipes=snapshot.recipes||[];state.lastSnapshot=performance.now();
+  panels?.sync();
   const motionTime=snapshot.time*1000,acceptMotion=motionClock.accept(motionTime,state.lastSnapshot,{reset:snapshot.seq===1});
   if(acceptMotion&&localMotion.push(motionTime,{x:snapshot.me.x,y:(snapshot.me.y||0)+eyeHeight(snapshot.me),z:snapshot.me.z},{key:motionIdentity(snapshot.me),epoch:motionClock.generation}))state.localPosition.set(snapshot.me.x,(snapshot.me.y||0)+eyeHeight(snapshot.me),snapshot.me.z);
   worldGroup.visible=!snapshot.me.island;islandScene?.sync(snapshot);

@@ -72,6 +72,27 @@ func TestLeaveUnloadsRuntimeAndReconnectPreservesDetachedProgress(t *testing.T) 
 	}
 }
 
+func TestTransientDisconnectRetainsSessionForResume(t *testing.T) {
+	w, player := buildingWorld(t)
+	player.x, player.z, player.yaw, player.pitch = 12.5, -8.25, 1.1, -.35
+	player.input = Input{X: 1, Jump: true, Sprint: true}
+	player.jumpQueued, player.jumpHeld, player.sprintHeld, player.sprinting = true, true, true, true
+
+	w.Disconnect("one")
+	if !player.disconnected || player.input != (Input{}) || player.jumpQueued || player.jumpHeld || player.sprintHeld || player.sprinting {
+		t.Fatal("transient disconnect retained live controls")
+	}
+	view := w.Snapshot("one")
+	if view.Me.ID != "one" || view.Me.X != 12.5 || view.Me.Z != -8.25 || view.Me.Yaw != 1.1 || view.Me.Pitch != -.35 {
+		t.Fatal("transient disconnect lost resumable session state")
+	}
+
+	w.Join("one", "Alice")
+	if w.players["one"] != player || player.disconnected || player.x != 12.5 || player.z != -8.25 {
+		t.Fatal("reconnect did not resume the retained runtime")
+	}
+}
+
 func TestOfflineOwnerKeepsSharedIslandAndProductionUpdates(t *testing.T) {
 	w, owner := buildingWorld(t)
 	owner.profile.HomeIsland.Objects = append(owner.profile.HomeIsland.Objects,
