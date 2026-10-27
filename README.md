@@ -264,6 +264,16 @@ Each of the six ocean species has one reputation score for you, shown in the inv
 
 Every account has a permanent username and a call name that can change **once per hour**. Customize five skin tones, T-shirts, hoodies or tank tops, trousers or shorts, and seven clothing colors. There are **15 achievements and matching hats**. Alongside the original five goals, earn rewards for recipe mastery, more recycling and rescues, a camel herd, racing prizes, time played, non-gambling earnings, island expansion, bakery staffing, and bakery upgrades. The Achievements tab shows exact goals and which rewards you have earned. Earned rewards stay unlocked permanently. Inside your bakery, press **6** and select the separate **Achievement paintings** building category. Hang or take down earned paintings on the cafe wall in either explore or build mode. Every achievement has its own framed illustration, and paintings stay saved with your bakery. Each distinct earned painting adds **10% of the original customer price**: four paintings give a **1.4x** achievement factor. Bakery level and equipment bonuses are added separately; the combined achievement bonus rounds down once per sale. Appearance and identity changes are validated and saved by the server.
 
+## Linux amd64 build
+
+Build a standalone Linux amd64 executable from PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-linux.ps1
+```
+
+The result is **`dist/CookieKill-linux-amd64/cookiekill`**, plus an example `config.json` beside it. The build targets `linux/amd64` with CGO disabled, so the server executable does not require Go or Node.js on the Linux host. Copy the directory to the server, edit `config.json`, mark the executable as runnable with `chmod +x cookiekill`, and start it with `./cookiekill`.
+
 ## Windows service deployment
 
 Build the complete Windows deployment package:
@@ -297,6 +307,7 @@ Copy [config.example.json](config.example.json) to **`config.json` beside the bu
 ```json
 {
   "dev": false,
+  "behindTLSProxy": false,
   "addr": "127.0.0.1:8080",
   "domain": "play.example.com",
   "email": "admin@example.com",
@@ -312,18 +323,23 @@ Copy [config.example.json](config.example.json) to **`config.json` beside the bu
 }
 ```
 
-The top-level `email` is an optional certificate contact address, separate from SMTP login; it can be empty. For a mail server without authentication, leave both `smtp.user` and `smtp.password` empty as above. `smtp.from` is the required sender address, not a login.
+The top-level `email` is an optional certificate contact address, separate from SMTP login; it can be empty and is unused when `behindTLSProxy` is `true`. For a mail server without authentication, leave both `smtp.user` and `smtp.password` empty as above. `smtp.from` is the required sender address, not a login.
 
 On other platforms build with `go build -o cookiekill .` and run `./cookiekill` after creating the configuration file. Production settings come from JSON; the old `CK_DOMAIN`, `CK_SMTP_*`, and other server environment variables are no longer used. Unknown JSON fields fail startup. Relative `dataDir` and `logFile` paths resolve from the executable directory, so the service's working directory does not affect them. Restart after configuration changes. Keep SMTP credentials private; the installer restricts file access, and credentials are never sent to the browser.
 
-Use a public hostname with DNS pointing at the host and incoming **TCP ports 80 and 443** open through the firewall and any router/NAT. The process needs permission to bind those ports and write to data/log directories. SMTP port **465** uses implicit TLS; all other ports, including **587**, require STARTTLS. Configure both SMTP username and password when your provider requires authentication. The sender must be allowed by your email provider. Actual email delivery and certificate issuance need verification with your domain and SMTP provider.
+For direct production, use a public hostname with DNS pointing at the host and incoming **TCP ports 80 and 443** open through the firewall and any router/NAT. The process needs permission to bind those ports and write to data/log directories. SMTP port **465** uses implicit TLS; all other ports, including **587**, require STARTTLS. Configure both SMTP username and password when your provider requires authentication. The sender must be allowed by your email provider. Actual email delivery and certificate issuance need verification with your domain and SMTP provider.
 
-Production uses Go's [autocert manager](https://pkg.go.dev/golang.org/x/crypto/acme/autocert) to obtain and renew Let's Encrypt certificates for the configured hostname, persists its cache under the data directory, and redirects HTTP to HTTPS. Starting production accepts the Let's Encrypt subscriber agreement through `autocert.AcceptTOS`. Certificates can only be issued after the public domain and network are configured; localhost development uses HTTP.
+For a reverse proxy or load balancer that terminates TLS, set `behindTLSProxy` to `true`. CookieKill then listens with plain HTTP on `addr`, does not start the automatic certificate manager or HTTP redirect listener, and treats the public request as HTTPS: login cookies remain Secure, origin and WebSocket checks require `https`, and secure response headers are retained. Configure the proxy to terminate TLS, forward to the configured `addr`, preserve the original `Host` header, and pass WebSocket upgrades for `/ws`. Expose only the proxy publicly and keep the internal backend listener limited to the proxy network. `domain` is still required and is used for the advertised public URL.
+
+The first page load requests the browser modules in parallel. If the proxy returns **HTTP 429** for ordinary GET requests under `/` or `/vendor/`, its request-rate rule is too strict for the client asset burst. Exempt static assets from that rule, or allow a burst of at least 80 requests, and apply login throttling only to `/api/login` and `/api/verify`. The client retries transient module-load failures with backoff, but a persistent proxy rule can still prevent the game from starting.
+
+When `behindTLSProxy` is `false`, production uses Go's [autocert manager](https://pkg.go.dev/golang.org/x/crypto/acme/autocert) to obtain and renew Let's Encrypt certificates for the configured hostname, persists its cache under the data directory, binds HTTPS on port 443, and redirects HTTP to HTTPS. Starting production accepts the Let's Encrypt subscriber agreement through `autocert.AcceptTOS`. Certificates can only be issued after the public domain and network are configured; localhost development uses HTTP.
 
 | JSON setting | Default / purpose |
 | --- | --- |
 | `dev` | `false`; set `true` for local-only login and HTTP |
-| `addr` | `127.0.0.1:8080`, development only |
+| `behindTLSProxy` | `false`; set `true` when an upstream TLS proxy forwards plain HTTP to this service |
+| `addr` | `127.0.0.1:8080`; development listener, or the plain HTTP backend listener when `behindTLSProxy` is enabled |
 | `domain` | Public hostname; required for production |
 | `email` | Optional Let's Encrypt contact address; empty is allowed |
 | `dataDir` | `data`; profiles and certificate cache |
@@ -334,7 +350,7 @@ Production uses Go's [autocert manager](https://pkg.go.dev/golang.org/x/crypto/a
 
 For local source development, `go run . -dev` still works without a configuration file; `-addr` and `-data` select the development listener and save location. A deployed binary can use `dev: true` in JSON for local testing, with an empty domain and a loopback address.
 
-You can also build the supplied Dockerfile. Mount configuration read-only at **`/app/config.json`**, setting `dataDir` to `/data` and `logFile` to `/data/logs/cookiekill.log`. Mount persistent storage at `/data`, writable by container UID 10001, and publish ports 80/443. The container must be allowed to bind those ports. The Docker deployment has not been exercised here. Run a single server instance per data directory.
+You can also build the supplied Dockerfile. Mount configuration read-only at **`/app/config.json`**, setting `dataDir` to `/data` and `logFile` to `/data/logs/cookiekill.log`. Mount persistent storage at `/data`, writable by container UID 10001. For direct HTTPS, publish ports 80/443 and allow the container to bind those low ports. Behind a TLS proxy, enable `behindTLSProxy`, set `addr` to an address reachable by that proxy, and publish only the corresponding backend port. The Docker deployment has not been exercised here. Run a single server instance per data directory.
 
 ## Persistence and authentication
 
@@ -355,6 +371,7 @@ go test ./...
 go vet ./...
 go build ./...
 node --test scripts/state-sync.test.cjs
+node --test scripts/proxy-module-retry.test.cjs
 node --test scripts/touch-controls.test.cjs
 node --test scripts/cave-scenery.test.cjs
 node --test scripts/club.test.cjs

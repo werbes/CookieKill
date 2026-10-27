@@ -29,7 +29,7 @@ func TestServiceConfigurationIsRelativeToExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Addr != "127.0.0.1:8080" || cfg.SMTP.Port != 587 || cfg.Domain != "" || cfg.SMTP.Host != "" {
+	if cfg.BehindTLSProxy || cfg.Addr != "127.0.0.1:8080" || cfg.SMTP.Port != 587 || cfg.Domain != "" || cfg.SMTP.Host != "" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if cfg.DataDir != filepath.Join(filepath.Dir(exe), "data") {
@@ -42,7 +42,7 @@ func TestServiceConfigurationIsRelativeToExecutable(t *testing.T) {
 
 func TestProductionJSONConfiguration(t *testing.T) {
 	exe := writeTestConfig(t, `{
-		"dev":false, "addr":"127.0.0.1:8090", "domain":"play.example.com", "email":"admin@example.com",
+		"dev":false, "behindTLSProxy":true, "addr":"127.0.0.1:8090", "domain":"play.example.com", "email":"admin@example.com",
 		"dataDir":"state", "logFile":"output/service.log",
 		"smtp":{"host":"smtp.example.com", "port":465, "user":"mailer", "password":"secret", "from":"login@example.com"}
 	}`)
@@ -50,7 +50,7 @@ func TestProductionJSONConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Dev || cfg.Addr != "127.0.0.1:8090" || cfg.Domain != "play.example.com" || cfg.Email != "admin@example.com" {
+	if cfg.Dev || !cfg.BehindTLSProxy || cfg.Addr != "127.0.0.1:8090" || cfg.Domain != "play.example.com" || cfg.Email != "admin@example.com" {
 		t.Fatal("production settings were not loaded")
 	}
 	if cfg.SMTP != (smtpConfig{Host: "smtp.example.com", Port: 465, User: "mailer", Password: "secret", From: "login@example.com"}) {
@@ -119,6 +119,7 @@ func TestConfigRejectsInvalidJSONAndValues(t *testing.T) {
 		"empty data path":    `{"dev":true,"dataDir":""}`,
 		"empty log path":     `{"dev":true,"logFile":" "}`,
 		"unsafe dev address": `{"dev":true,"addr":"0.0.0.0:8080"}`,
+		"dev with TLS proxy": `{"dev":true,"behindTLSProxy":true}`,
 		"missing domain":     `{"dev":false}`,
 	} {
 		t.Run(name, func(t *testing.T) {

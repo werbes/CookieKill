@@ -17,6 +17,7 @@ FIRST INSTALLATION
 
    {
      "dev": false,
+     "behindTLSProxy": false,
      "addr": "127.0.0.1:8080",
      "domain": "play.example.com",
      "email": "admin@example.com",
@@ -53,6 +54,14 @@ FIRST INSTALLATION
    be an address the provider permits. Real mail delivery/certificate issuance
    must be checked using your domain and provider.
 
+   Alternatively, when a reverse proxy or load balancer terminates TLS, set
+   behindTLSProxy to true and use addr for its plain HTTP backend. CookieKill
+   skips certificate issuance and the port-80 redirect listener while keeping
+   Secure cookies, HTTPS origin checks, and secure response headers. The proxy
+   must preserve the public Host header and forward WebSocket upgrades. Expose
+   only the proxy publicly. Open the configured backend port for the proxy;
+   the -OpenFirewall option still creates the direct mode's TCP 80/443 rule.
+
 4. Open PowerShell AS ADMINISTRATOR in the extracted directory, then run:
 
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-Service.ps1
@@ -88,9 +97,11 @@ separately. Keep configuration and executable outside writable data/log folders.
 
 Configuration fields:
   dev           false for public HTTPS; true for local-only testing
-  addr          loopback HTTP address in dev mode; default 127.0.0.1:8080
+  behindTLSProxy false for direct HTTPS; true behind a TLS proxy
+  addr          plain HTTP listener in dev or behindTLSProxy mode;
+                default 127.0.0.1:8080
   domain        lowercase public hostname, required in production
-  email         optional Let's Encrypt contact address; empty is allowed
+  email         optional Let's Encrypt contact; empty is allowed
   dataDir       saved profiles and certificate cache; default data
   logFile       append-only server log; default logs/cookiekill.log
   smtp.host     mail server hostname, required in production
@@ -119,7 +130,8 @@ The installer creates that event source. Service Control Manager errors are in
 Windows Logs > System. The log is append-only; arrange retention/archiving, or
 stop the service before moving the log aside, then start it to create a new one.
 
-Saved profiles are in data\players.json; certificates are in data\certificates.
+Saved profiles are in data\players\*.json; direct-mode certificates are in
+data\certificates.
 Back up config.json and the entire data directory securely. Stop the service
 before a consistent backup. Only run one instance against a given data directory.
 

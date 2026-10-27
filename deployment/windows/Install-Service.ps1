@@ -90,7 +90,11 @@ if ($existing) {
     $account = New-Object Management.Automation.PSCredential('NT AUTHORITY\LocalService', (New-Object Security.SecureString))
     New-Service -Name $serviceName -DisplayName 'CookieKill' -BinaryPathName $binaryPath -StartupType Automatic -Credential $account | Out-Null
 }
-Invoke-ServiceControl @('description', $serviceName, 'CookieKill multiplayer game server with automatic HTTPS.')
+$serviceDescription = 'CookieKill multiplayer game server with automatic HTTPS.'
+if ($config.PSObject.Properties['behindTLSProxy'] -and $config.behindTLSProxy -eq $true) {
+    $serviceDescription = 'CookieKill multiplayer game server behind a TLS-terminating proxy.'
+}
+Invoke-ServiceControl @('description', $serviceName, $serviceDescription)
 Invoke-ServiceControl @('sidtype', $serviceName, 'unrestricted')
 Invoke-ServiceControl @('failure', $serviceName, 'reset=', '86400', 'actions=', 'restart/5000/restart/15000/restart/60000')
 Invoke-ServiceControl @('failureflag', $serviceName, '1')

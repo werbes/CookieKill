@@ -16,13 +16,14 @@ import (
 const configFilename = "config.json"
 
 type appConfig struct {
-	Dev     bool       `json:"dev"`
-	Addr    string     `json:"addr"`
-	Domain  string     `json:"domain"`
-	Email   string     `json:"email"`
-	DataDir string     `json:"dataDir"`
-	LogFile string     `json:"logFile"`
-	SMTP    smtpConfig `json:"smtp"`
+	Dev            bool       `json:"dev"`
+	BehindTLSProxy bool       `json:"behindTLSProxy"`
+	Addr           string     `json:"addr"`
+	Domain         string     `json:"domain"`
+	Email          string     `json:"email"`
+	DataDir        string     `json:"dataDir"`
+	LogFile        string     `json:"logFile"`
+	SMTP           smtpConfig `json:"smtp"`
 }
 
 type smtpConfig struct {
@@ -104,6 +105,9 @@ func loadConfig(executablePath string, args []string, service bool) (appConfig, 
 	}
 	if err := validateMode(cfg.Dev, cfg.Addr, cfg.Domain, cfg.Email); err != nil {
 		return cfg, err
+	}
+	if cfg.Dev && cfg.BehindTLSProxy {
+		return cfg, errors.New("config.json behindTLSProxy cannot be combined with development mode")
 	}
 	if cfg.SMTP.Port < 1 || cfg.SMTP.Port > 65535 {
 		return cfg, errors.New("config.json smtp.port must be between 1 and 65535")

@@ -224,6 +224,81 @@ func TestSecurityHeadersAndStaticClient(t *testing.T) {
 	}
 }
 
+func TestSecureWebSocketOriginBehindTLSProxy(t *testing.T) {
+	a, err := auth.New(auth.Config{DevMode: true, SecureCookies: true, SessionTTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(a, db, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	httpServer := httptest.NewServer(s.Handler(fstest.MapFS{"index.html": {Data: []byte("CookieKill")}}, true))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+		s.Close()
+		httpServer.Close()
+	})
+
+	origin := "https://" + strings.TrimPrefix(httpServer.URL, "http://")
+	client := &http.Client{Timeout: 5 * time.Second}
+	login, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/login", strings.NewReader(`{"email":"alice@example.com"}`))
+	login.Header.Set("Origin", origin)
+	login.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var challenge struct {
+		DevCode string `json:"devCode"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&challenge); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || challenge.DevCode == "" {
+		t.Fatalf("secure-origin login returned HTTP %d", response.StatusCode)
+	}
+
+	body, _ := json.Marshal(map[string]string{"email": "alice@example.com", "code": challenge.DevCode})
+	verify, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/verify", bytes.NewReader(body))
+	verify.Header.Set("Origin", origin)
+	verify.Header.Set("Content-Type", "application/json")
+	response, err = client.Do(verify)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	cookies := response.Cookies()
+	if response.StatusCode != http.StatusOK || len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("secure-origin verification returned HTTP %d or a non-secure cookie", response.StatusCode)
+	}
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dialCancel()
+	c, _, err := websocket.Dial(dialCtx, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/ws", &websocket.DialOptions{
+		HTTPClient: client,
+		HTTPHeader: http.Header{
+			"Origin": {origin},
+			"Cookie": {cookies[0].Name + "=" + cookies[0].Value},
+		},
+	})
+	if err != nil {
+		t.Fatalf("secure WebSocket origin was rejected behind TLS proxy: %v", err)
+	}
+	defer c.CloseNow()
+	c.SetReadLimit(2 << 20)
+	snapshot(t, c, nil)
+}
+
 func TestPublicWorldLayoutContainsSceneryWithoutPlayerProfiles(t *testing.T) {
 	_, srv := testServer(t)
 	res, err := http.Get(srv.URL + "/api/world")

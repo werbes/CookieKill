@@ -58,7 +58,9 @@ func New(a *auth.Service, db *store.Store, profiles map[string]game.Profile, log
 func (s *Server) Handler(assets fs.FS, secure bool) http.Handler {
 	mux := http.NewServeMux()
 	s.auth.Register(mux)
-	mux.HandleFunc("GET /ws", s.connect)
+	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
+		s.connect(w, r, secure)
+	})
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) {
 		layout, err := s.layout(r.Context())
 		if err != nil {
@@ -106,7 +108,7 @@ func (s *Server) Handler(assets fs.FS, secure bool) http.Handler {
 	})
 }
 
-func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
+func (s *Server) connect(w http.ResponseWriter, r *http.Request, secure bool) {
 	p, ok := s.auth.Authenticate(r)
 	if !ok {
 		http.Error(w, "Sign in to enter the world", http.StatusUnauthorized)
@@ -121,7 +123,7 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
 		scheme := "http"
-		if r.TLS != nil {
+		if secure || r.TLS != nil {
 			scheme = "https"
 		}
 		if err != nil || !strings.EqualFold(u.Host, r.Host) || u.Scheme != scheme || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {

@@ -29,14 +29,18 @@ func receiveWithin[T any](t *testing.T, ch <-chan T) T {
 // Capturing the structured readiness URL lets the test use an OS-assigned port.
 type readinessLogHandler struct {
 	slog.Handler
-	urls chan string
+	urls      chan string
+	listeners chan string
 }
 
 func (h readinessLogHandler) Handle(ctx context.Context, record slog.Record) error {
 	if record.Message == "CookieKill ready" {
 		record.Attrs(func(attr slog.Attr) bool {
-			if attr.Key == "url" {
+			if attr.Key == "url" && h.urls != nil {
 				h.urls <- attr.Value.String()
+			}
+			if attr.Key == "listen" && h.listeners != nil {
+				h.listeners <- attr.Value.String()
 			}
 			return true
 		})
@@ -93,6 +97,62 @@ func TestRunServerCancellationSavesAndReleasesListener(t *testing.T) {
 		t.Fatalf("shutdown did not release its listener: %v", err)
 	}
 	listener.Close()
+}
+
+func TestRunServerBehindTLSProxyServesPlainHTTP(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := appConfig{
+		Addr:           "127.0.0.1:0",
+		BehindTLSProxy: true,
+		Domain:         "play.example.com",
+		DataDir:        t.TempDir(),
+		SMTP: smtpConfig{
+			Host: "smtp.example.com",
+			Port: 587,
+			From: "game@example.com",
+		},
+	}
+	ready := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	urls := make(chan string, 1)
+	listeners := make(chan string, 1)
+	logger := slog.New(readinessLogHandler{
+		Handler:   slog.NewTextHandler(io.Discard, nil),
+		urls:      urls,
+		listeners: listeners,
+	})
+	go func() {
+		done <- runServer(ctx, cfg, func() { ready <- struct{}{} }, logger)
+	}()
+	receiveWithin(t, ready)
+	if url := receiveWithin(t, urls); url != "https://play.example.com" {
+		t.Fatalf("ready URL = %q", url)
+	}
+	listenerAddress := receiveWithin(t, listeners)
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	response, err := client.Get("http://" + listenerAddress + "/healthz")
+	if err != nil {
+		t.Fatalf("TLS-proxy listener did not serve plain HTTP: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("health endpoint returned HTTP %d", response.StatusCode)
+	}
+	if response.Header.Get("Strict-Transport-Security") == "" {
+		t.Fatal("secure response headers were not retained behind the TLS proxy")
+	}
+
+	cancel()
+	if err := receiveWithin(t, done); err != nil {
+		t.Fatalf("proxy-mode shutdown failed: %v", err)
+	}
 }
 
 func TestRunServerOccupiedAddressNeverReportsReady(t *testing.T) {

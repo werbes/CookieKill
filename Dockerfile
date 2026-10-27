@@ -12,7 +12,7 @@ RUN mkdir /app
 COPY --from=build /cookiekill /app/cookiekill
 USER cookie
 WORKDIR /data
-EXPOSE 80 443
+EXPOSE 80 443 8080
 # Mount the JSON configuration at /app/config.json, with dataDir=/data and
 # logFile=/data/logs/cookiekill.log so the unprivileged user can write both.
 ENTRYPOINT ["/app/cookiekill"]

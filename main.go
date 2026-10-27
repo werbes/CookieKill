@@ -103,8 +103,9 @@ Without config.json, explicit -dev uses data and logs in the working directory.`
 // runServer reports readiness only after configuration, saved profiles and all
 // listeners have initialized. The same cancellation path serves Ctrl+C and SCM.
 func runServer(ctx context.Context, cfg appConfig, ready func(), logger *slog.Logger) error {
+	secure := !cfg.Dev
 	a, err := auth.New(auth.Config{
-		DevMode: cfg.Dev, SecureCookies: !cfg.Dev, SMTPHost: cfg.SMTP.Host, SMTPPort: cfg.SMTP.Port,
+		DevMode: cfg.Dev, SecureCookies: secure, SMTPHost: cfg.SMTP.Host, SMTPPort: cfg.SMTP.Port,
 		SMTPUser: cfg.SMTP.User, SMTPPass: cfg.SMTP.Password, SMTPFrom: cfg.SMTP.From,
 		SessionTTL: 7 * 24 * time.Hour, SessionFile: filepath.Join(cfg.DataDir, "sessions.json"),
 	})
@@ -127,9 +128,9 @@ func runServer(ctx context.Context, cfg appConfig, ready func(), logger *slog.Lo
 	// New owns background coordination even before Run, including early listen
 	// failures and cancellation during startup. Close is safe to call twice.
 	defer hub.Close()
-	app := &http.Server{Addr: cfg.Addr, Handler: hub.Handler(assets, !cfg.Dev), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
+	app := &http.Server{Addr: cfg.Addr, Handler: hub.Handler(assets, secure), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	var challenge *http.Server
-	if !cfg.Dev {
+	if !cfg.Dev && !cfg.BehindTLSProxy {
 		certDir := filepath.Join(cfg.DataDir, "certificates")
 		if err := os.MkdirAll(certDir, 0700); err != nil {
 			return err
@@ -165,13 +166,17 @@ func runServer(ctx context.Context, cfg appConfig, ready func(), logger *slog.Lo
 	loopDone := make(chan struct{})
 	go func() { defer close(loopDone); hub.Run(loopCtx) }()
 	errCh := make(chan error, 2)
+	listenAddress := listener.Addr().String()
 	if cfg.Dev {
 		go func() { errCh <- app.Serve(listener) }()
-		logger.Info("CookieKill ready", "url", "http://"+listener.Addr().String(), "mode", "local development", "save", cfg.DataDir)
+		logger.Info("CookieKill ready", "url", "http://"+listenAddress, "listen", listenAddress, "mode", "local development", "save", cfg.DataDir)
+	} else if cfg.BehindTLSProxy {
+		go func() { errCh <- app.Serve(listener) }()
+		logger.Info("CookieKill ready", "url", "https://"+cfg.Domain, "listen", listenAddress, "mode", "production behind TLS proxy", "save", cfg.DataDir)
 	} else {
 		go func() { errCh <- challenge.Serve(challengeListener) }()
 		go func() { errCh <- app.ServeTLS(listener, "", "") }()
-		logger.Info("CookieKill ready", "url", "https://"+cfg.Domain, "mode", "production", "save", cfg.DataDir)
+		logger.Info("CookieKill ready", "url", "https://"+cfg.Domain, "listen", listenAddress, "mode", "production", "save", cfg.DataDir)
 	}
 	ready()
 	var serveErr error
