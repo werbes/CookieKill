@@ -20,7 +20,10 @@ import (
 	"github.com/coder/websocket"
 )
 
-const maxPlayers = 64
+const (
+	maxPlayers       = 64
+	autosaveInterval = 5 * time.Minute
+)
 
 type peer struct {
 	conn          *websocket.Conn
@@ -52,7 +55,7 @@ type Server struct {
 }
 
 func New(a *auth.Service, db *store.Store, profiles map[string]game.Profile, logger *slog.Logger) *Server {
-	return newServer(a, db, profiles, logger, db.Save, serverTiming{50 * time.Millisecond, 100 * time.Millisecond, 5 * time.Second})
+	return newServer(a, db, profiles, logger, db.Save, serverTiming{50 * time.Millisecond, 100 * time.Millisecond, autosaveInterval})
 }
 
 func (s *Server) Handler(assets fs.FS, secure bool) http.Handler {
